@@ -1,0 +1,19 @@
+[package]
+name = "mingling_fu"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mingling_fu"
+path = "入口.rs"
+
+[[bin]]
+name = "号令"
+path = "命令-解析-殿/命令-入口-阁/兜底-入口-园/号令.rs"
+
+[dependencies]
+shihai_fu = { path = "../../../鸿蒙/基础设施 - 域/识海承载-府" }
+tianting_fu = { path = "../../../鸿蒙/基础设施 - 域/天庭治理-府" }
+daoshu_fu = { path = "../../../鸿蒙/基础设施 - 域/道术施展-府" }
+moxing_fu = { path = "../../../鸿蒙/基础设施 - 域/模型连接-府" }
+peizhi_fu = { path = "../../../鸿蒙/世界配置 - 域/配置管理-府" }
