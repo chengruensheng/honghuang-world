@@ -1,12 +1,16 @@
 //! 验收裁决：构造验收回执 → 入验收历史
 
 use crate::状态目录;
+use rizhi_fu::{error, info, warn};
 
 pub fn 裁决验收(要求id: &str, 结论: &str, 意见: &str) -> String {
     let 结论值 = match 结论 {
         "通过" => tianting_fu::验收结论::通过,
         "打回" => tianting_fu::验收结论::打回,
-        _ => return format!("结论需为 通过|打回，当前：{结论}"),
+        _ => {
+            warn!(要求id, 结论, "验收结论非法");
+            return format!("结论需为 通过|打回，当前：{结论}")
+        }
     };
     let 回执 = tianting_fu::验收回执 {
         要求id: 要求id.to_string(),
@@ -17,7 +21,13 @@ pub fn 裁决验收(要求id: &str, 结论: &str, 意见: &str) -> String {
     };
     let 队列 = tianting_fu::落盘队列::<tianting_fu::验收回执>::打开(状态目录().join("验收.jsonl"));
     match 队列.入队(&回执) {
-        Ok(_) => format!("验收已裁决\n要求id：{要求id}\n结论：{结论}\n意见：{意见}\n已入验收历史"),
-        Err(错误) => format!("入队失败：{错误}"),
+        Ok(_) => {
+            info!(要求id, 结论, "验收已裁决入历史");
+            format!("验收已裁决\n要求id：{要求id}\n结论：{结论}\n意见：{意见}\n已入验收历史")
+        }
+        Err(错误) => {
+            error!(要求id, "验收入队失败：{错误}");
+            format!("入队失败：{错误}")
+        }
     }
 }

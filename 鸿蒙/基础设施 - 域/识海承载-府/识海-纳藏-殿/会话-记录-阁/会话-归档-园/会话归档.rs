@@ -1,6 +1,7 @@
 //! 会话 - 归档 - 园：会话记录读写与归档。
 
 use crate::{会话记录, 当前毫秒, 记录, 模型存储};
+use rizhi_fu::{debug, error};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -30,7 +31,12 @@ impl 会话缓存 {
             时间戳: 当前毫秒(),
         };
         let 文本 = serde_json::to_string(&记录).map_err(|错误| format!("序列化会话失败: {错误}"))?;
-        fs::write(self.路径(会话id), 文本).map_err(|错误| format!("写会话失败: {错误}"))
+        fs::write(self.路径(会话id), 文本).map_err(|错误| {
+            error!(会话id, "写会话失败：{错误}");
+            format!("写会话失败: {错误}")
+        })?;
+        debug!(会话id, "会话已写入");
+        Ok(())
     }
 
     /// 读一份会话记录。
@@ -55,7 +61,12 @@ impl 会话缓存 {
         }
         let _ = fs::create_dir_all(归档目录);
         let 目标 = 归档目录.join(format!("{会话id}.json"));
-        fs::rename(&源, &目标).map_err(|错误| format!("归档会话失败: {错误}"))
+        fs::rename(&源, &目标).map_err(|错误| {
+            error!(会话id, "归档会话失败：{错误}");
+            format!("归档会话失败: {错误}")
+        })?;
+        debug!(会话id, "会话已归档");
+        Ok(())
     }
 
     fn 路径(&self, 会话id: &str) -> PathBuf {
@@ -63,17 +74,3 @@ impl 会话缓存 {
     }
 }
 
-#[cfg(test)]
-mod 测试 {
-    use super::*;
-
-    #[test]
-    fn 写入再读回一致() {
-        let 目录 = std::env::temp_dir().join("识海测试-会话");
-        let 缓存 = 会话缓存::打开(&目录);
-        缓存.写会话("s1", "完整现场").unwrap();
-        let 读回 = 缓存.读会话("s1").unwrap().unwrap();
-        assert_eq!(读回.内容, "完整现场");
-        let _ = fs::remove_dir_all(&目录);
-    }
-}

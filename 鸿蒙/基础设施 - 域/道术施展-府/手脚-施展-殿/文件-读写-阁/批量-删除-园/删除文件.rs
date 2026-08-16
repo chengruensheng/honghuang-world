@@ -1,33 +1,22 @@
 //! 批量 - 删除 - 园：批量删除文件。
+//! 删除前经 回滚垫 备份旧内容：任务失败时可单文件撤销恢复。
 
-/// 批量删除多个文件，任一失败即返回错误。
+use rizhi_fu::{debug, error};
+use shihai_fu::{当前任务, 回滚垫, 工作区};
+
+/// 批量删除多个文件，任一失败即返回错误；删除前先备份进回滚垫（失败只警告不阻断）。
 pub fn 删文件(路径们: &[&str]) -> Result<(), String> {
+    let 垫 = 回滚垫::在工作区(&工作区::定位());
     for 路径 in 路径们 {
-        std::fs::remove_file(路径).map_err(|错误| format!("删文件失败：{路径}：{错误}"))?;
+        if let Err(错误) = 垫.备份(&当前任务(), 路径) {
+            debug!(路径, "回滚垫备份跳过：{错误}");
+        }
+        std::fs::remove_file(路径).map_err(|错误| {
+            error!(路径, "删文件失败：{错误}");
+            format!("删文件失败：{路径}：{错误}")
+        })?;
     }
+    debug!(路径数 = 路径们.len(), "文件已删除");
     Ok(())
 }
 
-#[cfg(test)]
-mod 测试 {
-    use super::*;
-
-    fn 临时路径(名: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("手脚架_删文件_{}_{}", std::process::id(), 名))
-    }
-
-    #[test]
-    fn 删文件后不存在() {
-        let 路径 = 临时路径("删除.txt");
-        std::fs::write(&路径, "x").unwrap();
-        let 文本 = 路径.to_str().unwrap().to_string();
-        删文件(&[&文本]).unwrap();
-        assert!(!路径.exists());
-    }
-
-    #[test]
-    fn 删不存在的文件报错() {
-        let 路径 = 临时路径("已不存在.txt");
-        assert!(删文件(&[路径.to_str().unwrap()]).is_err());
-    }
-}

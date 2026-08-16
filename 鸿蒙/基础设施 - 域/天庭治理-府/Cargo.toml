@@ -15,3 +15,4 @@ thiserror = "2"
 daoshu_fu = { path = "../道术施展-府" }
 shihai_fu = { path = "../识海承载-府" }
 moxing_fu = { path = "../模型连接-府" }
+rizhi_fu = { path = "../日志记录-府" }

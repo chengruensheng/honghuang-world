@@ -12,8 +12,8 @@ use tracing_subscriber::fmt::writer::MakeWriter;
 /// 落地器：按去向写控制台、写文件，或双写（互不阻塞）
 #[derive(Clone)]
 pub struct 落地器 {
-    写控制台: bool,
-    文件: Option<Arc<Mutex<File>>>,
+    pub 写控制台: bool,
+    pub 文件: Option<Arc<Mutex<File>>>,
 }
 
 impl 落地器 {
@@ -79,16 +79,4 @@ impl<'a> MakeWriter<'a> for 落地器 {
 
 fn 打开文件(路径: &Path) -> io::Result<File> {
     OpenOptions::new().create(true).append(true).open(路径)
-}
-
-#[cfg(test)]
-mod 测试 {
-    use super::*;
-
-    #[test]
-    fn 仅控制台无文件() {
-        let 落地器 = 落地器::仅控制台();
-        assert!(落地器.写控制台);
-        assert!(落地器.文件.is_none());
-    }
 }

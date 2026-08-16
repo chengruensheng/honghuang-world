@@ -1,5 +1,7 @@
 //! JSON 输出：AI 机器解析（骨架用最小转义，生产换 serde_json）
 
+use rizhi_fu::debug;
+
 fn 转义(源: &str) -> String {
     let mut 出 = String::new();
     for 字符 in 源.chars() {
@@ -16,5 +18,6 @@ fn 转义(源: &str) -> String {
 }
 
 pub fn 呈现JSON(内容: &str) -> String {
+    debug!(长度 = 内容.len(), "JSON 已呈现");
     format!("{{\"ok\":true,\"data\":\"{}\"}}", 转义(内容))
 }

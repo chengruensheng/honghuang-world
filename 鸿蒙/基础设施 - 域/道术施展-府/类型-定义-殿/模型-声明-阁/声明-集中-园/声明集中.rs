@@ -47,12 +47,25 @@ pub struct 产物条目 {
     pub 路径: String,
     pub 类别: String,
     pub 字节数: u64,
+    /// 相对本轮执行前基线指纹的变化类型：新增 | 修改 | 未变。
+    /// serde 默认「未变」向后兼容旧记录；未变文件不进产物清单。
+    #[serde(default = "默认变化类型")]
+    pub 变化类型: String,
 }
 
-/// 执行回执：一次执行的结果与产物清单。
+/// 变化类型 默认值：未变（旧记录反序列化兜底）。
+fn 默认变化类型() -> String {
+    "未变".to_string()
+}
+
+/// 执行回执：一次执行的结果、产物清单、token 用量与轮数。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct 执行回执 {
     pub 状态: 执行状态,
     pub 产物们: Vec<产物条目>,
     pub 说明: String,
+    /// 本次执行累计的 token 用量（读现状 + 工具循环 + 重试全部计入）。
+    pub 用量: moxing_fu::用量,
+    /// 本次回执消耗的工具循环轮数（跨重试累计；首调起算）。
+    pub 轮数: u32,
 }

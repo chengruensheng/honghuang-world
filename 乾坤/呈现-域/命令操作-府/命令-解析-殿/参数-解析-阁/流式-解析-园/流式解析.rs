@@ -1,5 +1,7 @@
 //! 参数解析：argv → 调用
 
+use rizhi_fu::debug;
+
 /// 一次命令调用
 #[derive(Clone, Debug)]
 pub struct 调用 {
@@ -47,5 +49,6 @@ pub fn 解析调用(输入: Vec<String>) -> 调用 {
             }
         }
     }
+    debug!(域 = %调用.域, 动作 = %调用.动作, 参数数 = 调用.参数.len(), "命令已解析");
     调用
 }

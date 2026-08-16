@@ -55,7 +55,7 @@ pub enum 成熟度 { 成熟完整, 半成品, 损坏需修复 }
 
 /// 想法状态。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 想法状态 { 未处理, 已化为要求 }
+pub enum 想法状态 { 未处理, 已化为要求, 已打回, 已解决 }
 
 /// 构建状态。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -120,6 +120,15 @@ pub struct 产物条目 {
     pub 路径: String,
     pub 类别: String,
     pub 字节数: u64,
+    /// 相对本轮执行前基线指纹的变化类型：新增 | 修改 | 未变（设计稿 §12 阶段四 P0-1）。
+    /// serde 默认「未变」向后兼容旧记录；未变文件不进产物清单。
+    #[serde(default = "默认变化类型")]
+    pub 变化类型: String,
+}
+
+/// 变化类型 默认值：未变（旧记录反序列化兜底）。
+fn 默认变化类型() -> String {
+    "未变".to_string()
 }
 
 /// 验收回执（鸿钧产出）。

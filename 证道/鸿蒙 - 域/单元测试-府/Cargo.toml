@@ -1,0 +1,20 @@
+[package]
+name = "zhengdao_fu"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "zhengdao_fu"
+path = "入口.rs"
+
+[dependencies]
+daoshu_fu = { path = "../../../鸿蒙/基础设施 - 域/道术施展-府" }
+shihai_fu = { path = "../../../鸿蒙/基础设施 - 域/识海承载-府" }
+tianting_fu = { path = "../../../鸿蒙/基础设施 - 域/天庭治理-府" }
+rizhi_fu = { path = "../../../鸿蒙/基础设施 - 域/日志记录-府" }
+moxing_fu = { path = "../../../鸿蒙/基础设施 - 域/模型连接-府" }
+peizhi_fu = { path = "../../../鸿蒙/世界配置 - 域/配置管理-府" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "std", "registry"] }

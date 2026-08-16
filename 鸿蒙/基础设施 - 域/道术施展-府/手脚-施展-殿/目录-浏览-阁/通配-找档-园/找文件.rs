@@ -1,5 +1,6 @@
 //! 通配 - 找档 - 园：按通配符模式在目录树下找文件。
 
+use rizhi_fu::{debug, error};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,10 +9,12 @@ use std::path::{Path, PathBuf};
 pub fn 寻找文件(根: &str, 模式: &str) -> Result<Vec<String>, String> {
     let 根路径 = Path::new(根);
     if !根路径.is_dir() {
+        error!(根, "找档根目录不存在");
         return Err(format!("根目录不存在：{根}"));
     }
     let 段们 = 拆分路径段(模式);
     let 命中们 = 递归找(根路径, &段们);
+    debug!(根, 命中数 = 命中们.len(), "通配找档完成");
     Ok(命中们.iter().map(|路径| 路径.to_string_lossy().to_string()).collect())
 }
 
@@ -94,45 +97,3 @@ fn 通配匹配(模式: &str, 文本: &str) -> bool {
     模式位 == 模式字符.len()
 }
 
-#[cfg(test)]
-mod 测试 {
-    use super::*;
-
-    fn 临时路径(名: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("手脚架_找文件_{}_{}", std::process::id(), 名))
-    }
-
-    #[test]
-    fn 单段星号找文件() {
-        let 目录 = 临时路径("星号");
-        std::fs::create_dir_all(&目录).unwrap();
-        std::fs::write(目录.join("a.rs"), "").unwrap();
-        std::fs::write(目录.join("b.txt"), "").unwrap();
-
-        let 命中 = 寻找文件(目录.to_str().unwrap(), "*.rs").unwrap();
-        assert_eq!(命中.len(), 1);
-        assert!(命中[0].ends_with("a.rs"));
-
-        std::fs::remove_dir_all(&目录).unwrap();
-    }
-
-    #[test]
-    fn 双星号递归找文件() {
-        let 目录 = 临时路径("递归");
-        let 子 = 目录.join("子");
-        std::fs::create_dir_all(&子).unwrap();
-        std::fs::write(子.join("c.rs"), "").unwrap();
-        std::fs::write(目录.join("a.rs"), "").unwrap();
-
-        let 命中 = 寻找文件(目录.to_str().unwrap(), "**/*.rs").unwrap();
-        assert_eq!(命中.len(), 2);
-
-        std::fs::remove_dir_all(&目录).unwrap();
-    }
-
-    #[test]
-    fn 根不存在报错() {
-        let 目录 = 临时路径("无此根");
-        assert!(寻找文件(目录.to_str().unwrap(), "*.rs").is_err());
-    }
-}

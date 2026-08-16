@@ -1,5 +1,6 @@
 //! 命令入口执行：解析 → 校验 → 分发 → 输出，返回退出码
 use crate::{解析调用, 校验调用, 分发调用, 结果, 呈现文本, 呈现JSON, 全流程总览};
+use rizhi_fu::{info, warn};
 
 pub fn 执行() -> i32 {
     let 输入: Vec<String> = std::env::args().skip(1).collect();
@@ -12,12 +13,14 @@ pub fn 执行() -> i32 {
 
     let 环境令牌 = std::env::var("WORLD_AI_TOKEN").ok();
     if let Err(理由) = 校验调用(&调用, 环境令牌.as_deref()) {
+        warn!(域 = %调用.域, 动作 = %调用.动作, "命令被拒：{理由}");
         eprintln!("{理由}");
         return 1;
     }
 
     match 分发调用(&调用) {
         结果::成功(内容) => {
+            info!(域 = %调用.域, 动作 = %调用.动作, "命令执行成功");
             if 调用.要JSON {
                 println!("{}", 呈现JSON(&内容));
             } else {
@@ -26,6 +29,7 @@ pub fn 执行() -> i32 {
             0
         }
         结果::失败(内容) => {
+            warn!(域 = %调用.域, 动作 = %调用.动作, "命令执行失败：{内容}");
             eprintln!("{内容}");
             1
         }

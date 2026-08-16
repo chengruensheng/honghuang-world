@@ -4,5 +4,6 @@
 use mingling_fu::执行;
 
 fn main() {
+    rizhi_fu::初始化默认();
     std::process::exit(执行());
 }

@@ -1,6 +1,7 @@
 //! 事项查询：想法 / 要求 / 设计 / 验收 列表与详情（读状态目录 jsonl）
 
 use crate::状态目录;
+use rizhi_fu::{debug, error, warn};
 
 pub fn 事项列表(域: &str) -> String {
     match 域 {
@@ -8,6 +9,7 @@ pub fn 事项列表(域: &str) -> String {
             let 队列 = tianting_fu::落盘队列::<tianting_fu::想法>::打开(状态目录().join("想法.jsonl"));
             match 队列.读全部() {
                 Ok(项们) => {
+                    debug!(域, 条数 = 项们.len(), "事项列表已读");
                     if 项们.is_empty() {
                         return "想法列表\n（空）".to_string();
                     }
@@ -17,13 +19,17 @@ pub fn 事项列表(域: &str) -> String {
                     }
                     行
                 }
-                Err(错误) => format!("读取失败：{错误}"),
+                Err(错误) => {
+                    error!(域, "读事项列表失败：{错误}");
+                    format!("读取失败：{错误}")
+                }
             }
         }
         "要求" => {
             let 队列 = tianting_fu::落盘队列::<tianting_fu::要求书>::打开(状态目录().join("要求.jsonl"));
             match 队列.读全部() {
                 Ok(项们) => {
+                    debug!(域, 条数 = 项们.len(), "事项列表已读");
                     if 项们.is_empty() {
                         return "要求列表\n（空）".to_string();
                     }
@@ -33,13 +39,17 @@ pub fn 事项列表(域: &str) -> String {
                     }
                     行
                 }
-                Err(错误) => format!("读取失败：{错误}"),
+                Err(错误) => {
+                    error!(域, "读事项列表失败：{错误}");
+                    format!("读取失败：{错误}")
+                }
             }
         }
         "设计" => {
             let 队列 = tianting_fu::落盘队列::<tianting_fu::设计方案>::打开(状态目录().join("设计.jsonl"));
             match 队列.读全部() {
                 Ok(项们) => {
+                    debug!(域, 条数 = 项们.len(), "事项列表已读");
                     if 项们.is_empty() {
                         return "设计列表\n（空）".to_string();
                     }
@@ -49,13 +59,17 @@ pub fn 事项列表(域: &str) -> String {
                     }
                     行
                 }
-                Err(错误) => format!("读取失败：{错误}"),
+                Err(错误) => {
+                    error!(域, "读事项列表失败：{错误}");
+                    format!("读取失败：{错误}")
+                }
             }
         }
         "验收" => {
             let 队列 = tianting_fu::落盘队列::<tianting_fu::验收回执>::打开(状态目录().join("验收.jsonl"));
             match 队列.读全部() {
                 Ok(项们) => {
+                    debug!(域, 条数 = 项们.len(), "事项列表已读");
                     if 项们.is_empty() {
                         return "验收历史\n（空）".to_string();
                     }
@@ -65,10 +79,16 @@ pub fn 事项列表(域: &str) -> String {
                     }
                     行
                 }
-                Err(错误) => format!("读取失败：{错误}"),
+                Err(错误) => {
+                    error!(域, "读事项列表失败：{错误}");
+                    format!("读取失败：{错误}")
+                }
             }
         }
-        _ => format!("未知事项域：{域}"),
+        _ => {
+            warn!(域, "未知事项域");
+            format!("未知事项域：{域}")
+        }
     }
 }
 

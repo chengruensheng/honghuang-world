@@ -5,9 +5,13 @@ pub mod 代码_扫描_阁;
 #[path = "语义-播种-阁/模块.rs"]
 pub mod 语义_播种_阁;
 
+#[path = "地道-精炼-阁/模块.rs"]
+pub mod 地道_精炼_阁;
+
 #[path = "人类-录入-阁/模块.rs"]
 pub mod 人类_录入_阁;
 
 pub use 代码_扫描_阁::*;
 pub use 语义_播种_阁::*;
+pub use 地道_精炼_阁::*;
 pub use 人类_录入_阁::*;

@@ -1,6 +1,7 @@
 //! 巡世 - 扫描 - 园：扫描世界，产出巡世报告与违逆清单。
 
 use crate::类型_定义_殿::{巡世报告, 巡世候选, 要求类别, 优先级};
+use rizhi_fu::info;
 use std::path::{Path, PathBuf};
 
 /// 扫描世界：收集源文件，按规模启发产出候选改进点。
@@ -15,6 +16,7 @@ pub fn 扫描世界(根目录: &Path) -> 巡世报告 {
             优先级: 优先级::低,
         });
     }
+    info!(根 = %根目录.display(), 源文件数 = 文件们.len(), 候选数 = 候选.len(), "巡世扫描完成");
     巡世报告 {
         id: "巡世-1".to_string(),
         时间: 0,
@@ -44,21 +46,5 @@ fn 递归(目录: &Path, 排除项: &[String], 结果: &mut Vec<PathBuf>) {
         } else if 名.ends_with(".rs") {
             结果.push(路径);
         }
-    }
-}
-
-#[cfg(test)]
-mod 测试 {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn 扫描产出报告() {
-        let 目录 = std::env::temp_dir().join("识海测试-巡世");
-        fs::create_dir_all(&目录).unwrap();
-        fs::write(目录.join("a.rs"), "x").unwrap();
-        let 报告 = 扫描世界(&目录);
-        assert!(报告.候选.is_empty()); // 文件数少，无候选
-        let _ = fs::remove_dir_all(&目录);
     }
 }
