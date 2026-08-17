@@ -15,3 +15,6 @@
 
 # 工具本地配置(CodeArts/智能体工具)
 .codeartsdoer/
+
+__pycache__/
+*.pyc
