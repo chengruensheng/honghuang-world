@@ -147,12 +147,13 @@ impl 依赖图 {
         输出.trim_end().to_string()
     }
 
-    /// 图谱契约·库根导出（设计稿 §4.2 规则6）：按涉及文件追溯所属府（模块名 = 府名，
-    /// 入口.rs 的 pub use 全量重导出该府顶层符号），投影该府可导入符号签清单——
-    /// 让实现层知道 打开存储/状态目录/工作区根 等库根函数在哪、签名什么样，不再凭记忆猜。
-    /// 返回「府名 → 签名清单」文本；无匹配返回空串（零开销）。
+    /// 图谱契约·库根导出（设计稿 §4.2 规则6）：按涉及文件追溯所属 crate（模块字段末段 =
+    /// crate 名），投影该 crate 可导入符号的签名清单——让实现层知道 打开存储/状态目录/fn 入口
+    /// 等库根符号在哪、签名什么样，不再凭记忆猜。通用：任何 Rust 项目 crate 名即模块末段，
+    /// 不依赖本项目 殿/阁/园 目录层级名词。
+    /// 返回「crate 名 → 签名清单」文本；无匹配返回空串（零开销）。
     pub fn 查库根导出(&self, 涉及路径们: &[String]) -> String {
-        let mut 府名集合 = std::collections::BTreeSet::new();
+        let mut crate名集 = std::collections::BTreeSet::new();
         for 涉及 in 涉及路径们 {
             let 涉及 = 涉及.trim().replace('\\', "/");
             if 涉及.is_empty() {
@@ -161,30 +162,30 @@ impl 依赖图 {
             for 档案 in &self.档案们 {
                 let 文件 = 档案.文件.replace('\\', "/");
                 if 文件.contains(&涉及) {
-                    if let Some(府名) = 档案.模块.split('/').last() {
-                        if !府名.is_empty() {
-                            府名集合.insert(府名.to_string());
+                    if let Some(crate名) = 档案.模块.split('/').last() {
+                        if !crate名.is_empty() {
+                            crate名集.insert(crate名.to_string());
                         }
                     }
                 }
             }
         }
-        // 精确到文件却无归属府（涉及路径是目录）→ 退化按目录名匹配模块。
-        if 府名集合.is_empty() {
+        // 精确到文件却无归属 crate（涉及路径是目录）→ 退化按目录名匹配模块。
+        if crate名集.is_empty() {
             for 涉及 in 涉及路径们 {
                 let 涉及 = 涉及.trim();
                 for 档案 in &self.档案们 {
                     if 档案.模块.replace('\\', "/").ends_with(涉及) {
-                        if let Some(府名) = 档案.模块.split('/').last() {
-                            府名集合.insert(府名.to_string());
+                        if let Some(crate名) = 档案.模块.split('/').last() {
+                            crate名集.insert(crate名.to_string());
                         }
                     }
                 }
             }
         }
         let mut 输出 = String::new();
-        for 府名 in &府名集合 {
-            let 符号们 = self.查模块(府名);
+        for crate名 in &crate名集 {
+            let 符号们 = self.查模块(crate名);
             if 符号们.is_empty() {
                 continue;
             }
@@ -196,26 +197,27 @@ impl 依赖图 {
             if 签名们.is_empty() {
                 continue;
             }
-            输出.push_str(&format!("【{府名}·库根导出】\n{}\n", 签名们.join("\n")));
+            输出.push_str(&format!("【{crate名}·库根导出】\n{}\n", 签名们.join("\n")));
         }
         输出
     }
 
     /// 图谱契约·测试样例参照（设计稿 §4.2 规则6）：依赖图中找含 `#[cfg(test)]` /
-    /// `mod 测试` 的符号档案，优先取与涉及路径同府的文件，投影其中一个完整测试模块的
-    /// 签名+文件路径——实现层照抄该项目既有测试惯例（模块三件套、#[cfg(test)] 写法、
+    /// `mod 测试` 的符号档案，优先取与涉及路径同 crate 的文件，投影其中一个完整测试模块的
+    /// 签名+文件路径——实现层照抄该项目既有测试惯例（模块接入方式、#[cfg(test)] 写法、
     /// env 互斥锁），不再凭空发明测试结构。
     /// 返回「样本清单 + 一个完整样例文件路径」文本；无样例返回空串。
+    /// 落位判据用通用描述（不写死本项目目录层级名词），任何 Rust 项目均适用。
     pub fn 查测试样例(&self, 涉及路径们: &[String]) -> String {
-        // 同府优先：涉及路径文件所属府的测试档案。
-        let 涉及府们: std::collections::HashSet<String> = {
+        // 同 crate 优先：涉及路径文件所属 crate 的测试档案。
+        let 涉及crate们: std::collections::HashSet<String> = {
             let mut 集合 = std::collections::HashSet::new();
             for 涉及 in 涉及路径们 {
                 let 涉及 = 涉及.trim().replace('\\', "/");
                 for 档案 in &self.档案们 {
                     if 档案.文件.replace('\\', "/").contains(&涉及) {
-                        if let Some(府名) = 档案.模块.split('/').last() {
-                            集合.insert(府名.to_string());
+                        if let Some(crate名) = 档案.模块.split('/').last() {
+                            集合.insert(crate名.to_string());
                         }
                     }
                 }
@@ -230,23 +232,24 @@ impl 依赖图 {
         if 测试档案们.is_empty() {
             return String::new();
         }
-        let 同府: Vec<&符号档案> = 测试档案们
+        let 同crate: Vec<&符号档案> = 测试档案们
             .iter()
             .copied()
             .filter(|档案| {
-                档案.模块.split('/').last().map(|府| 涉及府们.contains(府)).unwrap_or(false)
+                档案.模块.split('/').last().map(|crate名| 涉及crate们.contains(crate名)).unwrap_or(false)
             })
             .collect();
-        let 样例 = if let Some(首) = 同府.first() {
+        let 样例 = if let Some(首) = 同crate.first() {
             *首
         } else {
             *测试档案们.first().unwrap()
         };
         let 签名 = if 样例.签名.is_empty() { 样例.符号.clone() } else { 样例.签名.clone() };
         let 摘要: String = 样例.代码.lines().take(5).collect::<Vec<_>>().join("\n");
+        // 落位判据 = 通用 Rust 测试落位准则（不依赖本项目 殿/阁/园 或 模块三件套 等专有名词）。
         format!(
-            "【测试样例参照】项目既有测试写法样例：{}\n文件路径：{}\n签名：{}\n片段：\n{}\n照抄此处的模块三件套 与 #[cfg(test)]/mod 测试 惯例，勿自造测试结构。\n\n\
-             【补测试落位判据】① 涉及路径内已有被测 .rs → 测试直接内联写在该文件尾 #[cfg(test)]，禁止新建独立测试文件；② 勿往空目录/非涉及路径写测试（会被护栏拦截且不落盘）；③ 仅当涉及路径内无 .rs 可内联时，才同阁新建测试文件并照 模块三件套 接线。\n",
+            "【测试样例参照】项目既有测试写法样例：{}\n文件路径：{}\n签名：{}\n片段：\n{}\n照抄此处的 测试模块声明/#[cfg(test)]/mod 测试 写法与模块接入方式，勿自造结构。\n\n\
+             【补测试落位判据】① 涉及路径内已有被测 .rs → 测试直接内联写在该文件尾 #[cfg(test)]，禁止新建独立测试文件；② 勿往空目录/非涉及路径写测试（会被护栏拦截且不落盘）；③ 仅当涉及路径内无 .rs 可内联时，才在同类目录新建测试文件、并在父层模块按该 crate 既有接入方式声明（照上方测试样例示范）。\n",
             样例.符号, 样例.文件, 签名, 摘要
         )
     }
@@ -356,7 +359,7 @@ mod 测试 {
         assert!(结果.contains("测试样例参照"), "应含标题：{结果}");
         assert!(结果.contains("乙测试"), "应选中测试符号：{结果}");
         assert!(结果.contains("cfg(test)"), "应含测试写法片段：{结果}");
-        assert!(结果.contains("勿自造测试结构"), "应含照抄提示：{结果}");
+        assert!(结果.contains("勿自造结构"), "应含照抄提示：{结果}");
         assert!(结果.contains("补测试落位判据"), "应含落位判据：{结果}");
         assert!(结果.contains("内联写在该文件尾"), "应含内联指令：{结果}");
     }
