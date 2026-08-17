@@ -1,6 +1,7 @@
 //! 符号 - 补解释 - 园：对依赖图里解释为空的 pub 符号，唤起 LLM 读源码补一句语义，写回依赖图。
 
 use crate::{依赖图, 工作区};
+use jiance_fu::{进入观测, 观测角色};
 use moxing_fu::{调用模型, 对话消息, 模型配置};
 use rizhi_fu::{info, warn};
 use std::collections::BTreeMap;
@@ -9,6 +10,8 @@ use std::path::Path;
 /// 补符号解释：按府分组，每组一次 LLM 调用，批量补该府空解释符号的语义，写回依赖图。
 /// 返回补全的解释数量。
 pub fn 补符号解释(根目录: &Path, 配置: &模型配置) -> Result<usize, String> {
+    // 白箱观测：依赖图补语义进入归因角色（世界级维护，无要求关联）。
+    let _观测守卫 = 进入观测(观测角色::归因, None, None, None);
     let 工作区 = 工作区::新(根目录);
     let mut 图 = 依赖图::加载自工作区(&工作区)?;
 

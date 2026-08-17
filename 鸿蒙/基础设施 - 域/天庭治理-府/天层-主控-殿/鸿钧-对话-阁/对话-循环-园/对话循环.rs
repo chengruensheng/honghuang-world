@@ -5,6 +5,7 @@
 use crate::类型_定义_殿::{想法, 想法状态};
 use crate::{判别, 判别结果, 对话意图};
 use daoshu_fu::任务调度;
+use jiance_fu::{进入观测, 观测角色};
 use moxing_fu::{调用模型, 对话消息, 模型配置, 精简上限};
 use rizhi_fu::{error, info, warn};
 
@@ -25,6 +26,8 @@ pub fn 界主发言(
     _存储: &shihai_fu::模型存储,
     _调度: &mut 任务调度,
 ) -> String {
+    // 白箱观测：界主对话整链进入鸿钧角色（无要求关联——对话不绑定某要求书）。
+    let _观测守卫 = 进入观测(观测角色::鸿钧, None, None, None);
     let 消息 = 消息.trim();
     if 消息.is_empty() {
         return "请说点什么".to_string();

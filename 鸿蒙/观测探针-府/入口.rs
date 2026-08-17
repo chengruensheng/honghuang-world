@@ -179,3 +179,53 @@ fn 造载荷(内容: impl Into<String>, 附加: Option<serde_json::Value>) -> �
         None => 载荷::文本(内容),
     }
 }
+
+/// 观测上下文的单档内容。
+#[derive(Clone, Debug)]
+pub struct 观测上下文档 {
+    pub 角色: 观测角色,
+    pub 任务线: Option<String>,
+    pub 要求: Option<String>,
+    pub 轮次: Option<u64>,
+}
+
+// 线程本地观测上下文栈：可嵌套（如 鸿钧 主循环 → 设计 子调用 → 鸿钧 终裁），
+// 进入观测 push、守卫 drop 时 pop；当前观测 读栈顶。跨调用方签名不便改动时
+// （如 moxing_fu 的模型调用）由调用方 进入观测 设置一次，下游埋点自动带 角色/任务线/要求/轮次。
+thread_local! {
+    static 观测上下文栈: std::cell::RefCell<Vec<观测上下文档>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// 进入一段带观测上下文的调用栈：push 一档线程本地上下文，返回守卫在离开时 pop 恢复上层。
+/// 用法：`let _守卫 = 进入观测(角色, 任务线, 要求, 轮次);`。可嵌套。
+pub fn 进入观测(角色: 观测角色, 任务线: Option<String>, 要求: Option<String>, 轮次: Option<u64>) -> impl Drop {
+    struct 清理;
+    impl Drop for 清理 {
+        fn drop(&mut self) {
+            观测上下文栈.with(|栈| {
+                let mut 栈 = 栈.borrow_mut();
+                栈.pop();
+            });
+        }
+    }
+    观测上下文栈.with(|栈| {
+        栈.borrow_mut().push(观测上下文档 { 角色, 任务线, 要求, 轮次 });
+    });
+    清理
+}
+
+/// 读取当前线程观测上下文栈顶：返回 (角色, 关联)；无上下文则 (未知, 空关联)。
+pub fn 当前观测() -> (观测角色, 关联) {
+    let 顶 = 观测上下文栈.with(|栈| 栈.borrow().last().cloned());
+    let Some(档) = 顶 else { return (观测角色::未知, 关联::新()); };
+    let mut 关联 = 关联::新();
+    if let Some(任务线) = 档.任务线 { 关联 = 关联.任务线(&任务线); }
+    if let Some(要求) = 档.要求 { 关联 = 关联.要求(&要求); }
+    if let Some(轮次) = 档.轮次 { 关联 = 关联.轮次(轮次 as usize); }
+    (档.角色, 关联)
+}
+
+/// 读取当前线程观测上下文中的关联部分；无上下文则返回空关联。
+pub fn 当前关联() -> 关联 {
+    当前观测().1
+}

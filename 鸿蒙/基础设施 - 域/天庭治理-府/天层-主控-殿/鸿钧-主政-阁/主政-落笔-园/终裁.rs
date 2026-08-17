@@ -17,6 +17,7 @@
 //! 保证现有 `验收裁决(要求id, 产物们, 耗时秒, 涉及文件, 失败说明)` 签名测试继续通过。
 
 use crate::类型_定义_殿::*;
+use jiance_fu::{进入观测, 观测角色};
 use moxing_fu::{对话消息, 模型配置, 提取对象, 用量, 常规上限};
 use rizhi_fu::{error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -563,6 +564,8 @@ fn 鸿钧终裁(
     意见们: &[准圣意见],
     配置: &模型配置,
 ) -> Result<(验收结论, String, 用量), String> {
+    // 白箱观测：终裁是鸿钧动作（栈顶覆盖验收档；无争议时无 LLM 调用，仅机械结论）。
+    let _观测守卫 = 进入观测(观测角色::鸿钧, None, Some(要求书.id.clone()), None);
     let 通过数 = 意见们
         .iter()
         .filter(|o| o.结论 == 验收结论::通过)
@@ -680,6 +683,8 @@ pub fn 终裁裁决_无名(
     失败说明: Option<&str>,
     配置: Option<&模型配置>,
 ) -> 终裁回执 {
+    // 白箱观测：验收阶段进入验收角色（栈顶覆盖主政的鸿钧档；无要求书时退化为空要求）。
+    let _观测守卫 = 进入观测(观测角色::验收, None, Some(要求id.to_string()), None);
     // ① 机械前置门槛
     if let Some(打回) = 机械前置门槛(要求id, 产物们, 耗时秒, 失败说明) {
         return 打回;

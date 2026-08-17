@@ -5,6 +5,7 @@
 
 use crate::{变更报告, 记录, 模型存储, 依赖图};
 use crate::推演波及;
+use jiance_fu::{进入观测, 观测角色};
 use moxing_fu::{调用模型, 对话消息, 模型配置, 精简上限};
 use rizhi_fu::info;
 use std::path::Path;
@@ -21,6 +22,8 @@ pub fn 机制归纳(
     根: &Path,
     报告: &变更报告,
 ) -> Result<Option<String>, String> {
+    // 白箱观测：地道归纳进入归因角色（世界级记忆维护，无要求关联）。
+    let _观测守卫 = 进入观测(观测角色::归因, None, None, None);
     if 报告.总处数() < 复杂阈值 {
         return Ok(None);
     }
