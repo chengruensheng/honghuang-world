@@ -112,14 +112,68 @@ impl 回滚垫 {
     }
 
     /// 撤销：按时间戳恢复该任务全部写前状态（曾存在→恢复旧内容；曾不存在→删除），返回恢复数。
+    /// 指纹跳过：目标文件当前内容与写前一致 → 已一致，不无谓写盘（也防覆盖任务执行后界主的改动）。
     pub fn 撤销(&self, 任务id: &str) -> Result<u32, String> {
         let 任务id = 分组(&任务id);
         let 任务目录 = self.目录.join(任务id);
         if !任务目录.is_dir() {
             return Ok(0);
         }
+        self.撤销组(&任务id, &任务目录)
+    }
+
+    /// 撤销指定任务前缀的全部分组（任务id 及其 -子N/-重试N 变体），不碰其他任务的分组。
+    /// 供「打回撤销」用：只撤本轮任务的写前状态，异组旧档不得覆盖工作区合法改动——
+    /// 2026-08-17 实锤：`撤销全部` 恢复所有存档组（含其他任务旧组），把旧快照覆盖到工作区，
+    /// 未提交的合法改动被覆盖丢失（兜底分发.rs 命令接线曾被 10:50 打回撤销覆盖）。
+    pub fn 撤销任务前缀(&self, 任务id: &str) -> Result<u32, String> {
+        let 前缀 = 分组(&任务id);
+        if !self.目录.is_dir() {
+            return Ok(0);
+        }
+        let 分组们: Vec<(String, PathBuf)> = fs::read_dir(&self.目录)
+            .map_err(|错误| format!("读回滚垫目录失败：{错误}"))?
+            .filter_map(|条目| 条目.ok())
+            .filter(|条目| 条目.path().is_dir())
+            .filter_map(|条目| {
+                条目
+                    .file_name()
+                    .to_str()
+                    .map(|名| (名.to_string(), 条目.path()))
+            })
+            .filter(|(名, _)| *名 == 前缀 || 名.starts_with(&format!("{前缀}-")))
+            .collect();
+        // 组内最晚时间戳：跨组恢复排序依据（晚写组先恢复，防文件停在中间版本）。
+        let mut 排序们: Vec<(&str, u64)> = 分组们
+            .iter()
+            .map(|(名, 路径)| (名.as_str(), 组最晚时间戳(路径)))
+            .collect();
+        排序们.sort_by(|甲, 乙| 乙.1.cmp(&甲.1).then_with(|| 甲.0.cmp(乙.0)));
+        let mut 总恢复 = 0u32;
+        let mut 失败数 = 0usize;
+        let mut 失败说明们 = Vec::new();
+        for (任务, _) in 排序们 {
+            match self.撤销组(任务, &self.目录.join(任务)) {
+                Ok(恢复) => 总恢复 += 恢复,
+                Err(说明) => {
+                    warn!(任务, 说明 = %说明, "该任务分组撤销失败，继续其余分组");
+                    失败数 += 1;
+                    失败说明们.push(说明);
+                }
+            }
+        }
+        if 失败数 == 0 {
+            info!(前缀, 恢复数 = 总恢复, "回滚垫已恢复该任务前缀全部写前状态");
+            Ok(总恢复)
+        } else {
+            Err(format!("{失败数} 个任务分组撤销失败（已恢复 {总恢复} 处）：{}", 失败说明们.join("；")))
+        }
+    }
+
+    /// 撤销单个分组：读全部存档条目 → 指纹跳过 → 恢复写前状态。
+    fn 撤销组(&self, 任务id: &str, 任务目录: &std::path::Path) -> Result<u32, String> {
         let mut 条目们 = Vec::new();
-        for 条目 in fs::read_dir(&任务目录).map_err(|错误| format!("读回滚存档目录失败：{错误}"))? {
+        for 条目 in fs::read_dir(任务目录).map_err(|错误| format!("读回滚存档目录失败：{错误}"))? {
             let 路径 = 条目.map_err(|错误| format!("读回滚存档目录项失败：{错误}"))?.path();
             if 路径.extension().map(|末| 末 != "json").unwrap_or(true) {
                 continue;
@@ -143,6 +197,12 @@ impl 回滚垫 {
         for 条目 in &条目们 {
             let 绝对 = Path::new(&条目.路径);
             if 条目.曾存在 {
+                // 指纹跳过：当前内容与写前一致 → 已一致，不无谓写盘。
+                if let Ok(当前) = fs::read(&绝对) {
+                    if 当前 == 条目.内容.as_bytes() {
+                        continue;
+                    }
+                }
                 if let Some(父) = 绝对.parent() {
                     let _ = fs::create_dir_all(父);
                 }
@@ -399,6 +459,53 @@ mod 测试 {
         let 恢复 = 垫.撤销("任务D").unwrap();
         assert_eq!(恢复, 1);
         assert!(!目录.exists(), "目录条目撤销应递归删除，不残留半成品园");
+        let _ = fs::remove_dir_all(工作区.根路径());
+    }
+
+    /// 撤销任务前缀：只撤指定任务前缀的分组，异组旧档不得覆盖工作区合法改动
+    /// （2026-08-17 实锤：`撤销全部` 恢复所有组，未提交合法改动被旧快照覆盖）。
+    #[test]
+    fn 撤销任务前缀_只撤本组不碰异组() {
+        let 工作区 = 临时工作区("前缀撤销");
+        let 垫 = 回滚垫::在工作区(&工作区);
+        let 甲 = 工作区.根路径().join("甲.txt");
+        let 乙 = 工作区.根路径().join("乙.txt");
+        fs::write(&甲, "甲旧").unwrap();
+        fs::write(&乙, "乙旧").unwrap();
+        垫.备份("要求-9", 甲.to_str().unwrap()).unwrap();
+        垫.备份("要求-9-1", 乙.to_str().unwrap()).unwrap();
+        fs::write(&甲, "甲新").unwrap();
+        fs::write(&乙, "乙新").unwrap();
+        // 异组（其他任务）也留档。
+        let 丙 = 工作区.根路径().join("丙.txt");
+        fs::write(&丙, "丙旧").unwrap();
+        垫.备份("要求-1", 丙.to_str().unwrap()).unwrap();
+        fs::write(&丙, "丙新").unwrap();
+        // 只撤 要求-9 前缀（含 要求-9-1），不得碰 要求-1 的 丙。
+        let 恢复 = 垫.撤销任务前缀("要求-9").unwrap();
+        assert_eq!(恢复, 2, "要求-9 与 要求-9-1 两组各恢复一处");
+        assert_eq!(fs::read_to_string(&甲).unwrap(), "甲旧");
+        assert_eq!(fs::read_to_string(&乙).unwrap(), "乙旧");
+        assert_eq!(
+            fs::read_to_string(&丙).unwrap(),
+            "丙新",
+            "异组（要求-1）的写前存档不得恢复，工作区合法改动保留"
+        );
+        let _ = fs::remove_dir_all(工作区.根路径());
+    }
+
+    /// 指纹跳过：撤销时目标文件当前内容与写前一致 → 不无谓写盘、不计恢复数。
+    #[test]
+    fn 撤销_当前与写前一致则跳过() {
+        let 工作区 = 临时工作区("指纹跳过");
+        let 垫 = 回滚垫::在工作区(&工作区);
+        let 文件 = 工作区.根路径().join("同.txt");
+        fs::write(&文件, "内容").unwrap();
+        垫.备份("任务F", 文件.to_str().unwrap()).unwrap();
+        // 文件保持写前内容（任务实际没改），撤销应跳过。
+        let 恢复 = 垫.撤销("任务F").unwrap();
+        assert_eq!(恢复, 0, "当前与写前一致 → 跳过不恢复");
+        assert_eq!(fs::read_to_string(&文件).unwrap(), "内容");
         let _ = fs::remove_dir_all(工作区.根路径());
     }
 }
