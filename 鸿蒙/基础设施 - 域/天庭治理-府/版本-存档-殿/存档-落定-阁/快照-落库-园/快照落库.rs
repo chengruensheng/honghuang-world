@@ -4,7 +4,7 @@
 //! 世界状态是单一对象，写入 `.上下文/状态/世界状态.jsonl`（原子覆盖：临时文件 + rename）。
 //! 「版本 存档」完成后标记 `v1已存档=true`（甲→乙阶段唯一切换点）。
 
-use crate::类型_定义_殿::{阶段, 世界状态, 版本记录};
+use crate::类型_定义_殿::{阶段, 世界状态, 版本记录, 要求书, 想法};
 use rizhi_fu::{debug, error, info, warn};
 use std::fs;
 use std::io::Write;
@@ -188,6 +188,10 @@ pub fn 读版本历史(状态目录: &Path) -> Result<Vec<版本记录>, String>
 
 /// 读世界状态：`.上下文/状态/世界状态.jsonl`（实际只取最新一行）。
 /// 文件不存在返回 None；解析失败返回错误（避免被默认覆盖）。
+/// 读时聚合（生产化 2.1）：想法池/在途要求/验收历史 的权威事实源是各自 jsonl
+/// （想法.jsonl / 要求.jsonl / 验收.jsonl，由 投递/入池/验收 追加维护），
+/// 世界状态内嵌字段经常滞后（实测 验收历史=0 而验收.jsonl 有 55 条）——
+/// 读时用 jsonl 全量聚合覆盖内嵌字段，保证状态可视真实一致。
 pub fn 读世界状态(状态目录: &Path) -> Result<Option<世界状态>, String> {
     let 文件 = 状态目录.join("世界状态.jsonl");
     if !文件.exists() {
@@ -199,7 +203,20 @@ pub fn 读世界状态(状态目录: &Path) -> Result<Option<世界状态>, Stri
         .filter(|行| !行.trim().is_empty())
         .next_back()
         .ok_or_else(|| "世界状态文件无有效行".to_string())?;
-    let 状态 = serde_json::from_str::<世界状态>(末行).map_err(|错误| format!("解析世界状态失败: {错误}"))?;
+    let mut 状态 = serde_json::from_str::<世界状态>(末行).map_err(|错误| format!("解析世界状态失败: {错误}"))?;
+    // 读时聚合：想法池 / 在途要求（含全状态） / 验收历史 从各自 jsonl 重读覆盖。
+    状态.界主想法池 = crate::落盘队列::<crate::类型_定义_殿::想法>::打开(状态目录.join("想法.jsonl"))
+        .读全部()
+        .unwrap_or_default();
+    状态.在途要求 = crate::落盘队列::<要求书>::打开(状态目录.join("要求.jsonl"))
+        .读全部()
+        .unwrap_or_default();
+    状态.验收历史 = crate::落盘队列::<crate::终裁回执>::打开(状态目录.join("验收.jsonl"))
+        .读全部()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|回执| 回执.验收)
+        .collect();
     Ok(Some(状态))
 }
 

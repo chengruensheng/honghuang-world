@@ -223,6 +223,9 @@ pub struct 项目档案 {
     pub 已知坑: Vec<String>,
     pub 成熟度: 成熟度,
     pub 基线版本: String,
+    /// 最近任务成功率（生产化 2.3）："通过 6/10 · 60%"（最近 10 条验收），serde 默认兼容旧档案。
+    #[serde(default)]
+    pub 最近任务成功率: String,
 }
 
 /// 世界状态（全局唯一，原子落盘）。
