@@ -260,4 +260,15 @@ mod 测试 {
         assert!(文本.contains("cargo test 通过"));
         assert!(文本.contains("乾坤/呈现-域"));
     }
+
+    /// 兼容回归：真实验收.jsonl（含旧六维历史记录）可被 终裁回执 全量反序列化（追问进度/流水观览依赖）。
+    #[test]
+    #[ignore = "需真实工作区"]
+    fn 兼容_真实验收jsonl全量可解析() {
+        std::env::set_var("WORLD_WORKSPACE_ROOT", "D:\\洪荒 - 世界");
+        let 目录 = 状态目录();
+        let 队列 = crate::落盘队列::<crate::终裁回执>::打开(目录.join("验收.jsonl"));
+        let 回执们 = 队列.读全部().expect("历史验收记录（含旧六维）应全量可解析");
+        assert!(!回执们.is_empty(), "真实验收.jsonl 不应为空");
+    }
 }
