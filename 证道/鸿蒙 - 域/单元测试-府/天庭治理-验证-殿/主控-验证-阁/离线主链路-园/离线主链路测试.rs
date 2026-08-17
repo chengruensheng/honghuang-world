@@ -114,4 +114,45 @@ mod 测试 {
         assert_eq!(状态们.iter().filter(|线| 线.状态 == 任务线状态::执行中).count(), 3, "全部进入执行中");
         let _ = fs::remove_dir_all(&根);
     }
+
+    /// 并发登记与回填不丢失（2026-08-17 轮8 体检：复合读改写与入队并发会互相覆盖——
+    /// 回填重写时登记 append 的新行被覆盖丢失）。排他锁统一后：并发后行数不减、无损坏行。
+    #[test]
+    fn 并发登记与回填不丢失() {
+        let (根, _锁) = 临时工作区("离线主链路", "并发写");
+        // 线程 A：登记 30 条；线程 B：并发领取并回填（处理到无可领为止）。
+        let 甲 = std::thread::spawn(move || {
+            for 序 in 0..30 {
+                let 想法 = 想法 {
+                    id: format!("想法-并发写-{序}"),
+                    内容: format!("并发任务 {序}，涉及路径：乾坤/呈现-域/命令操作-府/观览-查询-殿"),
+                    时间: 1,
+                    状态: 想法状态::未处理,
+                };
+                登记任务线(&想法).unwrap();
+            }
+        });
+        let 乙 = std::thread::spawn(move || {
+            for _ in 0..200 {
+                if let Some(线) = 领取待执行任务线().unwrap() {
+                    回填任务线结果(&线.id, "要求-并发", "通过", "并发测试").unwrap();
+                }
+            }
+        });
+        甲.join().unwrap();
+        乙.join().unwrap();
+        // 并发后：30 条登记全部保留（无覆盖丢失），且每条可解析（无行交错损坏）。
+        let 内容 = fs::read_to_string(根.join(".上下文").join("状态").join("任务线.jsonl")).unwrap();
+        let 行们: Vec<&str> = 内容.lines().filter(|行| !行.trim().is_empty()).collect();
+        assert_eq!(行们.len(), 30, "30 条登记应全部保留（无覆盖丢失），实际 {}", 行们.len());
+        for 行 in 行们 {
+            let 线: tianting_fu::任务线 = serde_json::from_str(行).unwrap_or_else(|错误| panic!("损坏行：{错误}：{行}"));
+            assert!(
+                线.状态 == 任务线状态::待执行 || 线.状态 == 任务线状态::已完成,
+                "状态应为待执行或已完成：{:?}",
+                线.状态
+            );
+        }
+        let _ = fs::remove_dir_all(&根);
+    }
 }
