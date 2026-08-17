@@ -48,11 +48,11 @@ fn 写文件读文件往返() {
     let 根 = 临时目录("读写");
     let mut 写入 = Vec::new();
     let 写 = 造调用("写文件", r#"{"路径":"子/新建.txt","内容":"洪荒"}"#);
-    assert!(执行工具(&写, &根, &mut 写入).unwrap().contains("已写入"));
+    assert!(执行工具(&写, &根, &mut 写入, &[]).unwrap().contains("已写入"));
     assert_eq!(写入, vec![("子/新建.txt".to_string(), 6)]);
 
     let 读 = 造调用("读文件", r#"{"路径":"子/新建.txt"}"#);
-    let 内容 = 执行工具(&读, &根, &mut 写入).unwrap();
+    let 内容 = 执行工具(&读, &根, &mut 写入, &[]).unwrap();
     assert!(内容.contains("洪荒"));
     let _ = fs::remove_dir_all(&根);
 }
@@ -62,14 +62,14 @@ fn 改文件与列举目录() {
     let 根 = 临时目录("改列");
     let mut 写入 = Vec::new();
     let 写 = 造调用("写文件", r#"{"路径":"甲.rs","内容":"旧文本"}"#);
-    执行工具(&写, &根, &mut 写入).unwrap();
+    执行工具(&写, &根, &mut 写入, &[]).unwrap();
 
     let 改 = 造调用("改文件", r#"{"路径":"甲.rs","旧文":"旧文本","新文":"新文本"}"#);
-    assert!(执行工具(&改, &根, &mut 写入).unwrap().contains("已改写"));
+    assert!(执行工具(&改, &根, &mut 写入, &[]).unwrap().contains("已改写"));
     assert!(读文件(根.join("甲.rs").to_str().unwrap()).unwrap().contains("新文本"));
 
     let 列 = 造调用("列举目录", r#"{"路径":""}"#);
-    assert!(执行工具(&列, &根, &mut 写入).unwrap().contains("甲.rs"));
+    assert!(执行工具(&列, &根, &mut 写入, &[]).unwrap().contains("甲.rs"));
     let _ = fs::remove_dir_all(&根);
 }
 
@@ -78,7 +78,7 @@ fn 运行命令返回退出码() {
     let 根 = 临时目录("命令");
     let mut 写入 = Vec::new();
     let 调用 = 造调用("运行命令", r#"{"命令":"cargo","参数们":["--version"]}"#);
-    let 结果 = 执行工具(&调用, &根, &mut 写入).unwrap();
+    let 结果 = 执行工具(&调用, &根, &mut 写入, &[]).unwrap();
     assert!(结果.contains("退出码："));
     assert!(结果.contains("cargo"));
     let _ = fs::remove_dir_all(&根);
@@ -90,7 +90,7 @@ fn 命令护栏拦截进程终止与自身二进制() {
     let mut 写入 = Vec::new();
     let mut 拦 = |命令: &str, 参数: &str| {
         let 调用 = 造调用("运行命令", &format!(r#"{{"命令":"{命令}","参数们":{参数}}}"#));
-        执行工具(&调用, &根, &mut 写入).err().expect("应被拦截")
+        执行工具(&调用, &根, &mut 写入, &[]).err().expect("应被拦截")
     };
     assert!(拦("taskkill", r#"["/F","/IM","号令.exe"]"#).contains("护栏拦截"));
     assert!(拦("powershell.exe", r#"["-Command","Stop-Process -Name 号令"]"#).contains("护栏拦截"));
@@ -107,7 +107,7 @@ fn 命令护栏放行编译类命令() {
     let mut 写入 = Vec::new();
     let mut 放 = |命令: &str, 参数: &str| {
         let 调用 = 造调用("运行命令", &format!(r#"{{"命令":"{命令}","参数们":{参数}}}"#));
-        执行工具(&调用, &根, &mut 写入).expect("应放行")
+        执行工具(&调用, &根, &mut 写入, &[]).expect("应放行")
     };
     assert!(放("cargo", r#"["build","--workspace","--lib"]"#).contains("退出码"));
     assert!(放("cargo", r#"["test"]"#).contains("退出码"));
@@ -119,7 +119,7 @@ fn 未知工具报错() {
     let 根 = 临时目录("未知");
     let mut 写入 = Vec::new();
     let 调用 = 造调用("不存在的工具", "{}");
-    assert!(执行工具(&调用, &根, &mut 写入).is_err());
+    assert!(执行工具(&调用, &根, &mut 写入, &[]).is_err());
     let _ = fs::remove_dir_all(&根);
 }
 
@@ -207,14 +207,14 @@ fn 删文件_同走白名单() {
     let mut 写入 = Vec::new();
     // 删根级 Cargo.toml：拒。
     let 删根级 = 造调用("删文件", r#"{"路径们":["Cargo.toml"]}"#);
-    assert!(执行工具(&删根级, &根, &mut 写入).is_err(), "删根级 Cargo.toml 应被拦");
+    assert!(执行工具(&删根级, &根, &mut 写入, &[]).is_err(), "删根级 Cargo.toml 应被拦");
     // 删 .上下文 资产：拒。
     let 删隐藏 = 造调用("删文件", r#"{"路径们":[".上下文/状态.json"]}"#);
-    assert!(执行工具(&删隐藏, &根, &mut 写入).is_err(), "删 .上下文 应被拦");
+    assert!(执行工具(&删隐藏, &根, &mut 写入, &[]).is_err(), "删 .上下文 应被拦");
     // 删源码维度内文件：放行（先造一个）。
     fs::write(根.join("鸿蒙/测试-府/待删.rs"), "代码").unwrap();
     let 删源码 = 造调用("删文件", r#"{"路径们":["鸿蒙/测试-府/待删.rs"]}"#);
-    assert!(执行工具(&删源码, &根, &mut 写入).is_ok(), "删源码维度内文件应放行");
+    assert!(执行工具(&删源码, &根, &mut 写入, &[]).is_ok(), "删源码维度内文件应放行");
     let _ = fs::remove_dir_all(&根);
 }
 
@@ -238,7 +238,7 @@ fn 读格位与查格位历史() {
 
     // 读格位：链头集按实体键去重 = [第三条, 别链]，上限 2 全返。
     let 读 = 造调用("读格位", r#"{"格位名":"结构","上限":2}"#);
-    let 输出 = 执行工具(&读, &根, &mut 写入).unwrap();
+    let 输出 = 执行工具(&读, &根, &mut 写入, &[]).unwrap();
     assert!(输出.contains("链头 2 条（返回 2 条）"), "{输出}");
     assert!(输出.contains("第三条"), "{输出}");
     assert!(输出.contains("别链"), "{输出}");
@@ -246,7 +246,7 @@ fn 读格位与查格位历史() {
 
     // 查格位历史：共 4 条，从第 0 条取前 2 条。
     let 查 = 造调用("查格位历史", r#"{"格位名":"结构","起始":0,"上限":2}"#);
-    let 输出 = 执行工具(&查, &根, &mut 写入).unwrap();
+    let 输出 = 执行工具(&查, &根, &mut 写入, &[]).unwrap();
     assert!(输出.contains("共 4 条，返回第 0..2 条"), "{输出}");
     assert!(输出.contains("第一条"), "{输出}");
     assert!(输出.contains("第二条"), "{输出}");
