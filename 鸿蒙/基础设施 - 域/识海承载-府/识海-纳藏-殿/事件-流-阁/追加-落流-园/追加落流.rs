@@ -46,16 +46,28 @@ impl 事件流 {
     }
 
     /// 追加一条事件（jsonl 一行，只追加不改写）。
+    /// 进程级互斥锁：防并发写者行交错（2026-08-17 体检实锤：两进程 append 交错，
+    /// 一条物理行拼入两个事件 JSON 致事件流损坏）。锁文件 create_new 原子抢锁，
+    /// 陈旧锁（>30 秒）视为崩溃残留自动清理；最长等待 5 秒，仍失败则放弃本事件（可接受，不阻塞主流程）。
     pub fn 追加事件(&self, 类型: 事件类型, 载荷: serde_json::Value) -> Result<事件, String> {
         let 事件 = 事件::新(类型, 载荷);
         let 行 = serde_json::to_string(&事件).map_err(|错误| format!("序列化事件失败: {错误}"))?;
         use std::io::Write;
+        let 锁路径 = self.路径.with_extension("jsonl.lock");
+        let _锁 = 抢事件流锁(&锁路径);
+        let Some(锁) = _锁 else {
+            rizhi_fu::warn!(路径 = %self.路径.display(), "事件流锁等待超时，放弃本事件（并发写者持续占用）");
+            return Ok(事件);
+        };
         let mut 文件 = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.路径)
             .map_err(|错误| format!("打开事件流失败: {错误}"))?;
         writeln!(文件, "{行}").map_err(|错误| format!("写事件流失败: {错误}"))?;
+        drop(文件);
+        drop(锁);
+        let _ = std::fs::remove_file(&锁路径);
         Ok(事件)
     }
 
@@ -71,6 +83,35 @@ impl 事件流 {
             .skip(起点)
             .map(|行| serde_json::from_str::<事件>(行).map_err(|错误| format!("解析事件失败: {错误}")))
             .collect()
+    }
+}
+
+/// 抢事件流写锁：create_new 原子抢锁；陈旧锁（>30 秒）视为崩溃残留清理重试；
+/// 最长等待 5 秒，超时返回 None（调用方放弃本事件，不阻塞主流程）。
+fn 抢事件流锁(锁路径: &std::path::Path) -> Option<std::fs::File> {
+    let 开始 = std::time::Instant::now();
+    loop {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(锁路径) {
+            Ok(文件) => return Some(文件),
+            Err(_) => {
+                // 陈旧锁清理：持有者进程崩溃的残留。
+                if let Ok(元) = std::fs::metadata(锁路径) {
+                    if let Ok(修改) = 元.modified() {
+                        if let Ok(龄) = 修改.elapsed() {
+                            if 龄.as_secs() > 30 {
+                                rizhi_fu::warn!(路径 = ?锁路径, "事件流锁已陈旧，清理重试");
+                                let _ = std::fs::remove_file(锁路径);
+                                continue;
+                            }
+                        }
+                    }
+                }
+                if 开始.elapsed().as_secs() >= 5 {
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
     }
 }
 

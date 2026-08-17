@@ -964,7 +964,7 @@ pub fn 执行一条待执行任务线(
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
     let mut 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根.clone());
-    let (汇报, 结论, 失败原因) = match crate::主政一轮(&想法, 配置, 存储, &mut 调度) {
+    let (汇报, 结论, 失败原因, 主线要求id) = match crate::主政一轮(&想法, 配置, 存储, &mut 调度) {
         Ok(回执) => {
             let 验收 = crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"));
             for 回执 in &回执.回执们 {
@@ -990,7 +990,7 @@ pub fn 执行一条待执行任务线(
             // 回填任务线（取首个回执的要求id 作为主线 id）。
             let 要求id = 回执.回执们.first().map(|回执| 回执.验收.要求id.clone()).unwrap_or_else(|| 任务线.id.clone());
             let _ = 回填任务线结果(&任务线.id, &要求id, 结论, &汇报);
-            (汇报, 结论.to_string(), String::new())
+            (汇报, 结论.to_string(), String::new(), 要求id)
         }
         Err(错误) => {
             error!(任务线id = %任务线.id, 错误 = %错误, "任务线执行失败");
@@ -998,7 +998,7 @@ pub fn 执行一条待执行任务线(
             归位要求状态(&想法.id);
             let 汇报 = format!("任务线 {} 执行失败：{错误}", 任务线.id);
             let _ = 回填任务线结果(&任务线.id, &任务线.id, "打回", &汇报);
-            (汇报, "打回".to_string(), 错误)
+            (汇报, "打回".to_string(), 错误, 任务线.id.clone())
         }
     };
     // 回填前检查中止标记（生产化 1.3）：执行期间被中止 → 撤销产物、不汇报。
@@ -1014,19 +1014,21 @@ pub fn 执行一条待执行任务线(
         return Ok(None);
     }
     // 指标落盘（生产化 3.3）：结论/耗时/token/失败原因 → .上下文/状态/指标.jsonl。
-    let 用总token = if 失败原因.is_empty() && 任务线.要求id.is_some() {
-        // 从验收.jsonl 尾部找本任务线刚落的回执汇总用量（主政一轮不返回用量，从回执取）。
+    // token 口径：从验收.jsonl 汇总主线要求的全部回执用量（主政一轮不返回用量，从回执取；
+    // 重试多次的累计成本都算入本任务线）。2026-08-17 体检修复：原用领取时 任务线.要求id（None），
+    // 导致指标 token 恒 0——改用执行后回填的主线要求id。
+    let 用总token = if 失败原因.is_empty() {
         crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"))
             .读全部()
             .unwrap_or_default()
             .iter()
-            .filter(|回执| 回执.验收.要求id == 任务线.要求id.as_deref().unwrap_or(""))
+            .filter(|回执| 回执.验收.要求id == 主线要求id)
             .map(|回执| 回执.用量.总计)
             .sum()
     } else {
         0
     };
-    记指标(&任务线.id, 任务线.要求id.as_deref().unwrap_or(""), &结论, shihai_fu::当前毫秒() - 开始毫秒, 用总token, &失败原因);
+    记指标(&任务线.id, &主线要求id, &结论, shihai_fu::当前毫秒() - 开始毫秒, 用总token, &失败原因);
     // 失败告警（生产化 3.4）：连续失败 → 鸿钧对话汇报。
     失败告警(&结论);
     // 汇报写对话记录（鸿钧 → 界主），界主追问可见；事件格位同步留痕。
