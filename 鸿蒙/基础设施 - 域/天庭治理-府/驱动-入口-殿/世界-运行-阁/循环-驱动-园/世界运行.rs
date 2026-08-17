@@ -298,6 +298,12 @@ pub fn 运行一轮(
         "要求id": 要求.id,
         "拆解数": 方案.拆解.len(),
     }));
+    // 节点汇报（生产化 1.1）：设计完成 → 鸿钧落一条对话记录（界主「对话 历史」可见）。
+    crate::落对话记录(
+        "鸿钧",
+        &format!("任务汇报：要求 {} 设计完成（圣人商讨已收敛，拆解 {} 项，即将开始实现）", 要求.id, 方案.拆解.len()),
+        &["界主".to_string(), "鸿钧".to_string()],
+    );
 
     // 状态机推进：待领 → 设计中（设计方案已构造，机械校验通过前不进入待确认）。
     if let Err(错误) = 推进要求状态(&要求.id, 要求状态::设计中) {
@@ -410,6 +416,12 @@ pub fn 运行一轮(
         if let Err(错误) = 推进要求状态(&要求.id, 要求状态::实现中) {
             warn!(要求id = %要求.id, 错误 = %错误, "推进「实现中」失败");
         }
+        // 节点汇报（生产化 1.1）：开始实现 → 鸿钧落一条对话记录。
+        crate::落对话记录(
+            "鸿钧",
+            &format!("任务汇报：要求 {} 开始实现（{} 个任务并发）", 要求.id, 任务们.len()),
+            &["界主".to_string(), "鸿钧".to_string()],
+        );
         let mut 产物们: Vec<crate::产物条目> = Vec::new();
         let mut 失败说明: Option<String> = None;
         // 并发派遣：任务相互独立，LLM 生成并行（构建由调度器内部锁串行，防 target-dir 冲突）。
@@ -806,6 +818,40 @@ pub fn 读任务线们() -> Result<Vec<任务线>, String> {
         .map_err(|错误| format!("读任务线队列失败: {错误}"))
 }
 
+/// 中止任务线（生产化 1.3）：任何状态 → 已中止。
+/// 待执行/执行中/已完成的任务线都可中止；执行中的任务线由执行进程在回填前检查中止标记，
+/// 已中止则不汇报并撤销产物（回滚垫前缀撤销）。
+pub fn 中止任务线(任务线id: &str) -> Result<String, String> {
+    let 路径 = 状态目录().join("任务线.jsonl");
+    let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
+    let mut 项们 = 队列.读全部().map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+    let mut 命中 = false;
+    for 项 in 项们.iter_mut() {
+        if 项.id == 任务线id {
+            项.状态 = 任务线状态::已中止;
+            命中 = true;
+            break;
+        }
+    }
+    if !命中 {
+        return Err(format!("未找到任务线：{任务线id}"));
+    }
+    持久化任务线们(&路径, &项们)?;
+    info!(任务线id, "任务线已中止");
+    Ok(format!("任务线 {任务线id} 已中止"))
+}
+
+/// 查任务线当前状态（执行回填前检查中止标记用）。
+fn 任务线状态(任务线id: &str) -> 任务线状态 {
+    crate::落盘队列::<任务线>::打开(状态目录().join("任务线.jsonl"))
+        .读全部()
+        .unwrap_or_default()
+        .iter()
+        .find(|线| 线.id == 任务线id)
+        .map(|线| 线.状态.clone())
+        .unwrap_or(任务线状态::已中止)
+}
+
 /// 任务线落盘（读改写后原子重写，与 持久化要求们 同款）。
 fn 持久化任务线们(路径: &std::path::Path, 项们: &[任务线]) -> Result<(), String> {
     let 临时路径 = 路径.with_extension("jsonl.tmp");
@@ -869,7 +915,7 @@ pub fn 执行一条待执行任务线(
     let 工作区根 = std::env::var("WORLD_WORKSPACE_ROOT")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-    let mut 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根);
+    let mut 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根.clone());
     let (汇报, 结论) = match crate::主政一轮(&想法, 配置, 存储, &mut 调度) {
         Ok(回执) => {
             let 验收 = crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"));
@@ -906,6 +952,17 @@ pub fn 执行一条待执行任务线(
             (汇报, "打回".to_string())
         }
     };
+    // 回填前检查中止标记（生产化 1.3）：执行期间被中止 → 撤销产物、不汇报。
+    if 任务线状态(&任务线.id) == 任务线状态::已中止 {
+        warn!(任务线id = %任务线.id, "任务线执行期间被中止，撤销产物不汇报");
+        let 垫 = shihai_fu::回滚垫::在工作区(&shihai_fu::工作区::新(&工作区根));
+        match 垫.撤销任务前缀(&任务线.id) {
+            Ok(恢复) => info!(恢复数 = 恢复, "中止任务线产物已撤销"),
+            Err(说明) => warn!(说明 = %说明, "中止任务线撤销产物失败"),
+        }
+        let _ = 垫.清理全部();
+        return Ok(None);
+    }
     // 汇报写对话记录（鸿钧 → 界主），界主追问可见；事件格位同步留痕。
     let _ = crate::落对话记录("鸿钧", &汇报, &["界主".to_string(), "鸿钧".to_string()]);
     let _ = 存储.写记录(&shihai_fu::记录::新("事件", &format!("任务线汇报：{汇报}"), "鸿钧", "代码"));
