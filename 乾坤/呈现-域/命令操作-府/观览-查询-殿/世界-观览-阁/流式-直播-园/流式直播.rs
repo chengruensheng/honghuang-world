@@ -12,7 +12,19 @@ pub fn 世界直播() -> String {
     let 事件路径 = 工作区根().join(".上下文").join("事件流.jsonl");
     let 观测路径 = 工作区根().join("临时文件夹").join("模型流水-观测.log");
     info!("世界直播启动（事件流 + 模型观测，Ctrl+C 停止）");
+    // 启动就绪：跳过历史事件（不刷屏），只显示最近 3 条摘要作为上下文，随后跟随新事件。
     let mut 已见行数 = 0usize;
+    if let Ok(内容) = std::fs::read_to_string(&事件路径) {
+        let 行们: Vec<&str> = 内容.lines().filter(|行| !行.trim().is_empty()).collect();
+        已见行数 = 行们.len();
+        let 尾部 = 行们.iter().rev().take(3).rev();
+        println!("[直播就绪] 事件流共 {} 条历史事件，以下只跟随新事件（最近 3 条：）", 已见行数);
+        for 行 in 尾部 {
+            if let Some(渲染) = 渲染事件(行) {
+                println!("  {渲染}");
+            }
+        }
+    }
     let mut 观测位置 = 0usize; // 观测日志已读字节位置（上次 len 是合法 utf8 边界）
     let mut 上次输出 = std::time::Instant::now();
     loop {
