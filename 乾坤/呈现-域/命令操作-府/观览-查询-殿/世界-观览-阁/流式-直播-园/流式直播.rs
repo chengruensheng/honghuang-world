@@ -1,30 +1,93 @@
-//! 流式-直播-园：事件流实时可读渲染（tail -f 模式）。
-//! 生产化演示反馈：窗口里只见轮次/用量数字，看不到世界在做什么。
-//! 本园把 .上下文/事件流.jsonl 的每条事件渲染成中文可读行（时间+阶段+工具+参数摘要+结论），
-//! 常驻输出——界主开窗口跑「世界 直播」，即见世界自主开发的完整过程。
+//! 流式-直播-园：事件流 + 模型观测 实时可读渲染（tail -f 模式）。
+//! 生产化演示反馈：窗口里只见轮次/用量数字，看不到世界在做什么、模型返回了什么。
+//! 本园双源 tail：事件流（阶段/工具/验收）+ 模型流水-观测.log（模型每轮回复原文），
+//! 渲染成中文可读行——界主据此纠错、判断卡顿；30 秒无新事件输出空闲心跳。
 
 use crate::工作区根;
 use rizhi_fu::info;
 use std::time::Duration;
 
-/// 「世界 直播」：tail -f 事件流，渲染新事件为可读行（常驻不退出，Ctrl+C 停止）。
+/// 「世界 直播」：tail -f 事件流 + 模型观测日志（常驻不退出，Ctrl+C 停止）。
 pub fn 世界直播() -> String {
-    let 路径 = 工作区根().join(".上下文").join("事件流.jsonl");
-    info!("世界直播启动（tail -f 事件流，Ctrl+C 停止）");
+    let 事件路径 = 工作区根().join(".上下文").join("事件流.jsonl");
+    let 观测路径 = 工作区根().join("临时文件夹").join("模型流水-观测.log");
+    info!("世界直播启动（事件流 + 模型观测，Ctrl+C 停止）");
     let mut 已见行数 = 0usize;
+    let mut 观测位置 = 0usize; // 观测日志已读字节位置（上次 len 是合法 utf8 边界）
+    let mut 上次输出 = std::time::Instant::now();
     loop {
-        if let Ok(内容) = std::fs::read_to_string(&路径) {
+        let mut 有新 = false;
+        if let Ok(内容) = std::fs::read_to_string(&事件路径) {
             let 行们: Vec<&str> = 内容.lines().filter(|行| !行.trim().is_empty()).collect();
             if 行们.len() > 已见行数 {
                 for 行 in &行们[已见行数..] {
                     if let Some(渲染) = 渲染事件(行) {
                         println!("{渲染}");
+                        有新 = true;
                     }
                 }
                 已见行数 = 行们.len();
             }
         }
+        if let Ok(内容) = std::fs::read_to_string(&观测路径) {
+            if 内容.len() > 观测位置 {
+                let 新段 = &内容[观测位置..];
+                渲染观测段(新段, &mut 有新);
+                观测位置 = 内容.len();
+            }
+        }
+        if 有新 {
+            上次输出 = std::time::Instant::now();
+        } else if 上次输出.elapsed().as_secs() >= 30 {
+            println!("…等待中（{} 秒无新事件：模型思考中，或网络卡顿）", 上次输出.elapsed().as_secs());
+            上次输出 = std::time::Instant::now();
+        }
         std::thread::sleep(Duration::from_millis(800));
+    }
+}
+
+/// 渲染观测日志新增段：按「========== 模型调用 @ 毫秒 ==========」块拆分，
+/// 只显示【回复】内容（完整提示词太长，回看用 读文件 临时文件夹/模型流水-观测.log）。
+fn 渲染观测段(新段: &str, 有新: &mut bool) {
+    for 块 in 新段.split("========== 模型调用 @ ") {
+        let 块 = 块.trim();
+        if 块.is_empty() {
+            continue;
+        }
+        // 块头 = 毫秒时间戳（换行前）。
+        let 时间戳 = 块
+            .lines()
+            .next()
+            .and_then(|行| 行.trim_end_matches(" ==========").trim().parse::<u64>().ok())
+            .unwrap_or(0);
+        let 距今秒 = shihai_fu::当前毫秒().saturating_sub(时间戳) / 1000;
+        let 时间 = 相对时间(距今秒);
+        // 只取【回复】之后的内容（模型返回原文，含工具调用 JSON）。
+        let 回复 = 块.split("【回复】").nth(1).unwrap_or("").trim();
+        if !回复.is_empty() {
+            let 摘要 = 截断(回复, 300);
+            println!("[{时间}] 【模型回复】{摘要}");
+            *有新 = true;
+        }
+    }
+}
+
+fn 截断(文本: &str, 上限: usize) -> String {
+    let 字符们: Vec<char> = 文本.chars().collect();
+    if 字符们.len() > 上限 {
+        format!("{}…", 字符们[..上限].iter().collect::<String>())
+    } else {
+        文本.to_string()
+    }
+}
+
+fn 相对时间(距今秒: u64) -> String {
+    if 距今秒 < 60 {
+        format!("{距今秒}s前")
+    } else if 距今秒 < 3600 {
+        format!("{}分前", 距今秒 / 60)
+    } else {
+        format!("{}小时前", 距今秒 / 3600)
     }
 }
 

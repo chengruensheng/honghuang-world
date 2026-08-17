@@ -114,3 +114,79 @@ fn 是源码文件(名称: &str) -> bool {
     let 小写 = 名称.to_ascii_lowercase();
     小写.ends_with(".rs") || 小写.ends_with(".toml")
 }
+
+#[cfg(test)]
+mod 测试 {
+    //! 判定类纯函数的单元测试。
+    //!
+    //! 覆盖三类断言：
+    //! ① 源码文件后缀判定（.rs / .toml）
+    //! ② target 目录排除
+    //! ③ 跳过目录清单逐元素覆盖
+
+    use super::*;
+
+    // ─── 验收①：源码文件后缀判定（.rs / .toml） ────────────────────────
+
+    #[test]
+    fn 源码文件接受点rs() {
+        assert!(是源码文件("main.rs"));
+        assert!(是源码文件("lib.rs"));
+        assert!(是源码文件("流式检索.rs"));
+    }
+
+    #[test]
+    fn 源码文件接受点toml() {
+        assert!(是源码文件("Cargo.toml"));
+        assert!(是源码文件("配置.toml"));
+    }
+
+    #[test]
+    fn 源码文件拒绝非源码后缀() {
+        assert!(!是源码文件("readme.md"));
+        assert!(!是源码文件("note.txt"));
+        assert!(!是源码文件("data.json"));
+        assert!(!是源码文件("script.py"));
+        assert!(!是源码文件("无后缀"));
+        assert!(!是源码文件(""));
+    }
+
+    #[test]
+    fn 源码文件后缀大小写不敏感() {
+        assert!(是源码文件("MAIN.RS"));
+        assert!(是源码文件("Cargo.TOML"));
+        assert!(是源码文件("Main.Rs"));
+    }
+
+    // ─── 验收②：target 目录排除 ────────────────────────────────────────
+
+    #[test]
+    fn target目录被排除() {
+        assert!(跳过目录("target"));
+    }
+
+    // ─── 验收③：跳过目录清单逐元素覆盖 ────────────────────────────────
+
+    #[test]
+    fn 跳过目录清单逐元素命中() {
+        const 排除清单: &[&str] = &[
+            "target",
+            ".git",
+            "node_modules",
+            ".上下文",
+            "道果树",
+            "临时文件夹",
+        ];
+        for 名 in 排除清单 {
+            assert!(跳过目录(名), "清单中的「{名}」应当被排除");
+        }
+    }
+
+    #[test]
+    fn 普通目录不在排除清单中() {
+        const 普通目录: &[&str] = &["src", "lib", "tests", "鸿蒙", "乾坤", "证道"];
+        for 名 in 普通目录 {
+            assert!(!跳过目录(名), "「{名}」不应被排除");
+        }
+    }
+}
