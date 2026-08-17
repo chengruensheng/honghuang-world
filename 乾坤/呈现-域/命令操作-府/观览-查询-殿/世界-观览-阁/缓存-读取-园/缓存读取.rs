@@ -105,3 +105,133 @@ pub fn _显示工作区() -> String {
     let 根 = 工作区根();
     根.display().to_string()
 }
+
+#[cfg(test)]
+mod 测试 {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// 本 crate 测试进程级 env 互斥锁：并行测试下 WORLD_WORKSPACE_ROOT 串行使用
+    ///（照 终裁.rs 同款模式）。
+    static 测试环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// 造临时工作区：建 状态 目录并写指定 jsonl 内容，返回工作区根。
+    fn 建临时工作区(名: &str, 文件们: &[(&str, &str)]) -> PathBuf {
+        let 根 = std::env::temp_dir().join(format!("缓存读取测试-{名}-{}", std::process::id()));
+        let 状态目录 = 根.join(".上下文").join("状态");
+        std::fs::create_dir_all(&状态目录).unwrap();
+        for (文件, 内容) in 文件们 {
+            std::fs::write(状态目录.join(文件), 内容).unwrap();
+        }
+        根
+    }
+
+    fn 世界状态样例() -> String {
+        let 状态 = serde_json::json!({
+            "阶段": "乙",
+            "v1已存档": true,
+            "进入路径": "半路接手",
+            "长期记忆": "",
+            "界主想法池": [],
+            "在途要求": [],
+            "验收历史": [],
+            "失败模式": [],
+            "版本历史": [],
+            "巡世候选池": [],
+            "项目档案": null,
+            "天道报告库": []
+        });
+        format!("{}\n", 状态)
+    }
+
+    fn 版本记录行(版本号: &str, 改了什么: &str) -> String {
+        let 记录 = serde_json::json!({
+            "版本号": 版本号,
+            "时间": 1700000000000u64,
+            "阶段": "乙",
+            "改了什么": 改了什么,
+            "源码快照路径": format!("版本-库/版本-{}/源码-快照", 版本号.replace('v', "")),
+            "构建产物路径": "",
+            "验收结论": [],
+            "对比上一版": "增量 2 件"
+        });
+        format!("{}\n", 记录)
+    }
+
+    #[test]
+    fn 呈现世界状态_读取存在状态() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 根 = 建临时工作区("存在状态", &[("世界状态.jsonl", &世界状态样例())]);
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 输出 = 呈现世界状态();
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(输出.contains("世界状态"), "应含标题：{输出}");
+        assert!(输出.contains("乙"), "应含阶段：{输出}");
+        assert!(输出.contains("true"), "应含 v1已存档：{输出}");
+        assert!(输出.contains("半路接手"), "应含进入路径：{输出}");
+    }
+
+    #[test]
+    fn 呈现世界状态_文件缺失提示未初始化() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 根 = 建临时工作区("无状态", &[]);
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 输出 = 呈现世界状态();
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(输出.contains("未初始化"), "应提示未初始化：{输出}");
+    }
+
+    #[test]
+    fn 呈现版本历史_多记录倒序展示() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 内容 = format!("{}{}", 版本记录行("v2", "第二版"), 版本记录行("v3", "第三版"));
+        let 根 = 建临时工作区("多版本", &[("版本.jsonl", &内容)]);
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 输出 = 呈现版本历史();
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(输出.contains("版本历史"), "应含标题：{输出}");
+        assert!(输出.contains("v2"), "应含 v2：{输出}");
+        assert!(输出.contains("v3"), "应含 v3：{输出}");
+        assert!(输出.contains("第三版"), "应含改了什么：{输出}");
+    }
+
+    #[test]
+    fn 呈现版本历史_空文件提示暂无() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 根 = 建临时工作区("空版本", &[]);
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 输出 = 呈现版本历史();
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(输出.contains("暂无"), "应提示暂无：{输出}");
+    }
+
+    #[test]
+    fn 版本详情_命中返回完整字段() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 内容 = 版本记录行("v1", "初始版");
+        let 根 = 建临时工作区("版本命中", &[("版本.jsonl", &内容)]);
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 输出 = 版本详情("v1");
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(输出.contains("版本 v1"), "应含版本号：{输出}");
+        assert!(输出.contains("初始版"), "应含改了什么：{输出}");
+        assert!(输出.contains("源码快照"), "应含源码快照：{输出}");
+    }
+
+    #[test]
+    fn 版本详情_未命中提示找不到() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 内容 = 版本记录行("v1", "初始版");
+        let 根 = 建临时工作区("版本未命中", &[("版本.jsonl", &内容)]);
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 输出 = 版本详情("v99");
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(输出.contains("未找到"), "应提示未找到：{输出}");
+    }
+}
