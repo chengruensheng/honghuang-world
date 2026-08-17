@@ -84,7 +84,22 @@ fn 追问进度回复() -> String {
             .collect::<Vec<_>>()
             .join("；")
     };
-    format!("当前世界状态\n要求：{状态段}\n最近验收：{验收段}")
+    // 任务线：按状态统计（阶段 3）。
+    let 任务线们 = crate::读任务线们().unwrap_or_default();
+    let 线状态数 = 任务线们.iter().fold(std::collections::BTreeMap::new(), |mut 表, 线| {
+        *表.entry(format!("{:?}", 线.状态)).or_insert(0usize) += 1;
+        表
+    });
+    let 线段 = if 线状态数.is_empty() {
+        "（无任务线）".to_string()
+    } else {
+        线状态数
+            .iter()
+            .map(|(状态, 数)| format!("{状态} {数} 条"))
+            .collect::<Vec<_>>()
+            .join("；")
+    };
+    format!("当前世界状态\n要求：{状态段}\n任务线：{线段}\n最近验收：{验收段}")
 }
 
 /// 闲聊分流：鸿钧人格直接回应（轻量调用，失败兜底不阻塞对话）。
