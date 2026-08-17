@@ -772,6 +772,14 @@ pub fn 登记任务线(想法: &想法) -> Result<任务线, String> {
 }
 
 /// 领取一条待执行任务线：锁文件互斥（create_new 原子），先到先得，防并发双跑。
+/// 陈旧执行中阈值（秒）：任务线领取后超过该时长仍未完成 → 视为守护进程崩溃残留，
+/// 领取时自动重置为 待执行（生产化 3.1 自愈）。6 小时 > 单任务最坏耗时
+/// （3 次重投 × 32 轮 × 每轮分钟级），正常执行不会被误判。
+pub const 陈旧执行中阈值秒: u64 = 6 * 3600;
+
+/// 领取一条可执行任务线：优先 待执行；无待执行且存在「陈旧执行中」（领取时间戳超阈值，
+/// 守护崩溃残留）→ 重置 待执行 后领取。领取成功即写心跳（时间=当前），防正常执行被误判陈旧。
+/// 锁文件互斥（create_new 原子），先到先得，防并发双跑。
 /// 陈旧锁（>30 秒）视为崩溃残留，删除重试。
 pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
     let 锁路径 = 状态目录().join("任务线.lock");
@@ -794,11 +802,22 @@ pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
         let 路径 = 状态目录().join("任务线.jsonl");
         let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
         let mut 项们 = 队列.读全部().map_err(|错误| format!("读任务线队列失败: {错误}"))?;
-        let 位置 = 项们.iter().position(|线| 线.状态 == 任务线状态::待执行);
+        let 现在 = shihai_fu::当前毫秒();
+        let 位置 = 项们.iter().position(|线| 线.状态 == 任务线状态::待执行).or_else(|| {
+            // 陈旧执行中（崩溃残留）：领取时间戳（心跳）超阈值 → 重置待执行。
+            let 陈旧位置 = 项们.iter().position(|线| {
+                线.状态 == 任务线状态::执行中 && 现在.saturating_sub(线.时间) > 陈旧执行中阈值秒 * 1000
+            });
+            if let Some(索引) = 陈旧位置 {
+                warn!(任务线id = %项们[索引].id, "任务线执行中已超陈旧阈值，视为崩溃残留，重置待执行");
+            }
+            陈旧位置
+        });
         let 领取 = match 位置 {
             Some(索引) => {
                 let 目标 = 项们[索引].clone();
                 项们[索引].状态 = 任务线状态::执行中;
+                项们[索引].时间 = 现在; // 心跳：领取时刻写入，防正常执行被误判陈旧
                 持久化任务线们(&路径, &项们)?;
                 Some(目标)
             }
@@ -925,6 +944,7 @@ pub fn 执行一条待执行任务线(
         Some(任务线) => 任务线,
         None => return Ok(None),
     };
+    let 开始毫秒 = shihai_fu::当前毫秒();
     info!(任务线id = %任务线.id, "任务线开始执行");
     let 想法 = 想法 {
         id: 任务线.想法id.clone(),
@@ -943,7 +963,7 @@ pub fn 执行一条待执行任务线(
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
     let mut 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根.clone());
-    let (汇报, 结论) = match crate::主政一轮(&想法, 配置, 存储, &mut 调度) {
+    let (汇报, 结论, 失败原因) = match crate::主政一轮(&想法, 配置, 存储, &mut 调度) {
         Ok(回执) => {
             let 验收 = crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"));
             for 回执 in &回执.回执们 {
@@ -969,7 +989,7 @@ pub fn 执行一条待执行任务线(
             // 回填任务线（取首个回执的要求id 作为主线 id）。
             let 要求id = 回执.回执们.first().map(|回执| 回执.验收.要求id.clone()).unwrap_or_else(|| 任务线.id.clone());
             let _ = 回填任务线结果(&任务线.id, &要求id, 结论, &汇报);
-            (汇报, 结论.to_string())
+            (汇报, 结论.to_string(), String::new())
         }
         Err(错误) => {
             error!(任务线id = %任务线.id, 错误 = %错误, "任务线执行失败");
@@ -977,7 +997,7 @@ pub fn 执行一条待执行任务线(
             归位要求状态(&想法.id);
             let 汇报 = format!("任务线 {} 执行失败：{错误}", 任务线.id);
             let _ = 回填任务线结果(&任务线.id, &任务线.id, "打回", &汇报);
-            (汇报, "打回".to_string())
+            (汇报, "打回".to_string(), 错误)
         }
     };
     // 回填前检查中止标记（生产化 1.3）：执行期间被中止 → 撤销产物、不汇报。
@@ -989,13 +1009,99 @@ pub fn 执行一条待执行任务线(
             Err(说明) => warn!(说明 = %说明, "中止任务线撤销产物失败"),
         }
         let _ = 垫.清理全部();
+        记指标(&任务线.id, &任务线.id, "已中止", shihai_fu::当前毫秒() - 开始毫秒, 0, "界主中止");
         return Ok(None);
     }
+    // 指标落盘（生产化 3.3）：结论/耗时/token/失败原因 → .上下文/状态/指标.jsonl。
+    let 用总token = if 失败原因.is_empty() && 任务线.要求id.is_some() {
+        // 从验收.jsonl 尾部找本任务线刚落的回执汇总用量（主政一轮不返回用量，从回执取）。
+        crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"))
+            .读全部()
+            .unwrap_or_default()
+            .iter()
+            .filter(|回执| 回执.验收.要求id == 任务线.要求id.as_deref().unwrap_or(""))
+            .map(|回执| 回执.用量.总计)
+            .sum()
+    } else {
+        0
+    };
+    记指标(&任务线.id, 任务线.要求id.as_deref().unwrap_or(""), &结论, shihai_fu::当前毫秒() - 开始毫秒, 用总token, &失败原因);
+    // 失败告警（生产化 3.4）：连续失败 → 鸿钧对话汇报。
+    失败告警(&结论);
     // 汇报写对话记录（鸿钧 → 界主），界主追问可见；事件格位同步留痕。
     let _ = crate::落对话记录("鸿钧", &汇报, &["界主".to_string(), "鸿钧".to_string()]);
     let _ = 存储.写记录(&shihai_fu::记录::新("事件", &format!("任务线汇报：{汇报}"), "鸿钧", "代码"));
     info!(任务线id = %任务线.id, 结论 = %结论, "任务线执行完成");
     Ok(Some(汇报))
+}
+
+/// 任务线指标（生产化 3.3）：落 .上下文/状态/指标.jsonl，供成功率/成本趋势统计与告警。
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct 指标 {
+    时间: u64,
+    任务线id: String,
+    要求id: String,
+    结论: String,
+    耗时毫秒: u64,
+    token: u64,
+    失败原因: String,
+}
+
+/// 记一条任务线指标。
+fn 记指标(任务线id: &str, 要求id: &str, 结论: &str, 耗时毫秒: u64, token: u64, 失败原因: &str) {
+    let 指标 = 指标 {
+        时间: shihai_fu::当前毫秒(),
+        任务线id: 任务线id.to_string(),
+        要求id: 要求id.to_string(),
+        结论: 结论.to_string(),
+        耗时毫秒,
+        token,
+        失败原因: 失败原因.to_string(),
+    };
+    let 路径 = 状态目录().join("指标.jsonl");
+    if let Ok(行) = serde_json::to_string(&指标) {
+        use std::io::Write;
+        if let Ok(mut 文件) = std::fs::OpenOptions::new().create(true).append(true).open(&路径) {
+            let _ = writeln!(文件, "{行}");
+        }
+    }
+}
+
+/// 读全部指标（按时间正序）。
+fn 读指标们() -> Vec<指标> {
+    let 路径 = 状态目录().join("指标.jsonl");
+    let Ok(内容) = std::fs::read_to_string(&路径) else { return Vec::new() };
+    内容
+        .lines()
+        .filter(|行| !行.trim().is_empty())
+        .filter_map(|行| serde_json::from_str::<指标>(行).ok())
+        .collect()
+}
+
+/// 失败告警（生产化 3.4）：最近 3 条指标全失败 → 鸿钧落一条告警对话记录。
+fn 失败告警(结论: &str) {
+    if 结论 != "打回" && 结论 != "已中止" {
+        return;
+    }
+    let 指标们 = 读指标们();
+    let 尾部: Vec<&指标> = 指标们.iter().rev().take(3).collect();
+    if 尾部.len() >= 3 && 尾部.iter().all(|指标| 指标.结论 == "打回" || 指标.结论 == "已中止") {
+        let 最近失败 = 尾部
+            .iter()
+            .find(|指标| !指标.失败原因.is_empty())
+            .map(|指标| 指标.失败原因.clone())
+            .unwrap_or_else(|| "（无详细原因）".to_string());
+        warn!(连续失败数 = 尾部.len(), "最近任务连续失败，触发告警");
+        crate::落对话记录(
+            "鸿钧",
+            &format!(
+                "告警：最近 {} 个任务连续失败（最近失败：{}）。建议检查网络与任务描述，或暂停投递排查。",
+                尾部.len(),
+                最近失败
+            ),
+            &["界主".to_string(), "鸿钧".to_string()],
+        );
+    }
 }
 
 #[cfg(test)]

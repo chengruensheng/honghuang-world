@@ -77,6 +77,33 @@ impl<'a> MakeWriter<'a> for 落地器 {
     }
 }
 
+/// 日志轮转大小：单文件超过 5MB 触发轮转（生产化 3.2）。
+const 日志轮转大小: u64 = 5 * 1024 * 1024;
+/// 日志保留份数：轮转后保留 当前 + .1 ~ .N。
+const 日志保留份数: u32 = 5;
+
 fn 打开文件(路径: &Path) -> io::Result<File> {
+    轮转日志(路径)?;
     OpenOptions::new().create(true).append(true).open(路径)
+}
+
+/// 按大小轮转：现有文件超阈值 → 顺延为 .1/.2/…（最旧删除），再开新文件。
+/// 只在句柄打开时检查（重启/重建落地器时生效）；运行中的句柄由下次打开轮转。
+fn 轮转日志(路径: &Path) -> io::Result<()> {
+    let 元 = match std::fs::metadata(路径) {
+        Ok(元) => 元,
+        Err(_) => return Ok(()),
+    };
+    if 元.len() < 日志轮转大小 {
+        return Ok(());
+    }
+    let 名 = 路径.display();
+    let _ = std::fs::remove_file(format!("{名}.{日志保留份数}"));
+    for 序 in (1..日志保留份数).rev() {
+        let 旧 = format!("{名}.{序}");
+        let 新 = format!("{名}.{}", 序 + 1);
+        let _ = std::fs::rename(&旧, &新);
+    }
+    let _ = std::fs::rename(路径, format!("{名}.1"));
+    Ok(())
 }
