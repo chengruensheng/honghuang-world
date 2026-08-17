@@ -17,6 +17,25 @@ pub const 精简上限: u32 = 4096;
 /// 2026-08-17 实测：任务线驱动在模型设计阶段挂起 5 分钟无进展，CPU 0.08 静止，事件流停滞）。
 pub const 请求超时: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// DNS 预检：请求前解析 host，快速失败并给出明确错误。
+/// ureq 的 DNS 失败信息含糊且慢（实测 os error 11001 把任务整轮打挂 3 次）；预检在发请求前
+/// 用系统解析器确认 host 可达，失败直接返回（DNS 失败重试无益，不进入指数退避）。
+pub fn 预检地址(地址: &str) -> Result<(), String> {
+    let 无协议 = 地址.trim_start_matches("https://").trim_start_matches("http://");
+    let 主机端口 = 无协议.split('/').next().unwrap_or(无协议);
+    let (主机, 端口) = match 主机端口.rsplit_once(':') {
+        Some((主机, 端口)) if 端口.chars().all(|字| 字.is_ascii_digit()) => {
+            (主机, 端口.parse::<u16>().unwrap_or(443))
+        }
+        _ => (主机端口, 443),
+    };
+    use std::net::ToSocketAddrs;
+    (主机, 端口)
+        .to_socket_addrs()
+        .map_err(|错误| format!("DNS 解析失败：{主机}:{端口}（{错误}）——请检查网络连接与域名可用性"))?;
+    Ok(())
+}
+
 /// 瞬时故障判定：HTTP 5xx（服务端错误）与 429/529（过载）可重试；
 /// 4xx 与其他错误不重试（重试无益，直接失败更快暴露问题）。
 pub fn 是瞬时故障(状态码: u16) -> bool {
@@ -81,6 +100,7 @@ fn 请求错误详情(错误: ureq::Error) -> String {
 
 /// 一次模型调用：发送消息，取回文本内容与用量。
 pub fn 调用模型(配置: &模型配置, 消息们: &[对话消息], 输出上限: u32) -> Result<(String, 用量), String> {
+    预检地址(&配置.地址)?;
     let 请求体 = 构造请求体(配置, 消息们, 输出上限);
 
     let 响应 = 发送并重试(
@@ -117,6 +137,7 @@ pub fn 调用模型带工具(
     工具们: &[工具定义],
     输出上限: u32,
 ) -> Result<(模型回复, 用量), String> {
+    预检地址(&配置.地址)?;
     let 请求体 = 构造工具请求体(配置, 消息们, 工具们, 输出上限);
 
     let 响应 = 发送并重试(
@@ -419,7 +440,20 @@ impl 模型提供者 for 模拟模型提供者 {
 
 #[cfg(test)]
 mod 测试 {
-    use super::{退避间隔, 提取对象, 解析用量, 最大重试次数, 是瞬时故障};
+    use super::{退避间隔, 提取对象, 解析用量, 最大重试次数, 是瞬时故障, 预检地址};
+
+    #[test]
+    fn 预检地址_本机地址通过() {
+        assert!(预检地址("http://127.0.0.1:8080/v1/chat/completions").is_ok());
+        assert!(预检地址("https://localhost:443/x").is_ok());
+    }
+
+    #[test]
+    fn 预检地址_非法域名快速失败() {
+        // 不可解析域名（.invalid 保留后缀）应快速报错，不进入 HTTP 层。
+        let 错误 = 预检地址("https://肯定不存在的域名-abc123.invalid/v1/chat").unwrap_err();
+        assert!(错误.contains("DNS 解析失败"), "应给出明确 DNS 错误：{错误}");
+    }
 
     #[test]
     fn 解析用量兼容两种缓存字段() {
