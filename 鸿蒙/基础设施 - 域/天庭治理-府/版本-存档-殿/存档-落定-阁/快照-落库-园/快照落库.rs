@@ -4,7 +4,7 @@
 //! 世界状态是单一对象，写入 `.上下文/状态/世界状态.jsonl`（原子覆盖：临时文件 + rename）。
 //! 「版本 存档」完成后标记 `v1已存档=true`（甲→乙阶段唯一切换点）。
 
-use crate::类型_定义_殿::{阶段, 世界状态, 版本记录, 要求书, 想法};
+use crate::类型_定义_殿::{阶段, 世界状态, 版本记录, 要求书};
 use rizhi_fu::{debug, error, info, warn};
 use std::fs;
 use std::io::Write;

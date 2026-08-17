@@ -482,7 +482,7 @@ mod 测试 {
     }
 
     #[test]
-    fn think块内示例JSON不抢先命中() {
+    fn think块内示例_json不抢先命中() {
         // 复现真实事故：LLM 回复带 <think>，思维链里复述了提示词模板的示例 JSON。
         let 回复 = r#"<think>Let me structure this as JSON:
 {

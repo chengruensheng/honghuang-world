@@ -185,7 +185,7 @@ mod 测试 {
     }
 
     #[test]
-    fn 解析_无JSON_报错() {
+    fn 解析_无_json_报错() {
         assert!(解析("我不知道".to_string()).is_err());
     }
 

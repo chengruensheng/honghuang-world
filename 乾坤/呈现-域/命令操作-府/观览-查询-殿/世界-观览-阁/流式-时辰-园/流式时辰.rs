@@ -9,7 +9,7 @@
 /// - 申时=15/16、酉时=17/18、戌时=19/20、亥时=21/22
 /// 边界：hour=23 与 hour=0 同为「子时」（跨夜显式两段）；
 /// hour=11 与 hour=12 同为「午时」（跨午线显式两段）。
-pub const 时辰名: [&str; 24] = [
+pub const 时辰名表: [&str; 24] = [
     /* 00 */ "子时",
     /* 01 */ "丑时", "丑时",
     /* 03 */ "寅时", "寅时",
@@ -53,7 +53,7 @@ pub fn 时辰由小时(hour: u32) -> (&'static str, &'static str) {
     if hour >= 24 {
         return 兜底元组;
     }
-    (时辰名[hour as usize], 时段描述[hour as usize])
+    (时辰名表[hour as usize], 时段描述[hour as usize])
 }
 
 /// 格式化辅助：一次性产出「辰时（七点到九点）」样式的字符串。
@@ -84,9 +84,9 @@ mod tests {
     #[test]
     fn 验证全索引真值表() {
         // 子时跨夜显式两段：23 与 0 同为「子时 / 二十三点到一点」
-        assert_eq!(时辰名[0], "子时");
+        assert_eq!(时辰名表[0], "子时");
         assert_eq!(时段描述[0], "二十三点到一点");
-        assert_eq!(时辰名[23], "子时");
+        assert_eq!(时辰名表[23], "子时");
         assert_eq!(时段描述[23], "二十三点到一点");
         assert_eq!(时辰由小时(0), ("子时", "二十三点到一点"));
         assert_eq!(时辰由小时(23), ("子时", "二十三点到一点"));
@@ -132,7 +132,7 @@ mod tests {
         // 真值表逐项断言：0..=23 全覆盖
         for hour in 0u32..24 {
             let (名, 段) = 时辰由小时(hour);
-            assert_eq!(名, 时辰名[hour as usize], "hour={hour} 时辰名不一致");
+            assert_eq!(名, 时辰名表[hour as usize], "hour={hour} 时辰名不一致");
             assert_eq!(段, 时段描述[hour as usize], "hour={hour} 时段描述不一致");
         }
     }

@@ -3,7 +3,7 @@
 use super::*;
 use crate::类型_定义_殿::{执行任务, 工作流级别, 产物条目, 执行回执, 执行状态};
 use moxing_fu::{模型配置, 用量};
-use shihai_fu::{全量基线, 增量变更};
+use shihai_fu::全量基线;
 use std::path::PathBuf;
 
 /// 造一个调度器（测试用假配置，不触网）。

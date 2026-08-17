@@ -196,7 +196,7 @@ fn 改稿(要求: &要求书, 现稿: &设计方案, 意见文本: &str, 配置:
 /// 解析评审意见 JSON；解析失败或缺字段按「无意见」处理（不阻断收敛）。
 /// 遍历全部 JSON 候选：命中带「有意见」布尔字段的对象即采用（先遇先得）。
 fn 解析评审意见(角度: &'static str, 回复: &str) -> 评审意见 {
-    for 值 in 提取JSON候选们(回复) {
+    for 值 in 提取_json候选们(回复) {
         match 值["有意见"].as_bool() {
             Some(true) => {
                 let 意见 = 值["意见"].as_str().unwrap_or("").trim().to_string();
@@ -216,7 +216,7 @@ fn 解析评审意见(角度: &'static str, 回复: &str) -> 评审意见 {
 /// 兼容 think 推理块/解释文字/多个 JSON 候选/围栏：逐对扫描花括号的配对，
 /// 字符串字面量内的花括号不计数（含 `\"` 转义），每命中一个完整平衡对象即尝试解析，
 /// 成功即收集；孤立右花括号（正文标点）不破坏后续扫描。
-fn 提取JSON候选们(回复: &str) -> Vec<serde_json::Value> {
+fn 提取_json候选们(回复: &str) -> Vec<serde_json::Value> {
     let 字符们: Vec<char> = 回复.chars().collect();
     let mut 结果 = Vec::new();
     let mut 起点: Option<usize> = None;
@@ -268,7 +268,7 @@ fn 提取JSON候选们(回复: &str) -> Vec<serde_json::Value> {
 /// 从 LLM 回复提取设计方案（遍历全部 JSON 候选，取第一个字段齐全者）。
 /// 任一候选字段缺失/设计空/拆解空 → 换下一个候选；全部失败即 None（回退模板）。
 fn 解析设计方案(要求id: &str, 回复: &str) -> Option<设计方案> {
-    for 值 in 提取JSON候选们(回复) {
+    for 值 in 提取_json候选们(回复) {
         // 逐候选校验字段：缺失/空设计/无拆解 → 换下一个候选，绝不因首个示例候选直接放弃。
         let Some(设计) = 值["设计"].as_str() else { continue };
         let 设计 = 设计.trim();
@@ -312,7 +312,7 @@ fn 解析设计方案(要求id: &str, 回复: &str) -> Option<设计方案> {
 
 #[cfg(test)]
 mod 测试 {
-    use super::{提取JSON候选们, 解析设计方案, 解析评审意见, 是复杂任务};
+    use super::{提取_json候选们, 解析设计方案, 解析评审意见, 是复杂任务};
 
     #[test]
     fn 解析评审意见_有意见() {
@@ -322,7 +322,7 @@ mod 测试 {
     }
 
     #[test]
-    fn 解析评审意见_无意见或空意见或非JSON按无意见() {
+    fn 解析评审意见_无意见或空意见或非_json按无意见() {
         // 明确无意见。
         let 无 = 解析评审意见("元始", r#"{"有意见":false,"意见":""}"#);
         assert!(!无.有意见);
@@ -351,7 +351,7 @@ mod 测试 {
     }
 
     #[test]
-    fn 缺拆解或非JSON回退None() {
+    fn 缺拆解或非_json回退_none() {
         assert!(解析设计方案("要求-3", "设计只有一句话").is_none(), "非 JSON 应 None");
         assert!(解析设计方案("要求-4", "{\"设计\":\"x\"}").is_none(), "缺拆解应 None");
     }
@@ -465,7 +465,7 @@ mod 测试 {
     #[test]
     fn 孤立右花括号不破坏后续提取() {
         let 回复 = "这里有个右括号 } 结尾。{\"有意见\":false}";
-        let 候选数 = 提取JSON候选们(回复).len();
+        let 候选数 = 提取_json候选们(回复).len();
         assert_eq!(候选数, 1, "孤立 }} 后的合法 JSON 应正常提取，实际 {候选数}");
     }
 
@@ -474,7 +474,7 @@ mod 测试 {
     /// 运行：`$env:WORLD_WORKSPACE_ROOT="d:\洪荒 - 世界"; cargo test -p tianting_fu --lib 实况_LLM设计 -- --ignored --nocapture`
     #[test]
     #[ignore = "实况：需 MiniMax 密钥与网络，非纯单元回归"]
-    fn 实况_LLM设计不再回退模板() {
+    fn 实况_llm设计不再回退模板() {
         use crate::类型_定义_殿::{优先级, 约束, 阶段, 要求来源, 要求书, 要求类别, 要求状态};
         let 根 = std::env::var("WORLD_WORKSPACE_ROOT").unwrap_or_default();
         let 环境 = std::fs::read_to_string(std::path::Path::new(&根).join(".env")).unwrap_or_default();

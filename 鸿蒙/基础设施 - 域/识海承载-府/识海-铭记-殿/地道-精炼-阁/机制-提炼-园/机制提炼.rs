@@ -79,7 +79,7 @@ mod 测试 {
     }
 
     #[test]
-    fn 机制归纳_低于阈值不唤LLM() {
+    fn 机制归纳_低于阈值不唤_llm() {
         let 存储 = crate::模型存储::打开(std::env::temp_dir().join(format!("机制阈值测试-{}", crate::当前毫秒())));
         let 报告 = 变更报告 { 新增: vec!["甲.rs".to_string()], 修改: Vec::new(), 删除: Vec::new() };
         let 图 = 依赖图::default();
@@ -89,7 +89,7 @@ mod 测试 {
     }
 
     #[test]
-    fn 机制归纳_超阈值但素材为空不唤LLM() {
+    fn 机制归纳_超阈值但素材为空不唤_llm() {
         let 存储 = crate::模型存储::打开(std::env::temp_dir().join(format!("机制空素材测试-{}", crate::当前毫秒())));
         let 报告 = 变更报告 {
             新增: vec!["不存在的甲.rs".to_string(), "不存在的乙.rs".to_string()],
