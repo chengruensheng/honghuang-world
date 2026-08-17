@@ -64,10 +64,10 @@ fn 落点护栏(方向: &str, 涉及路径: &[String]) -> Result<(), String> {
 
 /// 追加要求到要求.jsonl（首次入池：要求由「解析想法」产出，状态机起点 = 待领）。
 /// 落盘队列无原 id 追加接口：读全部 → 追加新项 → 写临时文件 → 原子改名（防半写损坏）。
+/// 持进程级排他锁贯穿读改写（2026-08-17 轮8 体检：守护回填与界主登记并发会互相覆盖）。
 fn 追加要求(要求: &要求书) -> Result<(), String> {
     let 队列路径 = 状态目录().join("要求.jsonl");
-    let 队列 = crate::落盘队列::<要求书>::打开(队列路径.clone());
-    let mut 项们 = 队列.读全部().map_err(|错误| format!("读要求队列失败: {错误}"))?;
+    let (mut 项们, 锁) = 读改写队列::<要求书>(&队列路径)?;
     // 防止同 id 重复追加（重入运行一轮 / 想法被多次投递）：已存在则覆盖旧状态，不重复入队。
     let mut 已存在 = false;
     for 项 in 项们.iter_mut() {
@@ -81,6 +81,7 @@ fn 追加要求(要求: &要求书) -> Result<(), String> {
         项们.push(要求.clone());
     }
     持久化要求们(&队列路径, &项们)?;
+    drop(锁);
     // 事件流：要求入池（append-only 事实源）。
     let 流 = shihai_fu::事件流::在工作区(&shihai_fu::工作区::定位());
     let _ = 流.追加事件(shihai_fu::事件类型::要求入池, serde_json::json!({
@@ -105,12 +106,25 @@ fn 下一个要求序号() -> Result<u64, String> {
     Ok(最大 + 1)
 }
 
+/// 持进程级排他锁读队列文件（复合「读→改→写」用：锁贯穿到调用方持久化后释放）。
+/// 返回 (全部项, 排他锁)；调用方改完项们后调 持久化XX们 再 drop 锁（勿在持锁期间调队列方法防重入死锁）。
+fn 读改写队列<T: serde::Serialize + serde::de::DeserializeOwned>(路径: &std::path::Path) -> Result<(Vec<T>, crate::排他锁), String> {
+    let 队列 = crate::落盘队列::<T>::打开(路径);
+    let 锁 = 队列.排他().map_err(|错误| format!("拿队列排他锁失败: {错误}"))?;
+    let 内容 = std::fs::read_to_string(路径).map_err(|错误| format!("读队列失败: {错误}"))?;
+    let 项们 = 内容
+        .lines()
+        .filter(|行| !行.trim().is_empty())
+        .map(|行| serde_json::from_str::<T>(行).map_err(|错误| format!("解析队列项失败: {错误}")))
+        .collect::<Result<Vec<T>, String>>()?;
+    Ok((项们, 锁))
+}
+
 /// 推进要求状态机：按要求 id 找到目标 → 校验迁移合法 → 改状态 → 原子落盘。
 /// 校验失败打 warn 不阻断（甲阶段自动推进；非法迁移以现状为准）。
 fn 推进要求状态(要求id: &str, 目标: 要求状态) -> Result<(), String> {
     let 队列路径 = 状态目录().join("要求.jsonl");
-    let 队列 = crate::落盘队列::<要求书>::打开(队列路径.clone());
-    let mut 项们 = 队列.读全部().map_err(|错误| format!("读要求队列失败: {错误}"))?;
+    let (mut 项们, 锁) = 读改写队列::<要求书>(&队列路径)?;
     let mut 命中 = false;
     for 项 in 项们.iter_mut() {
         if 项.id == 要求id {
@@ -128,6 +142,7 @@ fn 推进要求状态(要求id: &str, 目标: 要求状态) -> Result<(), String
         return Ok(());
     }
     持久化要求们(&队列路径, &项们)?;
+    drop(锁);
     // 事件流：要求状态推进（append-only 事实源）。
     let 流 = shihai_fu::事件流::在工作区(&shihai_fu::工作区::定位());
     let _ = 流.追加事件(shihai_fu::事件类型::要求状态推进, serde_json::json!({
@@ -702,10 +717,10 @@ fn 打回撤销产物(要求id: &str, 产物们: &[crate::产物条目], 工作�
 // ── 任务线（阶段 3 多任务线机制，设计稿 §1.5.5） ──
 
 /// 推进想法状态：读全部 → 改目标 → 原子重写（对话/任务线共用，防目标状态被覆盖）。
+/// 持进程级排他锁贯穿读改写（2026-08-17 轮8 体检：守护推进与界主投递并发会互相覆盖）。
 pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> Result<(), String> {
     let 想法路径 = 状态目录().join("想法.jsonl");
-    let 队列 = crate::落盘队列::<想法>::打开(想法路径.clone());
-    let mut 项们 = 队列.读全部().map_err(|错误| format!("读想法队列失败: {错误}"))?;
+    let (mut 项们, 锁) = 读改写队列::<想法>(&想法路径)?;
     let mut 命中 = false;
     for 项 in 项们.iter_mut() {
         if 项.id == 目标id {
@@ -726,6 +741,7 @@ pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> Result<(),
     let 内容 = if 行们.is_empty() { String::new() } else { format!("{}\n", 行们.join("\n")) };
     std::fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
     std::fs::rename(&临时路径, &想法路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
+    drop(锁);
     info!(目标id, 新状态 = ?新状态, "想法状态已推进");
     Ok(())
 }
@@ -780,29 +796,22 @@ pub const 陈旧执行中阈值秒: u64 = 6 * 3600;
 
 /// 领取一条可执行任务线：优先 待执行；无待执行且存在「陈旧执行中」（领取时间戳超阈值，
 /// 守护崩溃残留）→ 重置 待执行 后领取。领取成功即写心跳（时间=当前），防正常执行被误判陈旧。
-/// 锁文件互斥（create_new 原子），先到先得，防并发双跑。
-/// 陈旧锁（>30 秒）视为崩溃残留，删除重试。
+/// 统一走 落盘队列 排他锁（jsonl.lock，与 入队/回填/中止 同锁互斥，防并发双跑与读改写覆盖，
+/// 2026-08-17 轮8 体检：原独立 任务线.lock 与回填的 jsonl.lock 不同源，存在读改写竞态）。
 pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
-    let 锁路径 = 状态目录().join("任务线.lock");
-    // 陈旧锁清理：锁文件存在但超过 30 秒（持有者进程崩溃的残留）。
-    if let Ok(元) = std::fs::metadata(&锁路径) {
-        if let Ok(修改) = 元.modified() {
-            if let Ok(龄) = 修改.elapsed() {
-                if 龄.as_secs() > 30 {
-                    warn!(路径 = %锁路径.display(), "任务线锁已陈旧，清理重试");
-                    let _ = std::fs::remove_file(&锁路径);
-                }
-            }
-        }
-    }
-    let 锁 = match std::fs::OpenOptions::new().write(true).create_new(true).open(&锁路径) {
+    let 路径 = 状态目录().join("任务线.jsonl");
+    let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
+    let 锁 = match 队列.排他() {
         Ok(锁) => 锁,
-        Err(_) => return Ok(None), // 他人持有锁，本轮不抢
+        Err(_) => return Ok(None), // 他人持有锁，本轮不抢（超时视为被占用）
     };
     let 结果 = (|| -> Result<Option<任务线>, String> {
-        let 路径 = 状态目录().join("任务线.jsonl");
-        let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
-        let mut 项们 = 队列.读全部().map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+        let 内容 = std::fs::read_to_string(&路径).map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+        let mut 项们 = 内容
+            .lines()
+            .filter(|行| !行.trim().is_empty())
+            .map(|行| serde_json::from_str::<任务线>(行).map_err(|错误| format!("解析任务线失败: {错误}")))
+            .collect::<Result<Vec<任务线>, String>>()?;
         let 现在 = shihai_fu::当前毫秒();
         let 位置 = 项们.iter().position(|线| 线.状态 == 任务线状态::待执行).or_else(|| {
             // 陈旧执行中（崩溃残留）：领取时间戳（心跳）超阈值 → 重置待执行。
@@ -827,7 +836,6 @@ pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
         Ok(领取)
     })();
     drop(锁);
-    let _ = std::fs::remove_file(&锁路径);
     结果
 }
 
@@ -841,10 +849,10 @@ pub fn 读任务线们() -> Result<Vec<任务线>, String> {
 /// 中止任务线（生产化 1.3）：任何状态 → 已中止。
 /// 待执行/执行中/已完成的任务线都可中止；执行中的任务线由执行进程在回填前检查中止标记，
 /// 已中止则不汇报并撤销产物（回滚垫前缀撤销）。
+/// 持排他锁贯穿读改写（2026-08-17 轮8 体检）。
 pub fn 中止任务线(任务线id: &str) -> Result<String, String> {
     let 路径 = 状态目录().join("任务线.jsonl");
-    let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
-    let mut 项们 = 队列.读全部().map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+    let (mut 项们, 锁) = 读改写队列::<任务线>(&路径)?;
     let mut 命中 = false;
     for 项 in 项们.iter_mut() {
         if 项.id == 任务线id {
@@ -857,6 +865,7 @@ pub fn 中止任务线(任务线id: &str) -> Result<String, String> {
         return Err(format!("未找到任务线：{任务线id}"));
     }
     持久化任务线们(&路径, &项们)?;
+    drop(锁);
     info!(任务线id, "任务线已中止");
     Ok(format!("任务线 {任务线id} 已中止"))
 }
@@ -877,8 +886,7 @@ fn 任务线状态(任务线id: &str) -> 任务线状态 {
 /// （实测历史遗留：要求-4/5 入池后中断，状态长期卡待领/实现中，事项列表呈现失真）。
 fn 归位要求状态(想法id: &str) {
     let 路径 = 状态目录().join("要求.jsonl");
-    let 队列 = crate::落盘队列::<要求书>::打开(路径.clone());
-    let Ok(mut 项们) = 队列.读全部() else { return };
+    let Ok((mut 项们, 锁)) = 读改写队列::<要求书>(&路径) else { return };
     let mut 改 = false;
     for 项 in 项们.iter_mut() {
         if 项.想法id.as_deref() == Some(想法id) {
@@ -897,6 +905,7 @@ fn 归位要求状态(想法id: &str) {
             warn!(错误 = %错误, "归位要求状态落盘失败");
         }
     }
+    drop(锁);
 }
 
 /// 任务线落盘（读改写后原子重写，与 持久化要求们 同款）。
@@ -914,10 +923,10 @@ fn 持久化任务线们(路径: &std::path::Path, 项们: &[任务线]) -> Resu
 }
 
 /// 回填任务线结果：要求id / 结论 / 汇报 → 状态 已完成。
+/// 持排他锁贯穿读改写（2026-08-17 轮8 体检：与登记/中止/领取同锁互斥）。
 pub fn 回填任务线结果(任务线id: &str, 要求id: &str, 结论: &str, 汇报: &str) -> Result<(), String> {
     let 路径 = 状态目录().join("任务线.jsonl");
-    let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
-    let mut 项们 = 队列.读全部().map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+    let (mut 项们, 锁) = 读改写队列::<任务线>(&路径)?;
     let mut 命中 = false;
     for 项 in 项们.iter_mut() {
         if 项.id == 任务线id {
@@ -932,7 +941,9 @@ pub fn 回填任务线结果(任务线id: &str, 要求id: &str, 结论: &str, �
     if !命中 {
         return Err(format!("未找到任务线：{任务线id}"));
     }
-    持久化任务线们(&路径, &项们)
+    持久化任务线们(&路径, &项们)?;
+    drop(锁);
+    Ok(())
 }
 
 /// 执行一条待执行任务线（守护/驱动共用）：领取 → 主政一轮全链 → 回填结果 → 汇报入对话记录。
