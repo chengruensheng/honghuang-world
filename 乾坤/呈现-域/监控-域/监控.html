@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>洪荒世界 · 乾坤监控域(纯只读)</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#0d1117;color:#c9d1d9;font-family:"Microsoft YaHei",Segoe UI,sans-serif;font-size:13px}
+  #bar{position:fixed;top:0;left:0;right:0;z-index:30;background:#161b22;border-bottom:1px solid #30363d;padding:8px 14px;display:flex;align-items:center;gap:12px}
+  #bar .t{font-weight:bold;color:#e6edf3;font-size:14px}
+  #bar .dot{width:10px;height:10px;border-radius:50%;background:#2ea043;display:inline-block;animation:p 1.2s infinite}
+  @keyframes p{50%{opacity:.2}}
+  #bar .meta{color:#8b949e;font-size:12px;margin-left:auto}
+  #tabs{position:fixed;top:48px;left:0;right:0;z-index:25;background:#0d1117;border-bottom:1px solid #21262d;padding:6px 14px;display:flex;gap:8px}
+  #tabs button{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:12px}
+  #tabs button.on{background:#1f6feb;color:#fff;border-color:#1f6feb}
+  #wrap{position:fixed;top:92px;bottom:0;left:0;right:0;overflow:auto;padding:12px 16px 40px}
+  .panel{display:none}.panel.on{display:block}
+  #overview{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 16px;min-width:150px}
+  .card .k{color:#8b949e;font-size:11px}.card .v{font-size:18px;font-weight:bold;margin-top:3px}
+  .ok{color:#3fb950}.fail{color:#f85149}.run{color:#58a6ff}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{border-bottom:1px solid #21262d;padding:6px 10px;text-align:left;vertical-align:top}
+  th{color:#8b949e;font-weight:600;position:sticky;top:0;background:#0d1117}
+  .acc-good{color:#3fb950}.acc-bad{color:#f85149}.acc-running{color:#58a6ff}
+  .tl{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #1c2128;cursor:pointer;flex-wrap:wrap}
+  .tl .tm{color:#8b949e;white-space:nowrap;font-size:11.5px;width:80px}
+  .tl .ty{width:70px;font-weight:600}
+  .tl .tx{color:#c9d1d9;flex:1;word-break:break-all}
+  .ty-验收{color:#f0883e}.ty-失败{color:#f85149}.ty-状态{color:#3fb950}.ty-工具{color:#58a6ff}.ty-定档{color:#3fb950}.ty-设计{color:#d2a8ff}
+  details{margin:3px 0}summary{cursor:pointer;color:#58a6ff}
+  .ob{background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div id="bar"><span class="dot"></span><span class="t">洪荒世界 · 乾坤监控域(纯只读)</span>
+  <span class="meta"><span>引擎 <b id="live">-</b></span> · <span>节点 <b id="tcount">0</b></span></span></div>
+<div id="tabs">
+  <button id="tab-ov" class="on">总览 / 评估</button>
+  <button id="tab-tl">时间线(聚合)</button>
+  <button id="tab-obs">模型观测</button>
+  <button id="tab-chain">白箱还原</button>
+  <button id="tab-sp">spill 结果</button>
+</div>
+<div id="wrap">
+  <div id="panel-ov" class="panel on">
+    <div id="overview"></div>
+    <table><thead><tr><th>要求</th><th>目标</th><th>结果</th><th>耗时</th><th>验收次数</th><th>打回原因</th></tr></thead><tbody id="assess-body"></tbody></table>
+  </div>
+  <div id="panel-tl" class="panel"><div id="tl-body"></div></div>
+  <div id="panel-obs" class="panel">
+    <div style="margin:6px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="color:#8b949e">域</span>
+      <select id="f-domain"><option value="">全部</option></select>
+      <span style="color:#8b949e">角色</span>
+      <select id="f-role"><option value="">全部</option></select>
+      <span style="color:#8b949e">要求id</span>
+      <input id="f-req" placeholder="如 要求-14" style="background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:4px 8px;width:160px">
+      <button onclick="loadRecords()" style="background:#1f6feb;color:#fff;border:0;border-radius:6px;padding:5px 14px;cursor:pointer">刷新观测</button>
+    </div>
+    <div id="obs-body"></div>
+  </div>
+  <div id="panel-chain" class="panel">
+    <div style="margin:6px 0;display:flex;gap:8px;align-items:center">
+      <span style="color:#8b949e">按 要求id 还原执行链</span>
+      <input id="chain-req" placeholder="如 要求-14" style="background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:4px 8px;width:160px">
+      <button onclick="loadChain()" style="background:#1f6feb;color:#fff;border:0;border-radius:6px;padding:5px 14px;cursor:pointer">还原</button>
+      <span style="color:#8b949e;font-size:11px">按 时间戳 重排：谁在什么轮次、基于什么提示、怎么思考、调用什么工具、收到什么结果、怎样判定</span>
+    </div>
+    <div id="chain-body"></div>
+  </div>
+  <div id="panel-sp" class="panel"><div id="sp-body"></div></div>
+</div>
+<script>
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmtTs(ts){if(!ts)return'';var d=new Date(ts);function p(n){return n<10?'0'+n:n;}return p(d.toLocaleDateString()=='1/1/1970'?'':d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+function fetchJson(u,cb){fetch(u).then(r=>r.json()).then(cb).catch(()=>{document.getElementById('live').textContent='断';});}
+
+function renderAssess(rows){
+  var h='';
+  for(var i=rows.length-1;i>=0;i--){
+    var r=rows[i];var cls=r.结论==='通过'?'acc-good':(r.结论==='打回'?'acc-bad':'acc-running');
+    h+='<tr><td>'+esc(r.要求)+'</td><td>'+esc(r.目标)+'</td><td class="'+cls+'">'+esc(r.结论)+'</td><td>'+esc(r.耗时)+'</td><td>'+esc(r.验收次数||0)+'</td><td>'+esc((r.打回原因||'').slice(0,80))+'</td></tr>';
+  }
+  document.getElementById('assess-body').innerHTML=h;
+  document.getElementById('tcount').textContent=rows.length;
+  if(rows.length){var last=rows[rows.length-1];document.getElementById('live').textContent = last.结论==='执行中'?'进行中':'空闲';}
+}
+function renderTimeline(rows){
+  var tl={'验收结论':'验收','失败沉淀':'失败','要求状态推进':'状态','工具调用':'工具','版本存档':'定档','设计上呈':'设计','想法投递':'想法','要求入池':'入池'};
+  var ty={'验收结论':'ty-验收','失败沉淀':'ty-失败','要求状态推进':'ty-状态','工具调用':'ty-工具','版本存档':'ty-定档','设计上呈':'ty-设计','想法投递':'ty-设计','要求入池':'ty-状态'};
+  var h='';
+  for(var i=rows.length-1;i>=0;i--){
+    var r=rows[i];
+    h+='<div class="tl" title="点击展开JSON"><span class="tm">'+fmtTs(r.ts)+'</span><span class="ty '+ty[r.type]+'">'+(tl[r.type]||r.type)+'</span><span class="tx">'+esc(r.概||'')+'</span></div>';
+  }
+  document.getElementById('tl-body').innerHTML=h;
+}
+function renderObs(rows){
+  var h='';
+  for(var i=rows.length-1;i>=0;i--){
+    var r=rows[i];
+    var 关联=r.关联||{};
+    var tag=[r.域, r.角色, r.接口].filter(Boolean).join(' · ');
+    var meta=[关联.任务线,关联.要求,关联.轮次?'轮'+关联.轮次:'',关联.标识].filter(Boolean).join(' / ');
+    var 载荷=r.载荷||{};
+    var 正文=(载荷.内容||'').length>600? (载荷.内容||'').slice(0,600)+'…': (载荷.内容||'');
+    var 附加=载荷.附加? '<div style="color:#8b949e;white-space:pre-wrap;padding-top:4px">附加: '+esc(JSON.stringify(载荷.附加))+ '</div>':'';
+    h+='<div class="ob"><details><summary>['+esc(r.域)+'] '+esc(tag)+(meta?' <span style="color:#58a6ff">'+esc(meta)+'</span>':'')+'</summary><div style="padding:8px;white-space:pre-wrap">'+esc(正文)+'</div>'+附加+'</details></div>';
+  }
+  document.getElementById('obs-body').innerHTML = h || '<div style="color:#8b949e;padding:20px">尚无 白箱观测记录（.上下文/观测/记录.jsonl）</div>';
+}
+function loadRecords(){
+  var qs='?';
+  var d=document.getElementById('f-domain').value;
+  var r=document.getElementById('f-role').value;
+  var req=document.getElementById('f-req').value.trim();
+  if(d) qs+='域='+encodeURIComponent(d)+'&';
+  if(r) qs+='角色='+encodeURIComponent(r)+'&';
+  if(req) qs+='要求='+encodeURIComponent(req)+'&';
+  fetchJson('/api/records'+qs, renderObs);
+}
+var 域表={'提示词':'#f0883e','回复思考':'#3fb950','工具调用':'#58a6ff','工具返回':'#58a6ff','状态流转':'#d2a8ff','产物判定':'#f0883e'};
+function renderChain(rows){
+  var h='';
+  if(!rows.length){h='<div style="color:#8b949e;padding:20px">无该要求相关观测记录</div>';}
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i]; var 关联=r.关联||{}; var 载荷=r.载荷||{};
+    var 色=域表[r.域]||'#c9d1d9';
+    var 正文=(载荷.内容||'').length>1200? (载荷.内容||'').slice(0,1200)+'…': (载荷.内容||'');
+    var 附加=载荷.附加? '<div style="color:#8b949e;white-space:pre-wrap;padding-top:4px">附加: '+esc(JSON.stringify(载荷.附加))+ '</div>':'';
+    h+='<div class="ob"><details><summary><span style="color:'+色+'">['+esc(r.域)+']</span> '+esc(r.接口||'')+' <span style="color:#8b949e">'+(关联.轮次?'轮'+关联.轮次:'')+' · '+(关联.任务线||'')+' · '+(关联.标识||'')+'</span></summary><div style="padding:8px;white-space:pre-wrap">'+esc(正文)+'</div>'+附加+'</details></div>';
+  }
+  document.getElementById('chain-body').innerHTML=h;
+}
+function loadChain(){
+  var req=document.getElementById('chain-req').value.trim();
+  if(!req) {document.getElementById('chain-body').innerHTML='<div style="color:#f85149;padding:20px">请输入 要求id</div>';return;}
+  fetchJson('/api/chain?要求='+encodeURIComponent(req), renderChain);
+}
+function renderSpill(list){
+  var h='<table><tr><th>文件</th><th>路径</th></tr>';
+  for(var i=list.length-1;i>=0;i--){
+    h+='<tr><td>'+esc(list[i].file)+'</td><td>'+esc(list[i].path)+'</td></tr>';
+  }
+  document.getElementById('sp-body').innerHTML=h+'</table>';
+}
+function set(which,btnId){
+  ['ov','tl','obs','chain','sp'].forEach(function(w){document.getElementById('panel-'+w).classList.toggle('on',w===which);});
+  ['tab-ov','tab-tl','tab-obs','tab-chain','tab-sp'].forEach(function(t){document.getElementById(t).classList.toggle('on',t===btnId);});
+}
+document.getElementById('tab-ov').onclick=function(){set('ov','tab-ov');};
+document.getElementById('tab-tl').onclick=function(){set('tl','tab-tl');};
+document.getElementById('tab-obs').onclick=function(){set('obs','tab-obs');};
+document.getElementById('tab-chain').onclick=function(){set('chain','tab-chain');};
+document.getElementById('tab-sp').onclick=function(){set('sp','tab-sp');};
+function fillFilters(rows){
+  var seenD={},seenR={};
+  rows.forEach(function(r){if(r.域)seenD[r.域]=1;if(r.角色)seenR[r.角色]=1;});
+  var sd=document.getElementById('f-domain'),sr=document.getElementById('f-role');
+  Object.keys(seenD).sort().forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=k;sd.appendChild(o);});
+  Object.keys(seenR).sort().forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=k;sr.appendChild(o);});
+}
+function boot(){
+  fetchJson('/api/assess',renderAssess);
+  fetchJson('/api/timeline',renderTimeline);
+  fetchJson('/api/records',function(rows){fillFilters(rows);renderObs(rows);});
+  fetchJson('/api/spill',renderSpill);
+}
+boot();
+setInterval(function(){fetchJson('/api/assess',renderAssess);},5000);
+</script>
+</body>
+</html>

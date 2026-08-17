@@ -229,3 +229,63 @@ pub fn 当前观测() -> (观测角色, 关联) {
 pub fn 当前关联() -> 关联 {
     当前观测().1
 }
+
+#[cfg(test)]
+mod 测试 {
+    use super::*;
+
+    /// 序列化形状契约：消费端（乾坤监控域 Python）按字面字段名解析，
+    /// 这里的字段名/枚举名即对外 API，改动需同步消费端。
+    #[test]
+    fn 记录序列化字段名契约() {
+        let 记录 = 观测记录 {
+            时间戳: 1234,
+            域: 观测域::提示词,
+            接口: "模型连接-府::调用模型".to_string(),
+            角色: 观测角色::执行,
+            载荷: 载荷::结构化("你好", serde_json::json!({"模型": "m3"})),
+            关联: 关联::新().任务线("要求-1-0").要求("要求-1").轮次(3),
+        };
+        let 文本 = serde_json::to_string(&记录).unwrap();
+        let 值: serde_json::Value = serde_json::from_str(&文本).unwrap();
+        assert_eq!(值["时间戳"], 1234);
+        assert_eq!(值["域"], "提示词");
+        assert_eq!(值["接口"], "模型连接-府::调用模型");
+        assert_eq!(值["角色"], "执行");
+        assert_eq!(值["载荷"]["内容"], "你好");
+        assert_eq!(值["载荷"]["附加"]["模型"], "m3");
+        assert_eq!(值["关联"]["任务线"], "要求-1-0");
+        assert_eq!(值["关联"]["要求"], "要求-1");
+        assert_eq!(值["关联"]["轮次"], 3);
+    }
+
+    #[test]
+    fn 线程本地栈嵌套与恢复() {
+        // 进入观测 push、守卫 drop 恢复上层：鸿钧 → 设计 → 回鸿钧。
+        {
+            let _a = 进入观测(观测角色::鸿钧, None, Some("要求-1".to_string()), None);
+            {
+                let _b = 进入观测(观测角色::设计, None, Some("要求-1".to_string()), None);
+                assert_eq!(当前观测().0, 观测角色::设计);
+                let (_, 关联) = 当前观测();
+                assert_eq!(关联.要求.as_deref(), Some("要求-1"));
+            }
+            assert_eq!(当前观测().0, 观测角色::鸿钧, "drop 后恢复上层");
+        }
+        assert_eq!(当前观测().0, 观测角色::未知, "全部退出后为空");
+        assert_eq!(当前关联().任务线, None);
+    }
+
+    #[test]
+    fn 线程本地上下文带任务线轮次() {
+        {
+            let _g = 进入观测(观测角色::执行, Some("任务-9".to_string()), Some("要求-9".to_string()), Some(5));
+            let (角色, 关联) = 当前观测();
+            assert_eq!(角色, 观测角色::执行);
+            assert_eq!(关联.任务线.as_deref(), Some("任务-9"));
+            assert_eq!(关联.轮次, Some(5));
+            // 便捷函数等价
+            assert_eq!(当前关联().要求.as_deref(), Some("要求-9"));
+        }
+    }
+}
