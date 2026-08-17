@@ -146,6 +146,109 @@ impl 依赖图 {
         }
         输出.trim_end().to_string()
     }
+
+    /// 图谱契约·库根导出（设计稿 §4.2 规则6）：按涉及文件追溯所属府（模块名 = 府名，
+    /// 入口.rs 的 pub use 全量重导出该府顶层符号），投影该府可导入符号签清单——
+    /// 让实现层知道 打开存储/状态目录/工作区根 等库根函数在哪、签名什么样，不再凭记忆猜。
+    /// 返回「府名 → 签名清单」文本；无匹配返回空串（零开销）。
+    pub fn 查库根导出(&self, 涉及路径们: &[String]) -> String {
+        let mut 府名集合 = std::collections::BTreeSet::new();
+        for 涉及 in 涉及路径们 {
+            let 涉及 = 涉及.trim().replace('\\', "/");
+            if 涉及.is_empty() {
+                continue;
+            }
+            for 档案 in &self.档案们 {
+                let 文件 = 档案.文件.replace('\\', "/");
+                if 文件.contains(&涉及) {
+                    if let Some(府名) = 档案.模块.split('/').last() {
+                        if !府名.is_empty() {
+                            府名集合.insert(府名.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        // 精确到文件却无归属府（涉及路径是目录）→ 退化按目录名匹配模块。
+        if 府名集合.is_empty() {
+            for 涉及 in 涉及路径们 {
+                let 涉及 = 涉及.trim();
+                for 档案 in &self.档案们 {
+                    if 档案.模块.replace('\\', "/").ends_with(涉及) {
+                        if let Some(府名) = 档案.模块.split('/').last() {
+                            府名集合.insert(府名.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        let mut 输出 = String::new();
+        for 府名 in &府名集合 {
+            let 符号们 = self.查模块(府名);
+            if 符号们.is_empty() {
+                continue;
+            }
+            let 签名们: Vec<&str> = 符号们
+                .iter()
+                .filter(|档案| !档案.签名.is_empty())
+                .map(|档案| 档案.签名.as_str())
+                .collect();
+            if 签名们.is_empty() {
+                continue;
+            }
+            输出.push_str(&format!("【{府名}·库根导出】\n{}\n", 签名们.join("\n")));
+        }
+        输出
+    }
+
+    /// 图谱契约·测试样例参照（设计稿 §4.2 规则6）：依赖图中找含 `#[cfg(test)]` /
+    /// `mod 测试` 的符号档案，优先取与涉及路径同府的文件，投影其中一个完整测试模块的
+    /// 签名+文件路径——实现层照抄该项目既有测试惯例（模块三件套、#[cfg(test)] 写法、
+    /// env 互斥锁），不再凭空发明测试结构。
+    /// 返回「样本清单 + 一个完整样例文件路径」文本；无样例返回空串。
+    pub fn 查测试样例(&self, 涉及路径们: &[String]) -> String {
+        // 同府优先：涉及路径文件所属府的测试档案。
+        let 涉及府们: std::collections::HashSet<String> = {
+            let mut 集合 = std::collections::HashSet::new();
+            for 涉及 in 涉及路径们 {
+                let 涉及 = 涉及.trim().replace('\\', "/");
+                for 档案 in &self.档案们 {
+                    if 档案.文件.replace('\\', "/").contains(&涉及) {
+                        if let Some(府名) = 档案.模块.split('/').last() {
+                            集合.insert(府名.to_string());
+                        }
+                    }
+                }
+            }
+            集合
+        };
+        let 测试档案们: Vec<&符号档案> = self
+            .档案们
+            .iter()
+            .filter(|档案| 档案.代码.contains("#[cfg(test)]") || 档案.代码.contains("mod 测试") || 档案.代码.contains("mod tests"))
+            .collect();
+        if 测试档案们.is_empty() {
+            return String::new();
+        }
+        let 同府: Vec<&符号档案> = 测试档案们
+            .iter()
+            .copied()
+            .filter(|档案| {
+                档案.模块.split('/').last().map(|府| 涉及府们.contains(府)).unwrap_or(false)
+            })
+            .collect();
+        let 样例 = if let Some(首) = 同府.first() {
+            *首
+        } else {
+            *测试档案们.first().unwrap()
+        };
+        let 签名 = if 样例.签名.is_empty() { 样例.符号.clone() } else { 样例.签名.clone() };
+        let 摘要: String = 样例.代码.lines().take(5).collect::<Vec<_>>().join("\n");
+        format!(
+            "【测试样例参照】项目既有测试写法样例：{}\n文件路径：{}\n签名：{}\n片段：\n{}\n照抄此处的模块三件套 与 #[cfg(test)]/mod 测试 惯例，勿自造测试结构。\n",
+            样例.符号, 样例.文件, 签名, 摘要
+        )
+    }
 }
 
 /// 节点或其子孙名字是否包含关键词（树内任意层命中即算）。
@@ -202,5 +305,64 @@ fn 渲染子树(节点: &结构节点, 深度: usize, 输出: &mut String) {
     输出.push('\n');
     for 子 in &节点.子节点 {
         渲染子树(子, 深度 + 1, 输出);
+    }
+}
+
+#[cfg(test)]
+mod 测试 {
+    use super::*;
+
+    /// 造带两府符号的依赖图（甲府有库根导出符号，乙府有测试符号）。
+    fn 造图() -> 依赖图 {
+        let mut 图 = 依赖图::default();
+        图.档案们 = vec![
+            符号档案::新("p", "甲府", "乾坤/甲府/入口.rs", "打开存储", "pub fn 打开存储", "fn 打开存储", "打开识海存储"),
+            符号档案::新("p", "甲府", "乾坤/甲府/入口.rs", "状态目录", "pub fn 状态目录", "fn 状态目录", "状态目录"),
+            符号档案::新("p", "乙府", "乾坤/乙府/入口.rs", "乙函数", "pub fn 乙函数()", "fn 乙函数", "乙函数"),
+            符号档案::新("p", "乙府", "乾坤/乙府/测试园/乙测试.rs", "乙测试", "#[cfg(test)]\nmod 测试 {\n    #[test]\n    fn 用例() {}\n}", "", "测试文件"),
+        ];
+        图
+    }
+
+    #[test]
+    fn 查库根导出_按涉及文件回溯府并给签名() {
+        let 图 = 造图();
+        let 结果 = 图.查库根导出(&["乾坤/甲府/入口.rs".to_string()]);
+        assert!(结果.contains("甲府·库根导出"), "应含府名：{结果}");
+        assert!(结果.contains("fn 打开存储"), "应含库根符号签名：{结果}");
+        assert!(结果.contains("fn 状态目录"), "应含状态目录：{结果}");
+        assert!(!结果.contains("乙函数"), "不应含他府符号：{结果}");
+    }
+
+    #[test]
+    fn 查库根导出_目录涉及路径退化匹配() {
+        let 图 = 造图();
+        let 结果 = 图.查库根导出(&["甲府".to_string()]);
+        assert!(结果.contains("甲府·库根导出"), "目录涉及应退化命中府：{结果}");
+    }
+
+    #[test]
+    fn 查库根导出_无匹配返回空() {
+        let 图 = 造图();
+        let 结果 = 图.查库根导出(&["不存在的路径.rs".to_string()]);
+        assert!(结果.is_empty(), "无匹配应为空：{结果}");
+    }
+
+    #[test]
+    fn 查测试样例_取含cfg测试的档案() {
+        let 图 = 造图();
+        let 结果 = 图.查测试样例(&["乾坤/乙府/入口.rs".to_string()]);
+        assert!(结果.contains("测试样例参照"), "应含标题：{结果}");
+        assert!(结果.contains("乙测试"), "应选中测试符号：{结果}");
+        assert!(结果.contains("cfg(test)"), "应含测试写法片段：{结果}");
+        assert!(结果.contains("勿自造测试结构"), "应含照抄提示：{结果}");
+    }
+
+    #[test]
+    fn 查测试样例_无测试档案返回空() {
+        let mut 图 = 造图();
+        图.档案们.retain(|档案| !档案.代码.contains("#[cfg(test)]"));
+        let 结果 = 图.查测试样例(&["乾坤/甲府/入口.rs".to_string()]);
+        assert!(结果.is_empty(), "无测试档案应为空：{结果}");
     }
 }
