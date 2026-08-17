@@ -125,7 +125,6 @@ pub fn 调用模型(配置: &模型配置, 消息们: &[对话消息], 输出上
     let 内容 = 解析回复(&文本)?;
     let 用量 = 解析用量(&文本);
     记回复(角色, "模型连接-府::调用模型", "", &内容, 关联, Some(用量附加(配置, &用量)));
-    落盘收发(消息们, &内容, &用量);
     info!(
         模型 = %配置.模型, 内容长度 = 内容.len(),
         提示词 = 用量.提示词, 输出 = 用量.输出, 缓存命中 = 用量.缓存命中,
@@ -166,7 +165,6 @@ pub fn 调用模型带工具(
     let 用量 = 解析用量(&文本);
     let 概要 = 回复概要(&回复);
     记回复(角色, "模型连接-府::调用模型带工具", "", &概要, 关联, Some(用量附加(配置, &用量)));
-    落盘收发(消息们, &文本, &用量);
     info!(
         模型 = %配置.模型, 内容长度 = 文本.len(),
         提示词 = 用量.提示词, 输出 = 用量.输出, 缓存命中 = 用量.缓存命中,
@@ -382,37 +380,6 @@ fn 配平首个对象(文本: &str) -> Option<&str> {
         }
     }
     None
-}
-
-/// 观测：把一次模型调用的完整提示词、回复原文与 token 用量追加落盘到 临时文件夹/模型流水-观测.log。
-/// 仅用于投递过程复盘（界主要看完整收发流）；写失败静默，不阻断主流程。
-fn 落盘收发(消息们: &[对话消息], 回复: &str, 用量: &用量) {
-    let 根 = std::env::var("WORLD_WORKSPACE_ROOT").unwrap_or_default();
-    if 根.is_empty() {
-        return;
-    }
-    let 路径 = std::path::Path::new(&根).join("临时文件夹").join("模型流水-观测.log");
-    let 时刻 = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|时距| 时距.as_millis())
-        .unwrap_or(0);
-    let mut 块 = format!(
-        "\n========== 模型调用 @ {时刻} ==========\n【用量】提示词={} 输出={} 缓存命中={} 总计={}\n",
-        用量.提示词, 用量.输出, 用量.缓存命中, 用量.总计
-    );
-    for 消息 in 消息们 {
-        块.push_str(&format!("【{}】\n{}\n\n", 消息.角色, 消息.内容));
-        if let Some(调用们) = &消息.工具调用们 {
-            块.push_str(&format!("【工具调用】{:?}\n\n", 调用们));
-        }
-    }
-    块.push_str("【回复】\n");
-    块.push_str(回复);
-    块.push('\n');
-    if let Ok(mut 文件) = std::fs::OpenOptions::new().create(true).append(true).open(&路径) {
-        use std::io::Write;
-        let _ = 文件.write_all(块.as_bytes());
-    }
 }
 
 /// 消息序列化：工具链路用（额外携带 tool_calls / tool_call_id 回传）。

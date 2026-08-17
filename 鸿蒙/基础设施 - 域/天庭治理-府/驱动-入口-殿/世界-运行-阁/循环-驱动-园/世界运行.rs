@@ -191,6 +191,8 @@ pub fn 主政一轮(
     存储: &shihai_fu::模型存储,
     调度: &任务调度,
 ) -> Result<主政回执, String> {
+    // 白箱观测：主政编排（含需求拆分决策）进入鸿钧角色（想法级上下文；要求id在拆分/运行一轮内再细化）。
+    let _观测守卫 = 进入观测(观测角色::鸿钧, Some(想法.id.clone()), None, None);
     let 起始序号 = 下一个要求序号()?;
     let 背景 = shihai_fu::元数据层化(存储, "多宝", &shihai_fu::全部格位(), 3_000).unwrap_or_default();
     // 事件流：想法投递（append-only 事实源，想法级一条）。
@@ -798,10 +800,18 @@ pub fn 落对话记录(发送者: &str, 文本: &str, 可见: &[String]) {
     }
 }
 
+/// 单调唯一 id：毫秒 + 进程内原子序号。防同毫秒并发登记撞 id
+/// （测试实测：并发登记 30 条同毫秒命中，回填按 id 只改首条，其余残留执行中）。
+pub(crate) fn 唯一id(前缀: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static 序号: AtomicU64 = AtomicU64::new(0);
+    format!("{前缀}-{}-{}", shihai_fu::当前毫秒(), 序号.fetch_add(1, Ordering::Relaxed) + 1)
+}
+
 /// 登记任务线：一次对话发布的任务单元入盘（待执行）。
 pub fn 登记任务线(想法: &想法) -> Result<任务线, String> {
     let 任务线 = 任务线 {
-        id: format!("任务线-{}", shihai_fu::当前毫秒()),
+        id: 唯一id("任务线"),
         想法id: 想法.id.clone(),
         想法内容: 想法.内容.clone(),
         要求id: None,
