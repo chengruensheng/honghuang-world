@@ -35,6 +35,7 @@ impl 事件 {
 }
 
 /// 事件流：append-only 落盘读写（.上下文/事件流.jsonl）。
+#[derive(Clone)]
 pub struct 事件流 {
     路径: std::path::PathBuf,
 }
@@ -199,5 +200,35 @@ mod 测试 {
         ];
         let 状态表 = 重放要求状态(&事件们);
         assert!(状态表.is_empty(), "工具调用与验收结论不产生要求状态");
+    }
+
+    /// 并发追加不损坏（2026-08-17 实锤修复：两进程 append 交错致一条物理行拼入两个事件）。
+    /// 多线程并发追加 100 条，读回 100 条全部可解析且无拼接行。
+    #[test]
+    fn 事件流_并发追加不损坏() {
+        let 工作区 = 临时工作区("并发追加");
+        let 流 = 事件流::在工作区(&工作区);
+        let 线程们: Vec<_> = (0..4)
+            .map(|序号| {
+                let 流 = 流.clone();
+                std::thread::spawn(move || {
+                    for 次 in 0..25 {
+                        流.追加事件(事件类型::工具调用, serde_json::json!({"线程": 序号, "次": 次})).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for 线程 in 线程们 {
+            线程.join().unwrap();
+        }
+        // 逐行校验：全部 100 行可独立解析（无拼接行）。
+        let 内容 = std::fs::read_to_string(工作区.上下文目录().join("事件流.jsonl")).unwrap();
+        let 行们: Vec<&str> = 内容.lines().filter(|行| !行.trim().is_empty()).collect();
+        assert_eq!(行们.len(), 100, "并发 4×25 应恰好 100 行（无拼接/无丢失）");
+        for 行 in 行们 {
+            let 事件: 事件 = serde_json::from_str(行).unwrap_or_else(|错误| panic!("存在损坏行：{错误}：{行}"));
+            assert_eq!(事件.类型, 事件类型::工具调用);
+        }
+        let _ = std::fs::remove_dir_all(工作区.根路径());
     }
 }

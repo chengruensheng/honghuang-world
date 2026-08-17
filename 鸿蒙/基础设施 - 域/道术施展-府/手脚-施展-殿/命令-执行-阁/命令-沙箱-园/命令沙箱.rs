@@ -19,8 +19,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-/// 源码区排除目录：记忆数据、版本库、构建物、依赖树不进视图、不进快照。
-const 排除目录们: [&str; 5] = [".上下文", ".git", "道果树", "target", "node_modules"];
+/// 源码区排除目录：记忆数据、版本库、构建物、依赖树、临时目录不进视图、不进快照。
+/// 与 识海承载-府 扫描排除项 对齐（含 临时文件夹——模型观测日志等临时文件不进视图，
+/// 防命令误碰/误判越界，2026-08-17 轮5 体检对齐）。
+const 排除目录们: [&str; 6] = [".上下文", ".git", "道果树", "target", "node_modules", "临时文件夹"];
 
 /// 文件指纹：大小 + 修改纳秒（Windows NTFS 100ns 精度，足够捕捉命令改写）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
