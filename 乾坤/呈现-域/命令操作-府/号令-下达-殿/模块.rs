@@ -17,6 +17,9 @@ pub mod 巡世_执行_阁;
 #[path = "对话-发言-阁/模块.rs"]
 pub mod 对话_发言_阁;
 
+#[path = "世界-驱动-阁/模块.rs"]
+pub mod 世界_驱动_阁;
+
 pub use 想法_投递_阁::*;
 pub use 要求_提审_阁::*;
 pub use 设计_审定_阁::*;
@@ -25,3 +28,4 @@ pub use 版本_定档_阁::*;
 pub use 记忆_回填_阁::*;
 pub use 巡世_执行_阁::*;
 pub use 对话_发言_阁::*;
+pub use 世界_驱动_阁::*;

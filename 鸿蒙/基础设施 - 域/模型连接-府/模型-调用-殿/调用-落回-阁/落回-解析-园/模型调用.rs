@@ -13,6 +13,10 @@ pub const 常规上限: u32 = 16384;
 /// 精简上限：读现状 / 播种归纳 / 补解释等短输出。
 pub const 精简上限: u32 = 4096;
 
+/// 请求超时：单次 HTTP 请求 120 秒上限（ureq 默认无超时，网络挂起会无限卡死整轮任务——
+/// 2026-08-17 实测：任务线驱动在模型设计阶段挂起 5 分钟无进展，CPU 0.08 静止，事件流停滞）。
+pub const 请求超时: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// 瞬时故障判定：HTTP 5xx（服务端错误）与 429/529（过载）可重试；
 /// 4xx 与其他错误不重试（重试无益，直接失败更快暴露问题）。
 pub fn 是瞬时故障(状态码: u16) -> bool {
@@ -82,6 +86,7 @@ pub fn 调用模型(配置: &模型配置, 消息们: &[对话消息], 输出上
     let 响应 = 发送并重试(
         || {
             ureq::post(&配置.地址)
+                .timeout(请求超时)
                 .set("Authorization", &format!("Bearer {}", 配置.密钥))
                 .set("Content-Type", "application/json")
                 .send_string(&请求体)
@@ -117,6 +122,7 @@ pub fn 调用模型带工具(
     let 响应 = 发送并重试(
         || {
             ureq::post(&配置.地址)
+                .timeout(请求超时)
                 .set("Authorization", &format!("Bearer {}", 配置.密钥))
                 .set("Content-Type", "application/json")
                 .send_string(&请求体)

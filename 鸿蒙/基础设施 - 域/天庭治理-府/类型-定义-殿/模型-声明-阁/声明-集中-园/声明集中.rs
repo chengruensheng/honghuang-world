@@ -241,3 +241,30 @@ pub struct 世界状态 {
     pub 项目档案: Option<项目档案>,
     pub 天道报告库: Vec<巡世报告>,
 }
+
+/// 任务线状态（阶段 3 多任务线机制，设计稿 §1.5.5）。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum 任务线状态 {
+    待执行,
+    执行中,
+    已完成,
+    已中止,
+}
+
+/// 任务线：一次对话发布的任务单元，落盘 .上下文/状态/任务线.jsonl。
+/// 守护模式消费待执行任务线；状态推进 待执行→执行中 先到先得（锁文件互斥，防并发双跑）。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct 任务线 {
+    /// "任务线-<毫秒>"。
+    pub id: String,
+    pub 想法id: String,
+    pub 想法内容: String,
+    /// 执行中回填（主政一轮内部生成的要求 id）。
+    pub 要求id: Option<String>,
+    pub 状态: 任务线状态,
+    /// 已完成时的验收结论（通过/打回）。
+    pub 结论: Option<String>,
+    /// 完成时的鸿钧汇报文本（落对话记录，界主追问可见）。
+    pub 汇报: String,
+    pub 时间: u64,
+}

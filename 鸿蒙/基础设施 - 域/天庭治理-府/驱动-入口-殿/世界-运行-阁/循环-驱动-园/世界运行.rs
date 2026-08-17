@@ -1,6 +1,6 @@
 //! 循环 - 驱动 - 园：鸿钧主循环（想法 → 要求 → 设计 → 实现 → 验收 → 定档）。
 
-use crate::类型_定义_殿::{验收回执, 验收结论, 要求状态, 要求书, 想法};
+use crate::类型_定义_殿::{验收回执, 验收结论, 要求状态, 要求书, 想法, 想法状态, 任务线, 任务线状态};
 use crate::终裁回执;
 use daoshu_fu::{任务调度, 读文件, 执行状态};
 use moxing_fu::模型配置;
@@ -660,6 +660,233 @@ fn 打回撤销产物(产物们: &[crate::产物条目], 工作区: &shihai_fu::
         }
     }
     Ok(撤销数)
+}
+
+// ── 任务线（阶段 3 多任务线机制，设计稿 §1.5.5） ──
+
+/// 推进想法状态：读全部 → 改目标 → 原子重写（对话/任务线共用，防目标状态被覆盖）。
+pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> Result<(), String> {
+    let 想法路径 = 状态目录().join("想法.jsonl");
+    let 队列 = crate::落盘队列::<想法>::打开(想法路径.clone());
+    let mut 项们 = 队列.读全部().map_err(|错误| format!("读想法队列失败: {错误}"))?;
+    let mut 命中 = false;
+    for 项 in 项们.iter_mut() {
+        if 项.id == 目标id {
+            项.状态 = 新状态.clone();
+            命中 = true;
+            break;
+        }
+    }
+    if !命中 {
+        return Err(format!("未找到目标想法：{目标id}"));
+    }
+    let 临时路径 = 想法路径.with_extension("jsonl.tmp");
+    let mut 行们 = Vec::with_capacity(项们.len());
+    for 项 in &项们 {
+        let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化想法失败: {错误}"))?;
+        行们.push(行);
+    }
+    let 内容 = if 行们.is_empty() { String::new() } else { format!("{}\n", 行们.join("\n")) };
+    std::fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
+    std::fs::rename(&临时路径, &想法路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
+    info!(目标id, 新状态 = ?新状态, "想法状态已推进");
+    Ok(())
+}
+
+/// 落一条对话记录（追加写，不重写历史；对话/任务线汇报共用）。
+pub fn 落对话记录(发送者: &str, 文本: &str, 可见: &[String]) {
+    #[derive(serde::Serialize)]
+    struct 记录 {
+        发送者: String,
+        文本: String,
+        可见: Vec<String>,
+        时间戳: u64,
+    }
+    let 记录 = 记录 {
+        发送者: 发送者.to_string(),
+        文本: 文本.to_string(),
+        可见: 可见.to_vec(),
+        时间戳: shihai_fu::当前毫秒(),
+    };
+    let 路径 = 状态目录().join("对话.jsonl");
+    if let Ok(行) = serde_json::to_string(&记录) {
+        use std::io::Write;
+        if let Ok(mut 文件) = std::fs::OpenOptions::new().create(true).append(true).open(&路径) {
+            let _ = writeln!(文件, "{行}");
+        }
+    }
+}
+
+/// 登记任务线：一次对话发布的任务单元入盘（待执行）。
+pub fn 登记任务线(想法: &想法) -> Result<任务线, String> {
+    let 任务线 = 任务线 {
+        id: format!("任务线-{}", shihai_fu::当前毫秒()),
+        想法id: 想法.id.clone(),
+        想法内容: 想法.内容.clone(),
+        要求id: None,
+        状态: 任务线状态::待执行,
+        结论: None,
+        汇报: String::new(),
+        时间: shihai_fu::当前毫秒(),
+    };
+    let 队列 = crate::落盘队列::<任务线>::打开(状态目录().join("任务线.jsonl"));
+    队列.入队(&任务线)?;
+    info!(任务线id = %任务线.id, "任务线已登记（待执行）");
+    Ok(任务线)
+}
+
+/// 领取一条待执行任务线：锁文件互斥（create_new 原子），先到先得，防并发双跑。
+/// 陈旧锁（>30 秒）视为崩溃残留，删除重试。
+pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
+    let 锁路径 = 状态目录().join("任务线.lock");
+    // 陈旧锁清理：锁文件存在但超过 30 秒（持有者进程崩溃的残留）。
+    if let Ok(元) = std::fs::metadata(&锁路径) {
+        if let Ok(修改) = 元.modified() {
+            if let Ok(龄) = 修改.elapsed() {
+                if 龄.as_secs() > 30 {
+                    warn!(路径 = %锁路径.display(), "任务线锁已陈旧，清理重试");
+                    let _ = std::fs::remove_file(&锁路径);
+                }
+            }
+        }
+    }
+    let 锁 = match std::fs::OpenOptions::new().write(true).create_new(true).open(&锁路径) {
+        Ok(锁) => 锁,
+        Err(_) => return Ok(None), // 他人持有锁，本轮不抢
+    };
+    let 结果 = (|| -> Result<Option<任务线>, String> {
+        let 路径 = 状态目录().join("任务线.jsonl");
+        let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
+        let mut 项们 = 队列.读全部().map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+        let 位置 = 项们.iter().position(|线| 线.状态 == 任务线状态::待执行);
+        let 领取 = match 位置 {
+            Some(索引) => {
+                let 目标 = 项们[索引].clone();
+                项们[索引].状态 = 任务线状态::执行中;
+                持久化任务线们(&路径, &项们)?;
+                Some(目标)
+            }
+            None => None,
+        };
+        Ok(领取)
+    })();
+    drop(锁);
+    let _ = std::fs::remove_file(&锁路径);
+    结果
+}
+
+/// 读全部任务线（供状态查询/守护轮询判断）。
+pub fn 读任务线们() -> Result<Vec<任务线>, String> {
+    crate::落盘队列::<任务线>::打开(状态目录().join("任务线.jsonl"))
+        .读全部()
+        .map_err(|错误| format!("读任务线队列失败: {错误}"))
+}
+
+/// 任务线落盘（读改写后原子重写，与 持久化要求们 同款）。
+fn 持久化任务线们(路径: &std::path::Path, 项们: &[任务线]) -> Result<(), String> {
+    let 临时路径 = 路径.with_extension("jsonl.tmp");
+    let mut 行们 = Vec::with_capacity(项们.len());
+    for 项 in 项们 {
+        let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化任务线失败: {错误}"))?;
+        行们.push(行);
+    }
+    let 内容 = if 行们.is_empty() { String::new() } else { format!("{}\n", 行们.join("\n")) };
+    std::fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
+    std::fs::rename(&临时路径, 路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
+    Ok(())
+}
+
+/// 回填任务线结果：要求id / 结论 / 汇报 → 状态 已完成。
+pub fn 回填任务线结果(任务线id: &str, 要求id: &str, 结论: &str, 汇报: &str) -> Result<(), String> {
+    let 路径 = 状态目录().join("任务线.jsonl");
+    let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
+    let mut 项们 = 队列.读全部().map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+    let mut 命中 = false;
+    for 项 in 项们.iter_mut() {
+        if 项.id == 任务线id {
+            项.要求id = Some(要求id.to_string());
+            项.结论 = Some(结论.to_string());
+            项.汇报 = 汇报.to_string();
+            项.状态 = 任务线状态::已完成;
+            命中 = true;
+            break;
+        }
+    }
+    if !命中 {
+        return Err(format!("未找到任务线：{任务线id}"));
+    }
+    持久化任务线们(&路径, &项们)
+}
+
+/// 执行一条待执行任务线（守护/驱动共用）：领取 → 主政一轮全链 → 回填结果 → 汇报入对话记录。
+/// 返回 Some(汇报) 表示消费了一条；None 表示无待执行（或锁被他人持有）。
+pub fn 执行一条待执行任务线(
+    配置: &模型配置,
+    存储: &shihai_fu::模型存储,
+) -> Result<Option<String>, String> {
+    let 任务线 = match 领取待执行任务线()? {
+        Some(任务线) => 任务线,
+        None => return Ok(None),
+    };
+    info!(任务线id = %任务线.id, "任务线开始执行");
+    let 想法 = 想法 {
+        id: 任务线.想法id.clone(),
+        内容: 任务线.想法内容.clone(),
+        时间: 任务线.时间,
+        状态: 想法状态::未处理,
+    };
+    // 想法入池（与对话发布任务同链路，保证想法.jsonl 可追溯）。
+    let 想法路径 = 状态目录().join("想法.jsonl");
+    let 想法池 = crate::落盘队列::<想法>::打开(想法路径.clone());
+    if let Err(错误) = 想法池.入队(&想法) {
+        error!(任务线id = %任务线.id, "想法入池失败：{错误}");
+        return Err(错误);
+    }
+    let 工作区根 = std::env::var("WORLD_WORKSPACE_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
+    let mut 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根);
+    let (汇报, 结论) = match crate::主政一轮(&想法, 配置, 存储, &mut 调度) {
+        Ok(回执) => {
+            let 验收 = crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"));
+            for 回执 in &回执.回执们 {
+                let _ = 验收.入队(回执);
+            }
+            let 结论 = match 回执.结论 {
+                验收结论::通过 => "通过",
+                验收结论::打回 => "打回",
+            };
+            let 明细 = 回执
+                .回执们
+                .iter()
+                .map(|回执| format!("{} {:?}", 回执.验收.要求id, 回执.验收.结论))
+                .collect::<Vec<_>>()
+                .join("；");
+            let 汇报 = format!("任务线 {} 完成：{结论}（{}）", 任务线.id, 明细);
+            // 想法状态按汇总结论推进。
+            let 新状态 = match 回执.结论 {
+                验收结论::通过 => 想法状态::已化为要求,
+                验收结论::打回 => 想法状态::已打回,
+            };
+            let _ = 推进想法状态(&想法.id, 新状态);
+            // 回填任务线（取首个回执的要求id 作为主线 id）。
+            let 要求id = 回执.回执们.first().map(|回执| 回执.验收.要求id.clone()).unwrap_or_else(|| 任务线.id.clone());
+            let _ = 回填任务线结果(&任务线.id, &要求id, 结论, &汇报);
+            (汇报, 结论.to_string())
+        }
+        Err(错误) => {
+            error!(任务线id = %任务线.id, 错误 = %错误, "任务线执行失败");
+            let _ = 推进想法状态(&想法.id, 想法状态::已打回);
+            let 汇报 = format!("任务线 {} 执行失败：{错误}", 任务线.id);
+            let _ = 回填任务线结果(&任务线.id, &任务线.id, "打回", &汇报);
+            (汇报, "打回".to_string())
+        }
+    };
+    // 汇报写对话记录（鸿钧 → 界主），界主追问可见；事件格位同步留痕。
+    let _ = crate::落对话记录("鸿钧", &汇报, &["界主".to_string(), "鸿钧".to_string()]);
+    let _ = 存储.写记录(&shihai_fu::记录::新("事件", &format!("任务线汇报：{汇报}"), "鸿钧", "代码"));
+    info!(任务线id = %任务线.id, 结论 = %结论, "任务线执行完成");
+    Ok(Some(汇报))
 }
 
 #[cfg(test)]

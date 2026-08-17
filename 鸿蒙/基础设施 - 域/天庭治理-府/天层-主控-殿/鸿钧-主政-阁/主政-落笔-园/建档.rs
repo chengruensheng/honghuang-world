@@ -5,8 +5,7 @@
 use crate::类型_定义_殿::{
     构建状态, 成熟度, 项目档案, 规模统计, 世界状态,
 };
-use rizhi_fu::{info, warn};
-use std::collections::BTreeSet;
+use rizhi_fu::info;
 
 /// 扫描工作区生成项目档案（纯机械事实，不调 LLM）。
 pub fn 生成项目档案() -> 项目档案 {
