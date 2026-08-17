@@ -143,4 +143,29 @@ mod 测试 {
         assert!(错.contains("强杀"), "应说明子进程已被强杀：{错}");
         let _ = fs::remove_dir_all(&根);
     }
+
+    /// 构建自证走沙箱后，真实区不被 cargo 副作用污染（2026-08-17 直播实锤修复：
+    /// 原在真实区跑 cargo build，模型改 Cargo.toml 后 cargo 连锁更新真实区 Cargo.lock，
+    /// 不经沙箱越界检测、不在回滚垫，打回撤销不恢复——根级文件被污染）。
+    /// 机制验证：cargo 在视图内生成 Cargo.lock → 沙箱判越界删除，真实区保持无锁文件。
+    #[test]
+    fn 沙箱内cargo构建不污染真实区锁文件() {
+        let 根 = std::env::temp_dir().join(format!("证道_命令沙箱_锁文件_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&根);
+        fs::create_dir_all(根.join("src")).unwrap();
+        fs::write(
+            根.join("Cargo.toml"),
+            "[package]\nname = \"锁文件沙箱\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(根.join("src").join("lib.rs"), "pub fn 甲() {}\n").unwrap();
+        let 沙箱 = 沙箱视图::打开(&根, "任务T");
+        let 回执 = 沙箱.运行("cargo", &["build"], None, None).unwrap();
+        assert!(
+            !根.join("Cargo.lock").exists(),
+            "真实区不应出现 Cargo.lock（视图内生成的应被越界清理）：{}",
+            回执.越界详情
+        );
+        let _ = fs::remove_dir_all(&根);
+    }
 }

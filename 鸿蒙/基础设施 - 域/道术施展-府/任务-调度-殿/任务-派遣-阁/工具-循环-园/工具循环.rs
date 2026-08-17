@@ -313,6 +313,7 @@ pub fn 执行工具循环(
     剩余预算: usize,
     工作区根: &PathBuf,
     事件流: Option<&事件流>,
+    涉及路径: &[String],
 ) -> Result<工具循环回执, 工具循环失败> {
     let 轮数上限 = 剩余预算;
     let token任务预算 = 任务_token预算();
@@ -428,7 +429,7 @@ pub fn 执行工具循环(
                 for (调用序号, 调用) in 调用们.iter().enumerate() {
                     let 摘要 = 参数摘要(&调用);
                     let 执行前 = 写入文件们.len();
-                    let 结果 = match 执行工具(&调用, 工作区根, &mut 写入文件们) {
+                    let 结果 = match 执行工具(&调用, 工作区根, &mut 写入文件们, 涉及路径) {
                         Ok(结果) => 结果,
                         Err(错误) => format!("工具执行失败：{错误}"),
                     };
