@@ -42,12 +42,26 @@ fn 统计规模(根: &std::path::Path) -> 规模统计 {
     规模统计 { rs文件数: rs文件数 as u32, 总行数, crate数 }
 }
 
+/// 扫描排除项：与识海承载-府 扫描排除一致（版本库/构建物/临时/工具目录不入世界认知）。
+fn 应排除(路径: &std::path::Path) -> bool {
+    const 排除名们: &[&str] = &[
+        ".git", ".svn", ".hg", ".上下文", ".cargo", ".arts", ".codeartsdoer", "target",
+        "node_modules", "vendor", "临时文件夹", "道果树",
+    ];
+    if let Some(名) = 路径.file_name().and_then(|名| 名.to_str()) {
+        return 排除名们.contains(&名);
+    }
+    false
+}
+
 fn 递归统计(目录: &std::path::Path, rs文件数: &mut usize, 总行数: &mut u64) {
     if let Ok(条目们) = std::fs::read_dir(目录) {
         for 条目 in 条目们.flatten() {
             let 路径 = 条目.path();
             if 路径.is_dir() {
-                递归统计(&路径, rs文件数, 总行数);
+                if !应排除(&路径) {
+                    递归统计(&路径, rs文件数, 总行数);
+                }
             } else if 路径.extension().and_then(|e| e.to_str()) == Some("rs") {
                 *rs文件数 += 1;
                 if let Ok(内容) = std::fs::read_to_string(&路径) {
@@ -109,7 +123,7 @@ fn 递归找空园(目录: &std::path::Path, 坑们: &mut Vec<String>) {
     if let Ok(条目们) = std::fs::read_dir(目录) {
         for 条目 in 条目们.flatten() {
             let 路径 = 条目.path();
-            if 路径.is_dir() {
+            if 路径.is_dir() && !应排除(&路径) {
                 递归找空园(&路径, 坑们);
             }
         }
