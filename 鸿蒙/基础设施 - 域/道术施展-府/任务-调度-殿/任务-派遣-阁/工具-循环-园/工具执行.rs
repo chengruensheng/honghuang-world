@@ -8,13 +8,79 @@ use std::path::PathBuf;
 /// 单文件落盘内容上限（字节）：超限拒写，防一次性灌爆盘面。
 pub(crate) const 落盘内容上限: usize = 512 * 1024;
 
+/// 源码维度缓存：目录绝对路径 → 该目录（含子孙）是否含源码（.rs / Cargo.toml）。
+/// 写文件次次校验，递归扫盘太贵；维度归属基本不变，进程内缓存一次即可。
+static 源码维度缓存: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, bool>>> =
+    std::sync::OnceLock::new();
+
+/// 目录（含子孙）是否含源码：递归找 `.rs` 或 `Cargo.toml`，跳过构建/记忆等非源码目录。
+/// 命中缓存直接返回；未命中则实扫一次并落缓存。
+fn 目录含源码(目录: &PathBuf) -> bool {
+    let 缓存 = 源码维度缓存.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Some(&命中) = 缓存.lock().unwrap().get(目录) {
+        return 命中;
+    }
+    fn 递归找(目录: &std::path::Path) -> bool {
+        let Ok(条目们) = std::fs::read_dir(目录) else { return false };
+        for 条目 in 条目们.flatten() {
+            let 路径 = 条目.path();
+            let 名 = 条目.file_name().to_string_lossy().to_string();
+            if 路径.is_dir() {
+                // 构建产物/记忆/版本库目录不视为源码维度，跳过防误判与耗时
+                if matches!(名.as_str(), "target" | ".git" | ".上下文" | "道果树") {
+                    continue;
+                }
+                if 递归找(&路径) {
+                    return true;
+                }
+            } else if 名.ends_with(".rs") || 名 == "Cargo.toml" {
+                return true;
+            }
+        }
+        false
+    }
+    let 有 = 递归找(目录);
+    缓存.lock().unwrap().insert(目录.clone(), 有);
+    有
+}
+
+/// 根内越界校验（源码维度白名单）：目标路径必须落在「含源码的维度目录」内。
+/// - 根级文件（Cargo.toml/AGENTS.md/设计稿 .md）一律拒写；
+/// - 点开头隐藏目录（.上下文/.git）拒写（记忆/版本库/依赖图等非源码资产，执行者不得写）；
+/// - 首段目录已存在但无源码（太初等空壳维度）拒写；
+/// - 首段目录尚不存在（新园/新阁首次落盘）放行，由调用方后续 canonicalize 根内校验把关。
+/// 写/改/删共用同一把尺；路径须已用 `/` 归一、去首尾空白。
+pub fn 校验路径范围(根: &PathBuf, 路径: &str) -> Result<(), String> {
+    let 首段 = 路径.split('/').next().unwrap_or("");
+    if 路径.contains('/') {
+        if 首段.starts_with('.') {
+            return Err(format!(
+                "根内越界拒绝：{路径}（隐藏目录 {首段} 非源码资产，拒写；执行者只能写源码维度目录）"
+            ));
+        }
+        let 维度目录 = 根.join(首段);
+        if 维度目录.is_dir() && !目录含源码(&维度目录) {
+            return Err(format!(
+                "根内越界拒绝：{路径}（{首段} 为非源码维度，拒写；新文件只能建在含源码的维度目录内）"
+            ));
+        }
+    } else if !路径.contains('/') && !首段.is_empty() && !首段.ends_with(".rs") {
+        return Err(format!(
+            "根内越界拒绝：{路径}（根级非源码文件拒写；源码 .rs 可建在根级，其余文件须在维度目录内）"
+        ));
+    }
+    Ok(())
+}
+
 /// 落盘护栏：不依赖模型自觉，系统侧强制。
 /// 1) 内容为空拒写——防空文件静默破坏（空文件编译通过但内容全丢）；
 /// 2) 内容超长拒写——防一次性灌爆盘面/上下文；
-/// 3) 路径越界拒绝——从目标路径逐级上溯最近已存在祖先，规范化后必须位于工作区根内（防 ../ 逃逸）。
+/// 3) 根内越界拒绝（源码维度白名单）——见 校验路径范围；
+/// 4) 路径越界拒绝——从目标路径逐级上溯最近已存在祖先，规范化后必须位于工作区根内（防 ../ 逃逸）。
 /// 工具模式与纯文本回退共用，保证两条落盘路径同等受约束。
 pub fn 校验落盘(根: &PathBuf, 路径: &str, 内容: &str) -> Result<(), String> {
-    if 路径.trim().is_empty() {
+    let 路径 = 路径.trim().replace('\\', "/");
+    if 路径.is_empty() {
         return Err("拒写：路径为空".to_string());
     }
     if 内容.trim().is_empty() {
@@ -23,8 +89,9 @@ pub fn 校验落盘(根: &PathBuf, 路径: &str, 内容: &str) -> Result<(), Str
     if 内容.len() > 落盘内容上限 {
         return Err(format!("拒写超长文件：{路径}（{} 字节，超上限 {落盘内容上限}）", 内容.len()));
     }
+    校验路径范围(根, &路径)?;
     let 根规范 = 根.canonicalize().map_err(|错误| format!("工作区根无法解析：{错误}"))?;
-    let 绝对 = 根.join(路径);
+    let 绝对 = 根.join(&路径);
     let mut 检查 = 绝对.as_path();
     loop {
         if let Ok(规范) = 检查.canonicalize() {
@@ -114,6 +181,11 @@ pub(crate) fn 执行工具(
             let 文本们 = 路径们.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>();
             if 文本们.is_empty() {
                 return Err("路径们 为空".to_string());
+            }
+            // 删文件同走根内越界校验（源码维度白名单），防执行者删根级/记忆/空壳维度资产
+            //（设计稿 §4.3 规则 2：删文件与写/改同走路径越界校验）。
+            for 路径 in &文本们 {
+                校验路径范围(根, &路径.trim().replace('\\', "/"))?;
             }
             let 绝对的 = 文本们.iter().map(|路径| 根.join(路径)).collect::<Vec<_>>();
             let 字符串们 = 绝对的.iter().map(|路径| 路径.to_string_lossy().into_owned()).collect::<Vec<String>>();

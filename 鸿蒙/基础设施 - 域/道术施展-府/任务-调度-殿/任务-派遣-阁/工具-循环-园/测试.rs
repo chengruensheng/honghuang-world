@@ -158,6 +158,66 @@ fn 工具护栏_统一入口解耦() {
     let _ = fs::remove_dir_all(&根);
 }
 
+/// 源码维度白名单：根级非 .rs 文件（Cargo.toml/设计稿/AGENTS.md）与隐藏目录（.上下文）
+/// 拒写；真实源码维度目录内放行；空壳维度（无源码）拒写；根级 .rs 放行。
+#[test]
+fn 源码维度白名单_拦根内越界() {
+    let 根 = 临时目录("白名单");
+    // 造一个含源码的维度目录 + 一个空壳维度目录。
+    fs::create_dir_all(根.join("鸿蒙/基础设施 - 域/测试-府")).unwrap();
+    fs::write(根.join("鸿蒙/基础设施 - 域/测试-府/Cargo.toml"), "[package]").unwrap();
+    fs::create_dir_all(根.join("太初/仅说明")).unwrap();
+    fs::write(根.join("太初/仅说明/维度说明.md"), "说明文档").unwrap();
+
+    // 根级非源码文件：拒写。
+    let 根级 = 校验落盘(&根, "Cargo.toml", "成员");
+    assert!(根级.is_err() && 根级.unwrap_err().contains("根内越界"), "根 Cargo.toml 应拒写");
+    let 根级md = 校验落盘(&根, "多智能体架构设计.md", "设计");
+    assert!(根级md.is_err(), "根级 .md 设计稿应拒写");
+
+    // 根级 .rs：放行（本质是源码，可新建）。
+    assert!(校验落盘(&根, "根.rs", "pub fn 甲() {}").is_ok(), "根级 .rs 应放行");
+
+    // 隐藏目录：拒写（记忆/版本库等非源码资产）。
+    let 隐 = 校验落盘(&根, ".上下文/事件流.jsonl", "{}");
+    assert!(隐.is_err() && 隐.unwrap_err().contains("隐藏目录"), ".上下文 应拒写");
+
+    // 空壳维度：拒写（太初无源码，臆造目录的实测根因）。
+    let 壳 = 校验落盘(&根, "太初/星宿-殿/星轨绘制.rs", "代码");
+    assert!(壳.is_err() && 壳.unwrap_err().contains("非源码维度"), "空壳维度应拒写");
+
+    // 源码维度内：放行。
+    assert!(
+        校验落盘(&根, "鸿蒙/基础设施 - 域/测试-府/新.rs", "代码").is_ok(),
+        "源码维度内应放行"
+    );
+    let _ = fs::remove_dir_all(&根);
+}
+
+/// 删文件同走源码维度白名单：删根级非源码文件与隐藏目录资产应被拦。
+#[test]
+fn 删文件_同走白名单() {
+    let 根 = 临时目录("删护栏");
+    fs::create_dir_all(根.join("鸿蒙/测试-府")).unwrap();
+    fs::write(根.join("鸿蒙/测试-府/Cargo.toml"), "[package]").unwrap();
+    fs::write(根.join("Cargo.toml"), "成员").unwrap();
+    fs::create_dir_all(根.join(".上下文")).unwrap();
+    fs::write(根.join(".上下文/状态.json"), "{}").unwrap();
+
+    let mut 写入 = Vec::new();
+    // 删根级 Cargo.toml：拒。
+    let 删根级 = 造调用("删文件", r#"{"路径们":["Cargo.toml"]}"#);
+    assert!(执行工具(&删根级, &根, &mut 写入).is_err(), "删根级 Cargo.toml 应被拦");
+    // 删 .上下文 资产：拒。
+    let 删隐藏 = 造调用("删文件", r#"{"路径们":[".上下文/状态.json"]}"#);
+    assert!(执行工具(&删隐藏, &根, &mut 写入).is_err(), "删 .上下文 应被拦");
+    // 删源码维度内文件：放行（先造一个）。
+    fs::write(根.join("鸿蒙/测试-府/待删.rs"), "代码").unwrap();
+    let 删源码 = 造调用("删文件", r#"{"路径们":["鸿蒙/测试-府/待删.rs"]}"#);
+    assert!(执行工具(&删源码, &根, &mut 写入).is_ok(), "删源码维度内文件应放行");
+    let _ = fs::remove_dir_all(&根);
+}
+
 /// 读格位/查格位历史：临时工作区造格位记录，验证链头集窗口与历史窗口。
 /// 用 WORLD_WORKSPACE_ROOT 指向临时工作区，读格位分支经 工作区::定位() 取到。
 #[test]
