@@ -4,3 +4,5 @@ pub mod 要求_提审_模板;
 pub mod 巡世_扫描_园;
 #[path = "主政-落笔-园/模块.rs"]
 pub mod 主政_落笔_园;
+#[path = "离线主链路-园/模块.rs"]
+pub mod 离线主链路_园;
