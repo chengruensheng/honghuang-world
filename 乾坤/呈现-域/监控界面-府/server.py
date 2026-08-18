@@ -538,8 +538,9 @@ def background_scan():
 # ===== HTTP 路由 =====
 
 class MonHandler(http.server.BaseHTTPRequestHandler):
-    # SSE 必须 HTTP/1.1 + chunked，否则一次写完即被关。
-    protocol_version = "HTTP/1.1"
+    # HTTP/1.0 + Connection: close 既兼容现代 client（看 Content-Length）也避免 keep-alive 副作用；
+    # SSE 路径用 Transfer-Encoding: chunked 解决一次响应多帧。
+    protocol_version = "HTTP/1.0"
     def log_message(self, fmt, *args):
         return
 
@@ -553,6 +554,7 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         try:
             self.wfile.write(body)
+            self.wfile.flush()
         except Exception:
             pass
 
@@ -564,6 +566,7 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         try:
             self.wfile.write(body)
+            self.wfile.flush()
         except Exception:
             pass
 
@@ -606,18 +609,24 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/tasks":
             self._send_json({"tasks": get_tasks_list(), "ts": int(time.time()*1000)})
         elif path == "/api/events/recent":
-            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             try:
-                limit = int(q.get("limit", [str(EVENT_FOLLOW_RECENT_LIMIT)])[0])
-            except Exception:
-                limit = EVENT_FOLLOW_RECENT_LIMIT
-            if limit < 1:
-                limit = 1
-            if limit > 1000:
-                limit = 1000
-            rows, size = 读事件流最近(limit)
-            rows = list(reversed(rows))
-            self._send_json({"events": rows, "size": size, "limit": limit, "ts": int(time.time()*1000)})
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                try:
+                    limit = int(q.get("limit", [str(EVENT_FOLLOW_RECENT_LIMIT)])[0])
+                except Exception:
+                    limit = EVENT_FOLLOW_RECENT_LIMIT
+                if limit < 1:
+                    limit = 1
+                if limit > 1000:
+                    limit = 1000
+                rows, size = 读事件流最近(limit)
+                rows = list(reversed(rows))
+                self._send_json({"events": rows, "size": size, "limit": limit, "ts": int(time.time()*1000)})
+            except Exception as e:
+                try:
+                    self._send_json({"error": str(e), "events": [], "size": 0}, 500)
+                except Exception:
+                    pass
         elif path == "/api/events/stream":
             self._send_events_sse()
         elif path.startswith("/api/sessions/") and path.endswith("/steps"):
@@ -711,18 +720,31 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
 
     def _send_events_sse(self):
         """步骤直播 v3：单源订阅 .上下文/事件流.jsonl 字节增量；payload 固定 {type:'event', ev:<row>}。"""
+        global EVENT_FOLLOW_LAST_SIZE
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Transfer-Encoding", "chunked")
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
+        self._chunked = True
+        def _w(body):
+            # chunked: <hex size>\r\n<data>\r\n
+            try:
+                self.wfile.write(('%X\r\n' % len(body)).encode())
+                self.wfile.write(body)
+                self.wfile.write(b'\r\n')
+                self.wfile.flush()
+            except Exception:
+                return False
+            return True
+        def _w_comment(text):
+            return _w((': ' + text + '\r\n').encode())
         with EVENT_FOLLOW_LOCK:
             last = EVENT_FOLLOW_LAST_SIZE
         try:
-            self.wfile.write(b": stream-open\n\n")
-            self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError):
+            _w_comment("stream-open")
+        except Exception:
             return
         beat = 0
         try:
@@ -732,20 +754,13 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
                     for ev in new_rows:
                         payload = {"type": "event", "ev": ev}
                         line = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
-                        try:
-                            self.wfile.write(line)
-                            self.wfile.flush()
-                        except (BrokenPipeError, ConnectionResetError):
+                        if not _w(line):
                             return
-                    with EVENT_FOLLOW_LOCK:
-                        EVENT_FOLLOW_LAST_SIZE = new_last
+                    EVENT_FOLLOW_LAST_SIZE = new_last
                     last = new_last
                 beat += 1
                 if beat % 5 == 0:
-                    try:
-                        self.wfile.write(b": ping\n\n")
-                        self.wfile.flush()
-                    except (BrokenPipeError, ConnectionResetError):
+                    if not _w_comment("ping"):
                         return
                 time.sleep(0.3)
         except (BrokenPipeError, ConnectionResetError):

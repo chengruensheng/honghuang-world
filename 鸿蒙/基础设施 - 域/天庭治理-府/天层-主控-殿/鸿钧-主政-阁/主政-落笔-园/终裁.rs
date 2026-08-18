@@ -483,10 +483,12 @@ fn 产物内容摘要(产物们: &[产物条目]) -> String {
 /// - 其余文本（.toml/.yaml/.yml/.txt）：截断首 500 字符。
 fn 文本骨架(路径: &str, 内容: &str) -> String {
     if 路径.ends_with(".md") {
+        // §14.16 修正：取所有 `#` 开头行（主标题+##章节+###小节，上限 10 条）——
+        // 初版过滤 ## 导致骨架只剩主标题，准圣仍"凭字节猜"（实测装配-配置-说明.md）。
         let 标题们: Vec<&str> = 内容
             .lines()
             .map(|行| 行.trim())
-            .filter(|行| 行.starts_with('#') && !行.starts_with("##")) // 一级标题为主，避免章节噪音
+            .filter(|行| 行.starts_with('#'))
             .take(10)
             .collect();
         if !标题们.is_empty() {
