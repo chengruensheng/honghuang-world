@@ -22,6 +22,26 @@ PORT = 3082
 # 噪音工具: 聚合时间线时折叠
 噪音工具 = {"读文件", "列举目录", "寻找文件", "搜索内容"}
 
+# 概要模式: 观测列表/还原链默认只返回每条内容前 概要前缀字符 + 元数据,
+# 避免一次性拉 5MB 全文卡死页面; 点开某条时前端请求 /api/record?id=<时间戳> 取完整正文。
+概要前缀字符 = 400
+
+def 概要化(r):
+    """把一条观测记录压成概要(元数据 + 内容前 概要前缀字符), 不含完整正文。"""
+    载荷 = r.get("载荷") or {}
+    内容 = 载荷.get("内容") or ""
+    截断 = 内容[:概要前缀字符]
+    截断 = 截断 + ("…" if len(内容) > 概要前缀字符 else "")
+    return {
+        "时间戳": r.get("时间戳"),
+        "域": r.get("域"),
+        "接口": r.get("接口"),
+        "角色": r.get("角色"),
+        "关联": r.get("关联"),
+        "载荷": {"内容": 截断, "附加": 载荷.get("附加")},
+        "_有全文": bool(内容) and len(内容) > 概要前缀字符,
+    }
+
 def exists(p):
     return os.path.isfile(p)
 
@@ -119,41 +139,60 @@ def timeline(require_filter=True):
     return 行s[-600:]
 
 def obs_blocks(maxn=40):
-    """白箱观测: 读 记录.jsonl 尾部 maxn 条(统一积和类型 观测记录)。
-    每条含 时间戳/域/接口/角色/载荷(内容+附加)/关联(任务线/要求/轮次/标识)。
-    供 模型观测 页分层呈现与下探完整上下文。
-    """
+    """白箱观测: 读 记录.jsonl 尾部 maxn 条, 概要模式(轻量)。"""
     recs = load_jsonl(OBSREC)
-    return recs[-maxn:]
+    return [概要化(r) for r in recs[-maxn:]]
 
 def records(q=None):
     """白箱观测: 读 记录.jsonl, 支持查询参数过滤。
-    q: dict, 可含 域/角色/接口 子串, 要求/任务线 精确 id; 空则全量(尾部)。
+    q: dict, 可含 域/角色/要求/任务线/接口, 及 n(条数), full=1(返回完整正文)。
+    默认概要模式, 避免一次性拉 5MB 全文卡死页面。
     """
     recs = load_jsonl(OBSREC)
-    if not q: return recs[-500:]
-    out = []
-    for r in recs:
-        if q.get("域") and r.get("域") != q["域"]: continue
-        if q.get("角色") and r.get("角色") != q["角色"]: continue
-        if q.get("要求"):
-            关联 = r.get("关联") or {}
-            if 关联.get("要求") != q["要求"]: continue
-        if q.get("任务线"):
-            关联 = r.get("关联") or {}
-            if 关联.get("任务线") != q["任务线"]: continue
-        if q.get("接口") and q["接口"] not in (r.get("接口") or ""): continue
-        out.append(r)
-    return out[-500:]
+    if any(q and q.get(k) for k in ("域", "角色", "要求", "任务线", "接口")):
+        out = []
+        for r in recs:
+            if q.get("域") and r.get("域") != q["域"]: continue
+            if q.get("角色") and r.get("角色") != q["角色"]: continue
+            if q.get("要求"):
+                关联 = r.get("关联") or {}
+                if 关联.get("要求") != q["要求"]: continue
+            if q.get("任务线"):
+                关联 = r.get("关联") or {}
+                if 关联.get("任务线") != q["任务线"]: continue
+            if q.get("接口") and q["接口"] not in (r.get("接口") or ""): continue
+            out.append(r)
+    else:
+        out = recs
+    limit = int(q.get("n")) if q and q.get("n") else 100
+    out = out[-limit:]
+    if not (q and q.get("full") == "1"):
+        out = [概要化(r) for r in out]
+    return out
 
-def chain(requirement_id):
+def chain(requirement_id, full=False):
     """白箱还原: 按 要求id 抽出该要求关联的全部观测记录, 按时间戳重排。
-    供「准确知晓项目理解、准确找 Bug」——还原一次要求的完整执行链。
+    默认概要; full=True 返回完整正文。
     """
     recs = [r for r in load_jsonl(OBSREC)
             if (r.get("关联") or {}).get("要求") == requirement_id]
     recs.sort(key=lambda r: r.get("时间戳", 0))
+    if not full:
+        recs = [概要化(r) for r in recs]
     return recs
+
+def record_by_id(ts):
+    """按 时间戳 取单条完整观测记录(点开概要时调用)。"""
+    if ts is None:
+        return None
+    try:
+        ts = int(ts)
+    except (TypeError, ValueError):
+        return None
+    for r in load_jsonl(OBSREC):
+        if r.get("时间戳") == ts:
+            return r
+    return None
 
 def spill_index():
     """spill 目录超大结果索引(下探文件正文)。"""
@@ -189,7 +228,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             elif path == "/api/obs": self._json(obs_blocks())
             elif path == "/api/records": self._json(records(q))
             elif path == "/api/chain":
-                self._json(chain(q.get("要求", "")))
+                self._json(chain(q.get("要求", ""), full=(q.get("full") == "1")))
+            elif path == "/api/record":
+                self._json(record_by_id(q.get("id")))
             elif path == "/api/spill": self._json(spill_index())
             else:
                 html = b""

@@ -96,15 +96,25 @@ fn 追加要求(要求: &要求书) -> Result<(), String> {
 }
 
 /// 下一个要求序号：读要求.jsonl 现有最大序号 +1（全局递增，防并发任务线 id 撞车；设计稿 §1.5.5 拍板 7）。
+/// 并发安全：进程内 AtomicU64 单调（初始化 0→基准=磁盘 max；之后 fetch_add 返回 max+1、max+2…），
+/// 并发多线程绝不重复；重启后重新读磁盘 max 作基准，跨进程/跨重启也不撞。
 fn 下一个要求序号() -> Result<u64, String> {
-    let 队列 = crate::落盘队列::<要求书>::打开(状态目录().join("要求.jsonl"));
-    let 全部 = 队列.读全部().map_err(|错误| format!("读要求队列失败: {错误}"))?;
-    let 最大 = 全部
-        .iter()
-        .filter_map(|要求| 要求.id.strip_prefix("要求-").and_then(|尾| 尾.parse::<u64>().ok()))
-        .max()
-        .unwrap_or(0);
-    Ok(最大 + 1)
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static 序号基准: AtomicU64 = AtomicU64::new(0);
+    // 惰性初始化：首次读到磁盘当前最大序号作基准（#0 哨兵 = 未初始化）。
+    let 当前 = 序号基准.load(Ordering::Relaxed);
+    if 当前 == 0 {
+        let 队列 = crate::落盘队列::<要求书>::打开(状态目录().join("要求.jsonl"));
+        let 全部 = 队列.读全部().map_err(|错误| format!("读要求队列失败: {错误}"))?;
+        let 最大 = 全部
+            .iter()
+            .filter_map(|要求| 要求.id.strip_prefix("要求-").and_then(|尾| 尾.parse::<u64>().ok()))
+            .max()
+            .unwrap_or(0);
+        // CAS 初始化基准为 max；并发首屏只有一线程赢, 其余用磁盘旧值(仍被 fetch_add 保证唯一)。
+        序号基准.compare_exchange(0, 最大, Ordering::SeqCst, Ordering::SeqCst).unwrap_or_default();
+    }
+    Ok(序号基准.fetch_add(1, Ordering::Relaxed) + 1)
 }
 
 /// 持进程级排他锁读队列文件（复合「读→改→写」用：锁贯穿到调用方持久化后释放）。
@@ -1294,6 +1304,36 @@ mod 测试 {
         let 文本 = 汇总打回意见(&回执);
         assert!(文本.contains("业务正确性"), "{文本}");
         assert!(文本.contains("缺验收条目覆盖"), "{文本}");
+    }
+
+    /// 并发要求序号唯一性（2026-08-18 并发消费改造）：多线程并发调 下一个要求序号 必须互不重复，
+    /// 否则并发任务会撞 要求id，导致状态推进/验收互相覆盖。
+    #[test]
+    fn 并发要求序号互不重复() {
+        use std::collections::HashSet;
+        let 线程数 = 8;
+        let 每条 = 50usize;
+        let 结果 = std::thread::scope(|作用域| {
+            let 句柄们: Vec<_> = (0..线程数)
+                .map(|_| {
+                    作用域.spawn(|| {
+                        let mut 本地 = Vec::with_capacity(每条);
+                        for _ in 0..每条 {
+                            // 空状态目录下读不出任何要求, 基准 0→fetch 得 1..N, 仍应互不重复。
+                            本地.push(super::下一个要求序号().unwrap());
+                        }
+                        本地
+                    })
+                })
+                .collect();
+            let mut 全部 = Vec::new();
+            for 句柄 in 句柄们 {
+                全部.extend(句柄.join().unwrap());
+            }
+            全部
+        });
+        let 去重后: HashSet<u64> = 结果.iter().copied().collect();
+        assert_eq!(结果.len(), 去重后.len(), "并发取序号应全部唯一（撞了 {} 个）", 结果.len() - 去重后.len());
     }
 }
 

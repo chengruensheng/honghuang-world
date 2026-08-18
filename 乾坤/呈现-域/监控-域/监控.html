@@ -99,20 +99,36 @@ function renderTimeline(rows){
 }
 function renderObs(rows){
   var h='';
+  if(!rows || !rows.length){document.getElementById('obs-body').innerHTML='<div style="color:#8b949e;padding:20px">暂无观测记录</div>';return;}
   for(var i=rows.length-1;i>=0;i--){
     var r=rows[i];
     var 关联=r.关联||{};
+    var 载荷=r.载荷||{};
+    var 正文=载荷.内容||'';
+    var needFull = r._有全文;
     var tag=[r.域, r.角色, r.接口].filter(Boolean).join(' · ');
     var meta=[关联.任务线,关联.要求,关联.轮次?'轮'+关联.轮次:'',关联.标识].filter(Boolean).join(' / ');
-    var 载荷=r.载荷||{};
-    var 正文=(载荷.内容||'').length>600? (载荷.内容||'').slice(0,600)+'…': (载荷.内容||'');
-    var 附加=载荷.附加? '<div style="color:#8b949e;white-space:pre-wrap;padding-top:4px">附加: '+esc(JSON.stringify(载荷.附加))+ '</div>':'';
-    h+='<div class="ob"><details><summary>['+esc(r.域)+'] '+esc(tag)+(meta?' <span style="color:#58a6ff">'+esc(meta)+'</span>':'')+'</summary><div style="padding:8px;white-space:pre-wrap">'+esc(正文)+'</div>'+附加+'</details></div>';
+    var 附加=载荷.附加? ' <span style="color:#8b949e;font-size:11px">'+esc(JSON.stringify(载荷.附加)).slice(0,90)+'</span>':'';
+    var fullBtn = needFull ? '<span class="obs-full" data-ts="'+r.时间戳+'" style="color:#58a6ff;cursor:pointer;margin-left:8px;font-size:11px">展开全文 ▾</span>' : '';
+    h+='<div class="ob"><div class="obs-head">['+esc(r.域)+'] '+esc(tag)+'<div style="color:#58a6ff;font-size:11px;margin-top:2px">'+esc(meta)+'</div>'+附加+fullBtn+'</div><div class="obs-body" style="padding:6px 8px;white-space:pre-wrap;color:#8b949e">'+esc(正文)+'</div></div>';
   }
-  document.getElementById('obs-body').innerHTML = h || '<div style="color:#8b949e;padding:20px">尚无 白箱观测记录（.上下文/观测/记录.jsonl）</div>';
+  document.getElementById('obs-body').innerHTML = h;
+  document.getElementById('obs-body').onclick = function(e){
+    var t=e.target;
+    if(t && t.className==='obs-full'){
+      var ts=t.getAttribute('data-ts');
+      t.textContent='加载中…';
+      fetchJson('/api/record?id='+encodeURIComponent(ts), function(r){
+        var full=(r && r.载荷 && r.载荷.内容)||'';
+        var body=t.parentNode.querySelector('.obs-body');
+        if(body){body.textContent=full;body.style.color='#c9d1d9';}
+        t.textContent='';
+      });
+    }
+  };
 }
 function loadRecords(){
-  var qs='?';
+  var qs='?_ts='+Date.now()+'&';
   var d=document.getElementById('f-domain').value;
   var r=document.getElementById('f-role').value;
   var req=document.getElementById('f-req').value.trim();
@@ -152,9 +168,10 @@ function set(which,btnId){
 }
 document.getElementById('tab-ov').onclick=function(){set('ov','tab-ov');};
 document.getElementById('tab-tl').onclick=function(){set('tl','tab-tl');};
-document.getElementById('tab-obs').onclick=function(){set('obs','tab-obs');};
+document.getElementById('tab-obs').onclick=function(){set('obs','tab-obs');loadRecords();};
 document.getElementById('tab-chain').onclick=function(){set('chain','tab-chain');};
-document.getElementById('tab-sp').onclick=function(){set('sp','tab-sp');};
+document.getElementById('tab-sp').onclick=function(){set('sp','tab-sp');loadSpill();};
+function loadSpill(){fetchJson('/api/spill',renderSpill);}
 function fillFilters(rows){
   var seenD={},seenR={};
   rows.forEach(function(r){if(r.域)seenD[r.域]=1;if(r.角色)seenR[r.角色]=1;});
@@ -170,6 +187,11 @@ function boot(){
 }
 boot();
 setInterval(function(){fetchJson('/api/assess',renderAssess);},5000);
+// 观测页自动刷新: 仅当「模型观测」tab 激活时轮询, 概要模式轻量不卡。
+setInterval(function(){
+  var on=document.getElementById('panel-obs').classList.contains('on');
+  if(on) loadRecords();
+},3000);
 </script>
 </body>
 </html>
