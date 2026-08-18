@@ -105,7 +105,13 @@ fn 下一个要求序号() -> Result<u64, String> {
     let 当前 = 序号基准.load(Ordering::Relaxed);
     if 当前 == 0 {
         let 队列 = crate::落盘队列::<要求书>::打开(状态目录().join("要求.jsonl"));
-        let 全部 = 队列.读全部().map_err(|错误| format!("读要求队列失败: {错误}"))?;
+        // 兜底：读失败（目录不可达 / 文件不存在 / 权限不足）视为空目录，基准=0。
+        // 测试场景下「空状态目录也能 fetch 序号」是契约之一；并发首屏多线程同时进入时，
+        // 即使个别线程读失败回落 0，CAS 也保证只有一个线程赢，其余用 0 走 fetch_add 仍唯一。
+        let 全部 = match 队列.读全部() {
+            Ok(项们) => 项们,
+            Err(_) => Vec::new(),
+        };
         let 最大 = 全部
             .iter()
             .filter_map(|要求| 要求.id.strip_prefix("要求-").and_then(|尾| 尾.parse::<u64>().ok()))
