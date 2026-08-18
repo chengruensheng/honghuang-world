@@ -1,10 +1,11 @@
 //! 增量 - 改写 - 园：把文件里第一次出现的旧文替换为新文。
 //! 写前经 回滚垫 备份旧内容：任务失败时可单文件撤销恢复。
 
-use rizhi_fu::{debug, error, warn};
+use rizhi_fu::{debug, error, info, warn};
 use shihai_fu::{回滚垫, 工作区, 当前任务};
 
 /// 把文件里第一次出现的旧文替换为新文，旧文不存在则报错；写前先备份进回滚垫。
+/// 空操作优化：替换后内容与原文相同（旧文==新文 等）→ 返回"内容未变化"提示，不备份不重写。
 pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<(), String> {
     let 原文 = std::fs::read_to_string(路径).map_err(|错误| {
         error!(路径, "改文件读失败：{错误}");
@@ -22,11 +23,16 @@ pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<(), String>
             原文.len(), 旧文.len(), 旧文预览, 原文预览
         ));
     }
+    let 改后 = 原文.replacen(旧文, 新文, 1);
+    // 空操作检测：替换结果与原文相同（旧文==新文）→ 跳过，不备份不重写。
+    if 改后 == 原文 {
+        info!(路径, "改文件跳过：替换结果与现状相同（空操作）");
+        return Ok(());
+    }
     let 垫 = 回滚垫::在工作区(&工作区::定位());
     if let Err(错误) = 垫.备份(&当前任务(), 路径) {
         debug!(路径, "回滚垫备份跳过：{错误}");
     }
-    let 改后 = 原文.replacen(旧文, 新文, 1);
     std::fs::write(路径, 改后).map_err(|错误| {
         error!(路径, "改文件写失败：{错误}");
         format!("写文件失败：{路径}：{错误}")
@@ -87,6 +93,28 @@ mod tests {
         改文件(临时文件.to_str().unwrap(), "old content", "new content").unwrap();
         let 新内容 = std::fs::read_to_string(&临时文件).unwrap();
         assert_eq!(新内容, "new content here, more");
+        let _ = std::fs::remove_file(&临时文件);
+    }
+
+    /// 空操作优化：旧文==新文 → 替换结果与原文相同，跳过改写（mtime 不变）。
+    #[test]
+    fn 改文件_替换结果相同跳过() {
+        let 临时目录 = std::env::temp_dir().join(format!("改文件测试-跳过-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&临时目录);
+        let 临时文件 = 临时目录.join("sample.txt");
+        std::fs::write(&临时文件, "内容包含目标词").unwrap();
+        let 改前 = std::fs::metadata(&临时文件).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        改文件(临时文件.to_str().unwrap(), "目标词", "目标词").unwrap();
+
+        let 改后 = std::fs::metadata(&临时文件).unwrap().modified().unwrap();
+        assert_eq!(改前, 改后, "替换结果相同应跳过改写（mtime 不变）");
+        assert_eq!(
+            std::fs::read_to_string(&临时文件).unwrap(),
+            "内容包含目标词",
+            "内容不应变化"
+        );
         let _ = std::fs::remove_file(&临时文件);
     }
 }
