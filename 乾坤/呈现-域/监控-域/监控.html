@@ -88,6 +88,20 @@ function renderChainByTask(链){
   var 域色={'提示词':'#f0a53e','回复思考':'#3fb950','工具调用':'#58a6ff','工具返回':'#58a6ff','产物判定':'#f0883e','状态流转':'#d2a8ff'};
   function 净化(s){return String(s==null?'':s);}
   function 概要(s,fs){if(!s)return'';var c=s.replace(/\n/g,' ').replace(/\s+/g,' ').trim();return fs?c:c.slice(0,220)+(c.length>220?'…':'');}
+  // 把 OpenAI 兼容提示词 JSON 精炼成「谁(角色)请做什么(核心指令)」一句话, 便于看出回复是对这个请求的回答。
+  function 请求摘要(内容){
+    try{
+      var j=JSON.parse(内容);
+      if(j && j.messages){ var msgs=j.messages; var sys='',usr='';
+        for(var k=0;k<msgs.length;k++){var m=msgs[k]; if(m.role==='user') usr=m.content||''; if(m.role==='system'&&!sys) sys=m.content||'';}
+        var 角色=概要(去掉思考(sys),false);
+        var 指令=概要(去掉思考(usr),false);
+        return {角色:角色,指令:指令};
+      }
+    }catch(e){}
+    return {角色:'',指令:概要(内容,false)};
+    function 去掉思考(s){return String(s).replace(/thinking[\s\S]*?response/g,' ');}
+  }
   var h='';
   for(var i=0;i<链.length;i++){
     var r=链[i];
@@ -98,15 +112,23 @@ function renderChainByTask(链){
     // 提取工具名(工具调用/返回的附加里有)
     var 工具名=附加.工具||'';
     if(域==='提示词'){
-      // 任务原文: 大字显示(若内容是大 JSON 提示词, 提取用户指令文本, 否则显示原样)
-      var 文本=内容;
-      // 尝试从 OpenAI 兼容 messages 里提 user 内容当"任务原文"
-      try{var j=JSON.parse(内容); if(j.messages){var 用户=j.messages.filter(function(m){return m.role==='user'||m.role==='system';}); if(用户.length) 文本=用户[用户.length-1].content||内容;}}catch(e){}
-      文本=概要(文本,false);
-      h+='<div style="margin:10px 0 2px;padding:8px 10px;background:#1d2430;border-left:3px solid '+色+';border-radius:4px;font-size:15px;line-height:1.5;color:#f0e6d2">▸ <b style="color:'+色+'">请求</b><span style="color:#6e7681;font-size:12px;margin-left:8px">'+esc(角色)+((关联.接口)?' · '+esc(关联.接口):'')+'</span><div style="margin-top:4px">'+esc(文本)+'</div></div>';
+      // 任务原文: 精炼成「角色 » 指令」大字, 让人一眼看出这条请求要它做什么
+      var 摘要=请求摘要(内容);
+      var 角色段=摘要.角色?('['+esc(摘要.角色)+']'):('');
+      var 指令段=摘要.指令?esc(摘要.指令):'';
+      h+='<div style="margin:12px 0 0;padding:9px 11px;background:#1d2430;border-left:4px solid '+色+';border-radius:5px">'
+        +'<div style="font-size:12px;color:#6e7681">▸ <b style="color:'+色+';font-size:13px">请求</b> '+esc(角色)+((关联.接口)?' · '+esc(关联.接口):'')+'</div>'
+        +'<div style="margin-top:5px;font-size:15px;line-height:1.55;color:#f0e6d2">'+(角色段?角色段+' ': '')+指令段+'</div>'
+        +'</div>';
     } else if(域==='回复思考'){
-      // 回复: 小字、绿色、缩进，紧跟其请求
-      h+='<div style="margin:0 0 6px 12px;padding:5px 10px;border-left:2px solid '+色+';color:#7ee787;font-size:13px;line-height:1.5">↳ <b style="font-size:12px">回复</b> <span style="color:#6e7681;font-size:12px">'+esc(角色)+' '+esc(轮)+'</span><div style="color:#9bd6a0;font-size:12.5px;margin-top:2px">'+esc(概要(内容,true))+'</div></div>';
+      // 回复: 小字、绿色、缩进，作为上面那个请求卡的响应(紧贴配对)
+      var 文本=概要(内容,true);
+      // 去掉 think 链头, 尽量显示"结论"部分
+      var 去think=内容.replace(/thinking[\s\S]*?response/g,'');
+      文本=概要(去think.trim()||内容,true);
+      h+='<div style="margin:0 0 2px 14px;padding:6px 10px;border-left:3px solid '+色+';color:#7ee787;font-size:13px;line-height:1.5;background:#15201a">'
+        +'<b style="font-size:12px;color:#3fb950">↳ 回复 ('+esc(角色)+' '+esc(轮)+')</b>'
+        +'<div style="color:#9bd6a0;font-size:12.5px;margin-top:2px;white-space:pre-wrap">'+esc(文本)+'</div></div>';
     } else if(域==='工具调用'){
       h+='<div style="margin:0 0 2px 22px;padding:3px 8px;border-left:1px solid #30363d;color:#79c0ff;font-size:12.5px">🔧 <b>'+esc(工具名)+'</b> <span style="color:#6e7681">'+esc(轮)+'</span> <span style="color:#8b949e">'+esc(概要(内容,false))+'</span></div>';
     } else if(域==='工具返回'){
