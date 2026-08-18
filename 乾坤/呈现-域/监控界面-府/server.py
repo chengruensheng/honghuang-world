@@ -129,6 +129,76 @@ def _tx_版本(line):
     except Exception:
         return None
 
+def _tx_obs_dispatch(line):
+    """观测/记录.jsonl 分发器：根据顶级 '接口' + '域' 字段分到 LLM/Tool"""
+    try:
+        d = json.loads(line)
+        link = d.get("关联", {}) or {}
+        tid = link.get("要求") or link.get("任务线")
+        iface = d.get("接口", "") or ""
+        域 = d.get("域", "") or ""
+        ts = int(d.get("时间戳", int(time.time()*1000)))
+        if 域 in {"提示词", "回复思考"} or "模型连接-府" in iface or "调用模型" in iface:
+            return _llm_event(d, ts, tid, iface, 域, line)
+        if 域 in {"工具调用", "工具返回"} or "道术施展-府" in iface or "工具循环" in iface:
+            return _tool_event(d, ts, tid, iface, 域, line)
+    except Exception:
+        pass
+    return None
+
+
+def _llm_event(d, ts, tid, iface, 域, line):
+    payload = d.get("载荷", {}) or {}
+    cont = payload.get("内容", "")
+    msg = json.loads(cont) if cont else {}
+    msgs = msg.get("messages", []) or []
+    last_user = ""
+    for m in reversed(msgs):
+        if m.get("role") == "user":
+            last_user = (m.get("content") or "")
+            break
+    return {
+        "ts": ts,
+        "源": "模型连接-府/LLM调用",
+        "动作": f"{域} · {len(msgs)} msg · {msg.get('model','?')}",
+        "影响": [{"类型":"llm调用","模型":msg.get("model","?"),"消息数":len(msgs),"角色":域,"尾部前60":last_user[:60]}],
+        "token": {"提示词":0,"输出":0,"缓存":0,"总计":0},
+        "耗时ms": 0,
+        "证据": last_user[:80],
+        "_task_id": tid,
+        "_raw": line,
+        "_role_kind": "llm",
+        "层": "llm",
+        "类型": "LLM",
+    }
+
+
+def _tool_event(d, ts, tid, iface, 域, line):
+    payload = d.get("载荷", {}) or {}
+    cont = payload.get("内容", "") or ""
+    tool_name = iface.split("::")[-1] if "::" in iface else iface
+    return {
+        "ts": ts,
+        "源": "道术施展-府/工具调用",
+        "动作": f"{域} · {tool_name}",
+        "影响": [{"类型":"工具调用","接口":iface,"角色":域}],
+        "token": {"提示词":0,"输出":0,"缓存":0,"总计":0},
+        "耗时ms": 0,
+        "证据": (cont or "")[:120],
+        "_task_id": tid,
+        "_raw": line,
+        "_role_kind": "tool",
+        "层": "tool",
+        "类型": "工具",
+    }
+
+
+def _classify_str(msgs):
+    sys_user = sum(1 for m in msgs if m.get("role") == "system")
+    user = sum(1 for m in msgs if m.get("role") == "user")
+    asst = sum(1 for m in msgs if m.get("role") == "assistant")
+    tool = sum(1 for m in msgs if m.get("role") == "tool")
+    return f"sys{sys_user}/user{user}/asst{asst}/tool{tool}"
 # ===== 文件轨迹 =====
 SOURCES = []
 STATE_TX = {
@@ -143,6 +213,8 @@ def build_sources():
     obs = STATE_DIR / "观测" / "记录.jsonl"
     if obs.exists():
         SOURCES.append({"path": obs, "transformer": assemble_event_from_obs, "last_size": 0, "name": "观测/记录.jsonl"})
+        # 同一文件的 LLM/Tool 装配（只看 载荷.接口 以区别）
+        SOURCES.append({"path": obs, "transformer": _tx_obs_dispatch, "last_size": 0, "name": "观测/记录.jsonl(LLM/Tool)"})
     state_dir = STATE_DIR / "状态"
     if state_dir.exists():
         for fname, tf in STATE_TX.items():

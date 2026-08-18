@@ -1,21 +1,20 @@
-/* 洪荒 · 任务直播 · app.js · 依据 融合蓝图 §13
-   状态机以 selectedTaskId 为中心：
-     tasks:        来自 /api/tasks
-     sessions[id]: 当前已加载的会话全量
-     expanded:     任务 id -> bool（是否展开全量）
-   SSE 三种 payload：event / task-new / task-status-change */
+/* 洪荒 · 任务直播 · app.js v3
+   依据：融合蓝图 §13 + §13.b
+   UI 核心：每条动作是一个 <details>，点 summary 直接展开全量
+   三层数据：
+     /api/tasks                   → 任务列表
+     /api/sessions/{id}          → 该任务 L2 高层动作 + L3/L4 子节点（如果存在）
+     /api/sessions/{id}/thoughts → 仅 LLM 调用（可独立折叠层）
+     /api/sessions/{id}/tools    → 仅工具调用 */
 
 const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
 
 const state = {
     tasks: [],
     filterText: "",
     filterStatus: "",
     selectedTaskId: null,
-    sessions: {},         // id -> {id, 状态, 动作们: [...] }
-    expanded: {},        // idx -> bool
-    detailOpen: null,
+    sessions: {},
     events: 0,
     rateEvents: [],
     es: null,
@@ -25,8 +24,53 @@ function fmtTs(ts) {
     if (!ts) return "--:--:--";
     const d = new Date(ts);
     const p = (n) => String(n).padStart(2, "0");
-    return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " +
-        p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+
+function escapeHtml(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function formatLLMContent(raw) {
+    """把 LLM 载荷里嵌套的 messages 数组转成可读
+   多轮 + system prompt 展示。"""
+    try {
+        const m = JSON.parse(raw);
+        const msgs = m.messages || [];
+        let out = "模型: " + escapeHtml(m.model || "?") + "\n";
+        out += "max_tokens: " + escapeHtml(m.max_tokens || "?") + "\n";
+        out += "消息数: " + msgs.length + "\n\n";
+        msgs.forEach((mm, i) => {
+            out += "── " + (i + 1) + ". [" + escapeHtml(mm.role) + "] ──\n";
+            const c = mm.content || "";
+            if (typeof c === "string") {
+                out += escapeHtml(c.slice(0, 500));
+                if (c.length > 500) out += "\n... (共 " + c.length + " 字)";
+                out += "\n\n";
+            } else {
+                out += escapeHtml(JSON.stringify(c, null, 2));
+                out += "\n\n";
+            }
+        });
+        return out;
+    } catch (e) {
+        return escapeHtml(raw);
+    }
+}
+
+function prettyJson(raw) {
+    """尝试把 raw 解析为 JSON 后漂亮输出，失败则原样输出（mask 过长）。"""
+    if (!raw) return "(空)";
+    try {
+        const o = JSON.parse(raw);
+        return JSON.stringify(o, null, 2);
+    } catch (e) {
+        return raw.length > 2000 ? raw.slice(0, 2000) + "\n... (截断)" : raw;
+    }
 }
 
 function pillClass(状态) {
@@ -54,24 +98,16 @@ function renderTasks() {
         row.className = "task-row" + (t.id === state.selectedTaskId ? " active" : "");
         row.dataset.id = t.id;
         row.innerHTML =
-            '<div class="id">' + t.id + '</div>' +
+            '<div class="id">' + escapeHtml(t.id) + '</div>' +
             '<div class="meta">' +
-                '<span class="' + pillClass(t.状态) + '">' + (t.状态 || "?") + '</span>' +
-                '<span class="pill">阶段:' + (t.阶段 || "?") + '</span>' +
-                '<span class="pill">' + (t.类别 || "?") + '</span>' +
+                '<span class="' + pillClass(t.状态) + '">' + escapeHtml(t.状态 || "?") + '</span>' +
+                '<span class="pill">阶段:' + escapeHtml(t.阶段 || "?") + '</span>' +
+                '<span class="pill">' + escapeHtml(t.类别 || "?") + '</span>' +
             '</div>' +
             '<div class="dir">' + escapeHtml(t.方向前 || "") + '</div>';
         row.addEventListener("click", () => selectTask(t.id));
         list.appendChild(row);
     }
-}
-
-function escapeHtml(s) {
-    return String(s || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
 }
 
 async function loadTasks() {
@@ -86,9 +122,7 @@ async function loadTasks() {
             const active = state.tasks.find(t => t.状态 === "实现中") || state.tasks.find(t => t.状态 === "待领") || state.tasks[0];
             if (active) selectTask(active.id);
         }
-    } catch (e) {
-        console.error("tasks", e);
-    }
+    } catch (e) { console.error("tasks", e); }
 }
 
 async function selectTask(id) {
@@ -103,79 +137,122 @@ async function loadSession(id) {
         const enc = encodeURIComponent(id);
         const r = await fetch("/api/sessions/" + enc);
         if (r.status === 404) {
-            $("#session-tree").innerHTML = '<div class="node-empty">任务 ' + escapeHtml(id) + ' 未找到</div>';
+            $("#session-tree").innerHTML = '<div class="task-empty">任务 ' + escapeHtml(id) + ' 未找到</div>';
             $("#session-title").textContent = id + "（无）";
             return;
         }
         const o = await r.json();
         state.sessions[id] = o.session;
-        $("#session-title").textContent = id + " · " + escapeHtml(o.session.状态 || "?") + " · " + escapeHtml(o.session.阶段 || "?") + " · " + escapeHtml(o.session.类别 || "?");
         renderSession(o.session);
-    } catch (e) {
-        console.error("session", e);
+    } catch (e) { console.error("session", e); }
+}
+
+function buildActionNode(a, idx) {
+    """单个 L2/L3/L4 动作的 <details> 节点。点 summary 直接展开。"""
+    const detail = document.createElement("details");
+    detail.className = "action action-" + (a.层 || "l2") + " type-" + (a.类型 || "其他");
+    detail.dataset.idx = String(idx);
+
+    const summary = document.createElement("summary");
+    summary.innerHTML =
+        '<span class="time">' + fmtTs(a.ts) + '</span>' +
+        '<span class="type-pill type-' + (a.类型 || "其他") + '">' + escapeHtml(a.类型 || "其他") + '</span>' +
+        '<span class="yuan">' + escapeHtml(a.庭 || "?") + '</span>' +
+        '<span class="act">' + escapeHtml(a.动作 || "") + '</span>' +
+        '<span class="tok">' + (a.token || 0) + ' tok</span>' +
+        '<span class="dur">' + (a.耗时ms || 0) + 'ms</span>' +
+        '<span class="hint">▾</span>';
+    detail.appendChild(summary);
+
+    const full = document.createElement("div");
+    full.className = "full";
+    let content = "";
+    if (a.全量) {
+        if (a.层 === "llm") {
+            content = formatLLMContent(a.全量);
+        } else {
+            content = prettyJson(a.全量);
+        }
     }
+    const pre = document.createElement("pre");
+    pre.className = "full-body";
+    pre.textContent = content;
+    full.appendChild(pre);
+
+    if (a.影响 && a.影响.length) {
+        const meta = document.createElement("div");
+        meta.className = "full-meta";
+        meta.textContent = "影响: " + JSON.stringify(a.影响);
+        full.appendChild(meta);
+    }
+    if (a.证据) {
+        const ev = document.createElement("div");
+        ev.className = "full-evidence";
+        ev.textContent = "证据: " + a.证据;
+        full.appendChild(ev);
+    }
+    detail.appendChild(full);
+    return detail;
 }
 
 function renderSession(sess) {
     const tree = $("#session-tree");
     tree.innerHTML = "";
-    const summary = document.createElement("div");
-    summary.style.padding = "8px";
-    summary.style.borderLeft = "3px solid var(--accent)";
-    summary.style.background = "rgba(56,189,248,0.06)";
-    summary.style.marginBottom = "12px";
-    summary.innerHTML =
-        '<div style="font-family:inherit">' +
-            '<b>' + escapeHtml(sess.id) + '</b>' +
-            ' · 状态 <b>' + escapeHtml(sess.状态 || "?") + '</b>' +
-            ' · 阶段 <b>' + escapeHtml(sess.阶段 || "?") + '</b>' +
-            ' · 类别 <b>' + escapeHtml(sess.类别 || "?") + '</b>' +
-        '</div>' +
-        '<div style="margin-top:6px;color:var(--fg-mute);font-size:11px">方向: ' + escapeHtml((sess.方向 || "").slice(0, 240)) + '</div>' +
-        '<div style="margin-top:4px;color:var(--fg-mute);font-size:11px">验收标准: ' + escapeHtml((sess.验收标准 || "").slice(0, 240)) + '</div>';
-    tree.appendChild(summary);
 
-    const actions = sess.动作们 || [];
-    if (actions.length === 0) {
+    const title = document.createElement("div");
+    title.className = "session-title";
+    title.innerHTML =
+        '<span class="id-tag">' + escapeHtml(sess.id) + '</span>' +
+        '<span class="' + pillClass(sess.状态) + '">' + escapeHtml(sess.状态 || "?") + '</span>' +
+        '<span class="pill">阶段:' + escapeHtml(sess.阶段 || "?") + '</span>' +
+        '<span class="pill">' + escapeHtml(sess.类别 || "?") + '</span>';
+    tree.appendChild(title);
+
+    const direction = document.createElement("details");
+    direction.className = "session-meta";
+    direction.innerHTML =
+        '<summary>方向 + 验收标准 + 约束（点击展开）</summary>' +
+        '<div class="meta-body">' +
+            '<div><b>方向:</b> ' + escapeHtml(sess.方向 || "(空)") + '</div>' +
+            '<div><b>验收标准:</b> ' + escapeHtml(sess.验收标准 || "(空)") + '</div>' +
+            '<div><b>约束:</b> ' + escapeHtml(JSON.stringify(sess.约束 || {}, null, 2)) + '</div>' +
+        '</div>';
+    tree.appendChild(direction);
+
+    const l2 = (sess.动作们 || []).filter(a => !a.层 || a.层 === "l2");
+    const l34 = (sess.动作们 || []).filter(a => a.层 && a.层 !== "l2");
+
+    if (l2.length === 0 && l34.length === 0) {
         const empty = document.createElement("div");
-        empty.className = "node-empty";
+        empty.className = "task-empty";
         empty.textContent = "暂无动作（等待世界执行）";
         tree.appendChild(empty);
         return;
     }
-    for (let i = 0; i < actions.length; i++) {
-        const a = actions[i];
-        const node = document.createElement("div");
-        node.className = "node";
-        node.dataset.idx = String(i);
-        const expanded = !!state.expanded[sess.id + ":" + i];
-        let detail = "";
-        if (expanded) {
-            const raw = a.全量 || "";
-            try {
-                const parsed = JSON.parse(raw);
-                detail = JSON.stringify(parsed, null, 2);
-            } catch (e) {
-                detail = raw;
+
+    const l2wrap = document.createElement("div");
+    l2wrap.className = "actions-wrap";
+    const l2head = document.createElement("div");
+    l2head.className = "section-head";
+    l2head.textContent = "动作列表 · 共 " + (l2.length + l34.length) + " 条（L2 = " + l2.length + ", L3/L4 = " + l34.length + "）";
+    l2wrap.appendChild(l2head);
+    for (let i = 0; i < l2.length; i++) {
+        const node = buildActionNode(l2[i], i);
+        l2wrap.appendChild(node);
+
+        if (l2[i].类型 === "实现" || l2[i].类型 === "工具循环" || /实现|设计/.test(l2[i].动作 || "")) {
+            const subs = l34.filter(c => c.父idx === i);
+            if (subs.length > 0) {
+                const sub = document.createElement("div");
+                sub.className = "children";
+                for (const c of subs) {
+                    sub.appendChild(buildActionNode(c, -1));
+                }
+                l2wrap.appendChild(sub);
             }
         }
-        node.innerHTML =
-            '<div class="node-info">' +
-                '<span class="node-time">' + fmtTs(a.ts) + '</span>' +
-                '<span class="node-type type-' + a.类型 + '">' + a.类型 + '</span>' +
-                '<span class="node-act">' + escapeHtml(a.动作)
-                    + '<small>' + escapeHtml(a.庭) + ' · token ' + (a.token || 0) + ' · ' + (a.耗时ms || 0) + 'ms</small>' +
-                '</span>' +
-                '<button class="btn-toggle">' + (expanded ? "收起" : "全量") + '</button>' +
-            '</div>' +
-            (expanded ? '<pre class="node-act" style="font-size:11px;color:var(--fg-mute);background:var(--bg);padding:10px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">' + escapeHtml(detail) + '</pre>' : '');
-        node.querySelector(".btn-toggle").addEventListener("click", (e) => {
-            e.stopPropagation();
-            state.expanded[sess.id + ":" + i] = !expanded;
-            renderSession(state.sessions[state.selectedTaskId]);
-        });
-        tree.appendChild(node);
     }
+    tree.appendChild(l2wrap);
 }
 
 function connectSSE() {
@@ -191,26 +268,13 @@ function connectSSE() {
             state.rateEvents.push(Date.now());
             while (state.rateEvents.length > 0 && Date.now() - state.rateEvents[0] > 5000) state.rateEvents.shift();
             $("#footer-rate").textContent = (state.rateEvents.length / 5).toFixed(1);
-            if (p.type === "event") {
-                const ev = p.ev || {};
-                const tid = p.任务id || (ev._task_id || "");
-                if (tid && tid === state.selectedTaskId && state.sessions[tid]) {
-                    state.sessions[tid].动作们.push({
-                        ts: ev.ts, 类型: (ev.动作 || "").startsWith("要求 ") ? "入队" : ((ev.源 || "").includes("验收") ? "验收" : "实现"),
-                        庭: ev.源 || "?", 动作: ev.动作 || "?", token: (ev.token || {}).总计 || 0, 耗时ms: ev.耗时ms || 0,
-                        影响: ev.影响 || [], 证据: ev.证据 || "", 全量: ev._raw || "",
-                    });
-                    renderSession(state.sessions[tid]);
-                }
-            } else if (p.type === "task-new") {
-                loadTasks();
-            } else if (p.type === "task-status-change") {
+            if (p.type === "event" && state.selectedTaskId) {
+                if (p.任务id === state.selectedTaskId) loadSession(p.任务id);
+            } else if (p.type === "task-new" || p.type === "task-status-change") {
                 loadTasks();
                 if (state.selectedTaskId === p.任务id) loadSession(p.任务id);
             }
-        } catch (e) {
-            console.error("sse", e);
-        }
+        } catch (e) { console.error("sse", e); }
     };
     state.es.onerror = () => {
         $("#live-indicator").textContent = "🔴 断了 1s 重连";
@@ -231,8 +295,5 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#status-filter").addEventListener("change", (e) => {
         state.filterStatus = e.target.value;
         renderTasks();
-    });
-    $("#detail-close").addEventListener("click", () => {
-        $("#detail-drawer").classList.add("hidden");
     });
 });
