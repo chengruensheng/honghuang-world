@@ -5,8 +5,9 @@ use rizhi_fu::{debug, error, info, warn};
 use shihai_fu::{回滚垫, 工作区, 当前任务};
 
 /// 把文件里第一次出现的旧文替换为新文，旧文不存在则报错；写前先备份进回滚垫。
-/// 空操作优化：替换后内容与原文相同（旧文==新文 等）→ 返回"内容未变化"提示，不备份不重写。
-pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<(), String> {
+/// 返回是否真的改写（false = 替换结果与原文相同，空操作跳过，未写盘）。
+/// 空操作优化：替换后内容与原文相同（旧文==新文 等）→ 返回 false，不备份不重写。
+pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<bool, String> {
     let 原文 = std::fs::read_to_string(路径).map_err(|错误| {
         error!(路径, "改文件读失败：{错误}");
         format!("读文件失败：{路径}：{错误}")
@@ -27,7 +28,7 @@ pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<(), String>
     // 空操作检测：替换结果与原文相同（旧文==新文）→ 跳过，不备份不重写。
     if 改后 == 原文 {
         info!(路径, "改文件跳过：替换结果与现状相同（空操作）");
-        return Ok(());
+        return Ok(false);
     }
     let 垫 = 回滚垫::在工作区(&工作区::定位());
     if let Err(错误) = 垫.备份(&当前任务(), 路径) {
@@ -38,7 +39,7 @@ pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<(), String>
         format!("写文件失败：{路径}：{错误}")
     })?;
     debug!(路径, "文件已改写");
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]
