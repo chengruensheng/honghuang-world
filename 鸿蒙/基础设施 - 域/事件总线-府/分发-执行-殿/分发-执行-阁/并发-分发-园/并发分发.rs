@@ -105,6 +105,13 @@ impl 事件总线 {
     }
 }
 
+/// 全局事件总线：进程级单例（static OnceLock），供各消费方共享同一注册表。
+/// 事件名由各府声明（如「验收/裁决」「重投/循环」），载荷类型由事件声明方约定。
+pub fn 全局总线() -> &'static 事件总线 {
+    static 全局: std::sync::OnceLock<事件总线> = std::sync::OnceLock::new();
+    全局.get_or_init(事件总线::新)
+}
+
 // ── 类型化流水线（waterfall）──
 
 /// 流水线监听器：`Fn(&mut T) -> Result<(), String>`（waterfall 语义）。

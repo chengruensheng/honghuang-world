@@ -21,6 +21,7 @@ use jiance_fu::{观测角色, 进入观测};
 use moxing_fu::{对话消息, 常规上限, 提取对象, 模型配置, 用量};
 use rizhi_fu::{error, info, warn};
 use serde::{Deserialize, Serialize};
+use shijian_fu::全局总线;
 
 use super::模块树::接入模块树;
 
@@ -754,6 +755,19 @@ pub fn 终裁裁决_无名(
         "终裁完成"
     );
 
+    // 事件总线（阶段 2 轻事件化）：验收裁决完成通知——可观测扩展点，
+    // 监听器可挂钩审计/新审验维度/汇报，不改变既有命令式流程（对齐 dsh 事件域「验收」）。
+    全局总线().通知(
+        "验收/裁决",
+        &mut Box::new(验收事件 {
+            要求id: 要求id.to_string(),
+            结论: 终裁结论.clone(),
+            终裁依据: 终裁依据.clone(),
+            准圣通过: 意见们.iter().filter(|o| o.结论 == 验收结论::通过).count(),
+            准圣总数: 意见们.len(),
+        }),
+    );
+
     终裁回执 {
         验收: 验收回执 {
             要求id: 要求id.to_string(),
@@ -766,6 +780,17 @@ pub fn 终裁裁决_无名(
         终裁依据,
         用量,
     }
+}
+
+/// 验收裁决事件载荷：事件总线「验收/裁决」通知的载荷（阶段 2 轻事件化）。
+/// 监听器 downcast 到本类型取裁决结果（审计/新策略/汇报挂钩用）。
+#[derive(Clone, Debug)]
+pub struct 验收事件 {
+    pub 要求id: String,
+    pub 结论: 验收结论,
+    pub 终裁依据: String,
+    pub 准圣通过: usize,
+    pub 准圣总数: usize,
 }
 
 // ── 测试 ──
