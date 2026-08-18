@@ -285,6 +285,59 @@ def append_event(ev):
         if len(EVENT_BUS) > EVENT_BUS_MAX:
             del EVENT_BUS[:len(EVENT_BUS) - EVENT_BUS_MAX]
 
+
+def _read_jsonl_lines(raw_text):
+    """逐行解析，损坏行跳过，不抛错。"""
+    out = []
+    for ln in raw_text.split("\n"):
+        s = ln.strip()
+        if not s:
+            continue
+        try:
+            out.append(json.loads(s))
+        except Exception:
+            continue
+    return out
+
+
+def 读事件流增量(自字节):
+    """从字节偏移起读新行；返回 (新行列表, 新字节偏移)。"""
+    try:
+        if not EVENT_FOLLOW_PATH.exists():
+            return [], 0
+        size = EVENT_FOLLOW_PATH.stat().st_size
+        if size <= 自字节:
+            return [], size
+        with open(EVENT_FOLLOW_PATH, "rb") as f:
+            f.seek(自字节)
+            raw = f.read().decode("utf-8", errors="replace")
+        rows = _read_jsonl_lines(raw)
+        return rows, size
+    except Exception:
+        return [], 自字节
+
+
+def 读事件流最近(limit):
+    """读最近 limit 条事件（按时间正序；调用方负责倒序）。"""
+    try:
+        if not EVENT_FOLLOW_PATH.exists():
+            return [], 0
+        size = EVENT_FOLLOW_PATH.stat().st_size
+        with open(EVENT_FOLLOW_PATH, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        rows = _read_jsonl_lines(text)
+        if limit and len(rows) > limit:
+            rows = rows[-limit:]
+        return rows, size
+    except Exception:
+        return [], 0
+
+# ===== 事件流 jsonl 单源 工具 =====
+EVENT_FOLLOW_PATH = STATE_DIR / "事件流.jsonl"
+EVENT_FOLLOW_LOCK = threading.Lock()
+EVENT_FOLLOW_LAST_SIZE = 0
+EVENT_FOLLOW_RECENT_LIMIT = 200
+
 # ===== 会话索引（§13.5）=====
 TASKS_RAW = []      # 要求.jsonl 全部行（按 id 倒序）
 TASKS_LOCK = threading.Lock()
@@ -546,6 +599,21 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"events": evs, "state": SHARED, "ts": int(time.time()*1000)})
         elif path == "/api/tasks":
             self._send_json({"tasks": get_tasks_list(), "ts": int(time.time()*1000)})
+        elif path == "/api/events/recent":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                limit = int(q.get("limit", [str(EVENT_FOLLOW_RECENT_LIMIT)])[0])
+            except Exception:
+                limit = EVENT_FOLLOW_RECENT_LIMIT
+            if limit < 1:
+                limit = 1
+            if limit > 1000:
+                limit = 1000
+            rows, size = 读事件流最近(limit)
+            rows = list(reversed(rows))
+            self._send_json({"events": rows, "size": size, "limit": limit, "ts": int(time.time()*1000)})
+        elif path == "/api/events/stream":
+            self._send_events_sse()
         elif path.startswith("/api/sessions/") and path.endswith("/steps"):
             print(f"[steps trace] path={path}", flush=True)
             sid = urllib.parse.unquote(path[len("/api/sessions/"):-len("/steps")], encoding='utf-8', errors='replace')
