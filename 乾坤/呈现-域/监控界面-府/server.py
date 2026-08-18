@@ -332,6 +332,63 @@ def get_tasks_list():
         })
     return out
 
+def _get_step_title(a):
+    """从 LLM 事件提步骤标题。跳过首个 user（通常是 system prompt 模板），找任务关键词；找不到取末尾 80 字。"""
+    parsed = a.get('全量')
+    if isinstance(parsed, dict):
+        msgs = parsed.get('载荷', {}).get('messages', [])
+        if not msgs:
+            msgs = parsed.get('载荷', {}).get('parsed', {}).get('messages', [])
+        # 跳过首个 user（鸿钧主政注入的 system prompt + 项目记忆背景）
+        start_idx = 1 if len(msgs) > 1 else 0
+        # 优先找任务关键词
+        for m in msgs[start_idx:]:
+            if m.get('role') != 'user':
+                continue
+            content = m.get('content', '') or ''
+            if isinstance(content, list):
+                content = ' '.join(str(x.get('text', '')) for x in content if isinstance(x, dict))
+            content = content.replace('\n', ' ').replace('\r', ' ').strip()
+            for kw in ['【要求方向】', '【重点】', '重点：', '【任务】', '【指令】', '【问题】', '【职司】']:
+                if kw in content:
+                    idx = content.find(kw)
+                    sub = content[idx:idx+80]
+                    return sub.replace('\n', ' ').strip()
+        # 找不到关键词: 末尾 80 字
+        for m in reversed(msgs[start_idx:]):
+            if m.get('role') == 'user':
+                content = m.get('content', '') or ''
+                if isinstance(content, list):
+                    content = ' '.join(str(x.get('text', '')) for x in content if isinstance(x, dict))
+                content = content.replace('\n', ' ').replace('\r', ' ').strip()
+                if content:
+                    return content[-80:] if len(content) > 80 else content
+    return (a.get('动作') or '思考')[:60]
+
+def build_steps(actions):
+    """按 ts 升序遍历 actions，每条 LLM 触发新步骤；同 LLM 之后的 Tool/L2 归入当前步骤。"""
+    steps = []
+    cur = None
+    for a in actions:
+        t = a.get('层', 'l2')
+        ts = a.get('ts', 0)
+        if t == 'llm':
+            if cur:
+                steps.append(cur)
+            cur = {'步骤号': len(steps) + 1, '标题': _get_step_title(a), '开始 ts': ts, '结束 ts': ts, '组件': [a], 'token sum': 0, 'LLM 数': 0, 'Tool 数': 0}
+            tok = (a.get('token') or {}).get('总计', 0) if isinstance(a.get('token'), dict) else 0
+            cur['token sum'] += tok
+            cur['LLM 数'] += 1
+        else:
+            if cur is None:
+                cur = {'步骤号': 1, '标题': '前序', '开始 ts': ts, '结束 ts': ts, '组件': [], 'token sum': 0, 'LLM 数': 0, 'Tool 数': 0}
+            cur['组件'].append(a)
+            cur['结束 ts'] = ts
+            cur['Tool 数'] += 1
+    if cur:
+        steps.append(cur)
+    return steps
+
 def classify_action(ev):
     """把 ev 分类为 入队/设计/实现/验收/结果/定档/其他。
     优先用 ev 自带的 类型 字段（_llm_event/_tool_event 已设）；fallback 按源匹配。"""
@@ -489,6 +546,18 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"events": evs, "state": SHARED, "ts": int(time.time()*1000)})
         elif path == "/api/tasks":
             self._send_json({"tasks": get_tasks_list(), "ts": int(time.time()*1000)})
+        elif path.startswith("/api/sessions/") and path.endswith("/steps"):
+            print(f"[steps trace] path={path}", flush=True)
+            sid = urllib.parse.unquote(path[len("/api/sessions/"):-len("/steps")], encoding='utf-8', errors='replace')
+            sess = get_session(sid)
+            if sess is None:
+                self._send_json({"error":"task not found", "id": sid}, 404)
+            else:
+                all_steps = build_steps(sess.get('动作们', []))
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                limit = int(q.get('limit', [str(len(all_steps))])[0])
+                steps = all_steps[-limit:] if all_steps else []
+                self._send_json({"session_id": sid, "steps": steps, "total": len(all_steps), "shown": len(steps)})
         elif path.startswith("/api/sessions/"):
             sid = path[len("/api/sessions/"):]
             sid = urllib.parse.unquote(sid, encoding='utf-8', errors='replace')

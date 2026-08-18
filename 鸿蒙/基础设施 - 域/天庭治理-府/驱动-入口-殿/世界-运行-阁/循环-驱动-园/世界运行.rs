@@ -7,7 +7,7 @@ use crate::终裁回执;
 use daoshu_fu::{任务调度, 执行状态, 读文件};
 use jiance_fu::{观测角色, 进入观测};
 use moxing_fu::模型配置;
-use rizhi_fu::{error, info, warn};
+use rizhi_fu::{debug, error, info, warn};
 use shijian_fu::全局总线;
 
 /// 状态目录：工作区根下的 .上下文/状态（与命令操作-府的 状态目录 行为对齐，本府复制以保持跨府引用只走 lib 根符号的边界）。
@@ -407,8 +407,22 @@ pub fn 运行一轮(
         warn!(要求id = %要求.id, 错误 = %错误, "推进「设计中」失败");
     }
 
-    if crate::确认设计(&方案) == 验收结论::打回 {
-        return Err("设计被打回".to_string());
+    // 设计打回自动重审（§14.14 修复 2B）：确认设计打回 → 带机械校验明细重新 分级设计（上限 2 次）。
+    // 治「LLM 设计填多值工作流被机械校验打回即整条任务线夭折」——设计缺陷可修，不该终止投递。
+    let mut 方案 = 方案;
+    let mut 设计尝试 = 0usize;
+    const 设计重审上限: usize = 2;
+    loop {
+        if crate::确认设计(&方案) == 验收结论::通过 {
+            break;
+        }
+        if 设计尝试 >= 设计重审上限 {
+            return Err("设计被打回（重审耗尽）".to_string());
+        }
+        设计尝试 += 1;
+        warn!(要求id = %要求.id, 尝试 = 设计尝试, 上限 = 设计重审上限, "设计打回，自动重审");
+        // 重审 = 重新 分级设计（模板提示已强化 工作流 单值约束，重审大概率修正；明细传递留后续）。
+        方案 = crate::分级设计(&要求, 配置);
     }
 
     // 状态机推进：设计中 → 待确认 → 已确认（甲阶段流水线：设计自动确认，无人工确认节点）。
@@ -834,11 +848,12 @@ fn 汇总打回意见(回执: &终裁回执) -> String {
     行.join("\n")
 }
 
-/// 打回撤销产物：按「最近定档版本快照」恢复产物路径文件（内容回定档基线）。
-/// 版本库为增量快照（v1 全量，其后只存变更文件），故按 版本-vN 数字降序回溯，
-/// 取最近一份含该文件的快照覆盖回盘面；全部版本都不含 → 该文件是本轮新增 → 删除。
-/// 「打回 = 产物不可信」——产物残留盘面会污染下次实现与版本快照（2026-08-16 实测第二次打回残留）。
-/// 返回撤销的文件数；版本库缺失/无版本时视为无事发生（打回仅回状态，不删盘面）。
+/// 打回撤销产物：回到任务写前状态——优先 回滚垫（任务写前备份，含未存档的界主/助手改动）。
+/// §14.14 修复：**移除版本快照兜底**——版本快照是定档时点，含其后的未存档改动会在恢复时被抹掉
+/// （2026-08-19 实测：阶段 2 事件埋点被 v16 快照恢复误抹）。回滚垫无记录时核对「执行-基线」：
+/// 任务期间改动未走回滚垫 → warn 留痕并保留当前盘面（不抹未存档改动）。
+/// 「打回 = 产物不可信」——产物残留盘面会污染下次实现（2026-08-16 实测第二次打回残留）；
+/// 两害相权：残留可后续清理，抹掉未存档成果不可恢复。
 fn 打回撤销产物(
     要求id: &str,
     产物们: &[crate::产物条目],
@@ -865,59 +880,66 @@ fn 打回撤销产物(
             warn!(说明 = %说明, "回滚垫撤销部分失败，存档保留在 .上下文/回滚垫 供追溯；继续版本快照兜底");
         }
     }
-    // 回滚垫无记录（世界未写或已清理）→ 版本快照兜底（原有逻辑）。
-    let 版本库 = 工作区.上下文目录().join("版本库");
-    // 版本目录（版本-vN → 源码-快照），N 数字降序（最新在前）。
-    let mut 快照们: Vec<(u32, std::path::PathBuf)> = Vec::new();
-    let Ok(条目们) = std::fs::read_dir(&版本库) else {
-        return Ok(0);
-    };
-    for 条目 in 条目们.flatten() {
-        let 名 = 条目.file_name().to_string_lossy().to_string();
-        let Some(数字) = 名
-            .strip_prefix("版本-v")
-            .and_then(|末| 末.parse::<u32>().ok())
-        else {
-            continue;
-        };
-        let 快照 = 条目.path().join("源码-快照");
-        if 快照.is_dir() {
-            快照们.push((数字, 快照));
-        }
-    }
-    快照们.sort_by_key(|条目| std::cmp::Reverse(条目.0));
+    // 回滚垫无记录（世界未写或已清理）→ **不再走版本快照**（§14.14 修复：版本快照是定档时点，
+    // 含其后的任何未存档改动——阶段 2 埋点曾被 v16 快照恢复抹掉）。改为核对「执行-基线」：
+    // 基线有该文件且当前≠基线（任务期间改过但回滚垫无记录）→ warn 留痕（保留当前盘面，防抹掉未存档改动）；
+    // 基线无记录 → 该文件非本轮改动，忽略。
     let 根 = 工作区.根路径();
-    let mut 撤销数 = 0usize;
+    let 基线指纹们: std::collections::HashMap<String, serde_json::Value> =
+        std::fs::read_to_string(工作区.上下文目录().join("状态").join("执行-基线.json"))
+            .ok()
+            .and_then(|文本| serde_json::from_str(&文本).ok())
+            .unwrap_or_default();
+    // 基线结构：{"指纹们": {路径: {大小, 修改}}}。
+    let 指纹们 = 基线指纹们.get("指纹们").and_then(|v| v.as_object());
     for 产物 in 产物们 {
         let 相对 = std::path::Path::new(&产物.路径);
         let 目标 = 根.join(相对);
-        // 回溯最近含该文件的快照；全部不含则按「本轮新增」删除。
-        let 恢复自 = 快照们
-            .iter()
-            .map(|(_, 快照)| 快照.join(相对))
-            .find(|候选| 候选.is_file());
-        match 恢复自 {
-            Some(源) => {
-                if let Some(父) = 目标.parent() {
-                    if let Err(错误) = std::fs::create_dir_all(父) {
-                        warn!(路径 = %产物.路径, 错误 = %错误, "打回恢复建目录失败，跳过该文件");
-                        continue;
-                    }
+        let 基线条目 = 指纹们.and_then(|表| 表.get(&产物.路径)).or_else(|| {
+            // 兼容正反斜杠：基线键可能用 `\`（Windows 路径记录）。
+            指纹们.and_then(|表| {
+                表.iter()
+                    .find(|(键, _)| 键.replace('\\', "/") == 产物.路径)
+                    .map(|(_, v)| v)
+            })
+        });
+        match 基线条目 {
+            Some(条目) => {
+                // 基线有记录：当前内容与基线指纹一致 → 本轮未改（或已恢复到基线），无事；不一致 → 改动未走回滚垫，留痕不恢复。
+                let 当前指纹 = 文件指纹(&目标);
+                let 基线指纹 = 基线指纹字符串(条目);
+                if 当前指纹.as_deref() != 基线指纹.as_deref() {
+                    warn!(
+                        路径 = %产物.路径,
+                        "打回撤销：该文件任务期间被改动但回滚垫无记录，未恢复（保留当前盘面，防抹掉未存档改动）；如需复原请人工核对",
+                    );
                 }
-                std::fs::copy(&源, &目标)
-                    .map_err(|错误| format!("打回恢复失败：{}：{错误}", 产物.路径))?;
-                撤销数 += 1;
             }
             None => {
-                if 目标.is_file() {
-                    std::fs::remove_file(&目标)
-                        .map_err(|错误| format!("打回删除失败：{}：{错误}", 产物.路径))?;
-                    撤销数 += 1;
-                }
+                debug!(路径 = %产物.路径, "打回撤销：基线无记录（非本轮改动或新增未跟踪），跳过");
             }
         }
     }
-    Ok(撤销数)
+    Ok(0)
+}
+
+/// 文件指纹：大小 + 修改时间毫秒（与 识海 增量检测 同口径；读失败返回 None）。
+fn 文件指纹(路径: &std::path::Path) -> Option<String> {
+    let 元 = std::fs::metadata(路径).ok()?;
+    let 修改 = 元
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    Some(format!("{}:{}", 元.len(), 修改))
+}
+
+/// 基线条目指纹：{大小, 修改} → "大小:修改毫秒"（与 文件指纹 同格式；缺字段返回 None）。
+fn 基线指纹字符串(条目: &serde_json::Value) -> Option<String> {
+    let 大小 = 条目.get("大小")?.as_u64()?;
+    let 修改 = 条目.get("修改")?.as_u64()?;
+    Some(format!("{大小}:{修改}"))
 }
 
 // ── 任务线（阶段 3 多任务线机制，设计稿 §1.5.5） ──
@@ -1431,19 +1453,17 @@ mod 测试 {
         assert!(落点护栏("实现缓存机制", &[]).is_err(), "实现类空路径仍拒绝");
     }
 
-    /// 造临时工作区：版本库 v3 快照缺 甲.rs（v3 未变），v2 快照含 甲.rs（内容 X）；
-    /// 工作区 甲.rs 为本轮改动（内容 Y）→ 打回后应回溯 v2 恢复 X。
+    /// §14.14 新契约：回滚垫无记录时**不走版本快照**——版本库有旧快照也不恢复，
+    /// 工作区保持当前盘面（防抹掉 v16 后未存档改动，如阶段 2 埋点被快照恢复误抹）。
     #[test]
-    fn 打回撤销产物_回溯最近含该文件的快照() {
-        let 根 = std::env::temp_dir().join(format!("打回撤销-回溯-{}", shihai_fu::当前毫秒()));
+    fn 打回撤销_回滚垫无记录不走快照恢复() {
+        let 根 = std::env::temp_dir().join(format!("打回撤销-不回滚-{}", shihai_fu::当前毫秒()));
         let 快照v2 = 根.join(".上下文/版本库/版本-v2/源码-快照/乾坤/甲.rs");
         std::fs::create_dir_all(快照v2.parent().unwrap()).unwrap();
         std::fs::write(&快照v2, "定档内容X").unwrap();
         let 工作区文件 = 根.join("乾坤/甲.rs");
         std::fs::create_dir_all(工作区文件.parent().unwrap()).unwrap();
         std::fs::write(&工作区文件, "本轮改动Y").unwrap();
-        // 版本-v3 快照目录存在但无 甲.rs（增量未变不存）。
-        std::fs::create_dir_all(根.join(".上下文/版本库/版本-v3/源码-快照")).unwrap();
 
         let 撤销数 = 打回撤销产物(
             "要求-测试",
@@ -1456,20 +1476,29 @@ mod 测试 {
             &shihai_fu::工作区::新(&根),
         )
         .unwrap();
-        assert_eq!(撤销数, 1);
-        assert_eq!(std::fs::read_to_string(&工作区文件).unwrap(), "定档内容X");
+        assert_eq!(撤销数, 0, "回滚垫无记录 → 不恢复，撤销数为 0");
+        assert_eq!(
+            std::fs::read_to_string(&工作区文件).unwrap(),
+            "本轮改动Y",
+            "版本库有旧快照也不得恢复（防抹掉未存档改动）"
+        );
         let _ = std::fs::remove_dir_all(&根);
     }
 
-    /// 全部版本快照都不含该文件 → 本轮新增 → 删除。
+    /// §14.14 新契约：基线有记录且当前≠基线（任务期间改动未走回滚垫）→ 留痕不恢复，盘面保持。
     #[test]
-    fn 打回撤销产物_全部版本不含则删除新增() {
-        let 根 = std::env::temp_dir().join(format!("打回撤销-删除-{}", shihai_fu::当前毫秒()));
+    fn 打回撤销_基线留痕不恢复() {
+        let 根 = std::env::temp_dir().join(format!("打回撤销-基线-{}", shihai_fu::当前毫秒()));
         let 工作区文件 = 根.join("乾坤/乙.rs");
         std::fs::create_dir_all(工作区文件.parent().unwrap()).unwrap();
-        std::fs::write(&工作区文件, "本轮新增").unwrap();
-        // 版本-v1 快照存在但不含 乙.rs。
-        std::fs::create_dir_all(根.join(".上下文/版本库/版本-v1/源码-快照")).unwrap();
+        std::fs::write(&工作区文件, "任务期间改动").unwrap();
+        // 执行-基线：记录该文件的任务前指纹（大小/修改 与当前不同 → 视为任务期间改动）。
+        let 状态目录 = 根.join(".上下文/状态");
+        std::fs::create_dir_all(&状态目录).unwrap();
+        let 基线 = serde_json::json!({
+            "指纹们": { "乾坤/乙.rs": { "大小": 1, "修改": 1 } }
+        });
+        std::fs::write(状态目录.join("执行-基线.json"), 基线.to_string()).unwrap();
 
         let 撤销数 = 打回撤销产物(
             "要求-测试",
@@ -1482,38 +1511,11 @@ mod 测试 {
             &shihai_fu::工作区::新(&根),
         )
         .unwrap();
-        assert_eq!(撤销数, 1);
-        assert!(!工作区文件.exists());
-        let _ = std::fs::remove_dir_all(&根);
-    }
-
-    /// 取最新版本快照优先（v9 有则用 v9，不回更旧）。
-    #[test]
-    fn 打回撤销产物_取最近版本快照() {
-        let 根 = std::env::temp_dir().join(format!("打回撤销-最近-{}", shihai_fu::当前毫秒()));
-        let 快照v8 = 根.join(".上下文/版本库/版本-v8/源码-快照/乾坤/丙.rs");
-        std::fs::create_dir_all(快照v8.parent().unwrap()).unwrap();
-        std::fs::write(&快照v8, "v8内容").unwrap();
-        let 快照v9 = 根.join(".上下文/版本库/版本-v9/源码-快照/乾坤/丙.rs");
-        std::fs::create_dir_all(快照v9.parent().unwrap()).unwrap();
-        std::fs::write(&快照v9, "v9内容").unwrap();
-        let 工作区文件 = 根.join("乾坤/丙.rs");
-        std::fs::create_dir_all(工作区文件.parent().unwrap()).unwrap();
-        std::fs::write(&工作区文件, "本轮改动").unwrap();
-
-        let 撤销数 = 打回撤销产物(
-            "要求-测试",
-            &[产物条目 {
-                路径: "乾坤/丙.rs".to_string(),
-                类别: "代码".to_string(),
-                字节数: 0,
-                变化类型: "修改".to_string(),
-            }],
-            &shihai_fu::工作区::新(&根),
-        )
-        .unwrap();
-        assert_eq!(撤销数, 1);
-        assert_eq!(std::fs::read_to_string(&工作区文件).unwrap(), "v9内容");
+        assert_eq!(撤销数, 0);
+        assert!(
+            std::fs::read_to_string(&工作区文件).is_ok(),
+            "基线不一致也不得删除/恢复文件，保留盘面"
+        );
         let _ = std::fs::remove_dir_all(&根);
     }
 

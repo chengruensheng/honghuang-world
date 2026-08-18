@@ -1,24 +1,10 @@
-/* 洪荒 · 任务直播 · app.js v3
-   依据：融合蓝图 §13 + §13.b
-   UI 核心：每条动作是一个 <details>，点 summary 直接展开全量
-   三层数据：
-     /api/tasks                   → 任务列表
-     /api/sessions/{id}          → 该任务 L2 高层动作 + L3/L4 子节点（如果存在）
-     /api/sessions/{id}/thoughts → 仅 LLM 调用（可独立折叠层）
-     /api/sessions/{id}/tools    → 仅工具调用 */
+/* 洪荒 · 步骤直播 · app.js v3.5
+   依据：融合蓝图 §13.c 步骤流（2026-08-19 第四次推翻）
+   端点：/api/tasks / /api/sessions/{id}/steps / /api/stream (SSE) */
 
 const $ = (s) => document.querySelector(s);
 
-const state = {
-    tasks: [],
-    filterText: "",
-    filterStatus: "",
-    selectedTaskId: null,
-    sessions: {},
-    events: 0,
-    rateEvents: [],
-    es: null,
-};
+const state = { tasks: [], filterText: "", filterStatus: "", selectedTaskId: null, steps: [], expandedSteps: {}, events: 0, rateEvents: [], es: null };
 
 function fmtTs(ts) {
     if (!ts) return "--:--:--";
@@ -27,66 +13,79 @@ function fmtTs(ts) {
     return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
 }
 
+function fmtDuration(ms) {
+    if (ms < 1000) return ms + "ms";
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + "s";
+    const m = Math.floor(s / 60);
+    return m + "m" + (s % 60) + "s";
+}
+
 function escapeHtml(s) {
-    return String(s == null ? "" : s)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function formatLLMContent(input) {
-    // input: 可能是 dict（_parsed 已解析）或 str（_raw 兜底）
-    let parsed = input;
-    if (typeof parsed === "string") {
-        try { parsed = JSON.parse(parsed); } catch (e) { return escapeHtml(parsed); }
+function summarize_comp(a) {
+    // 返回 { kind, lines: [htmlString] } —— 不再截短, 全量展示
+    const t = a["类型"];
+    const 动作 = a["动作"] || "?";
+    const full = a["全量"];
+    if (t === "LLM") {
+        const msgs = (full && full.载荷 && full.载荷.messages) || [];
+        const lines = [];
+        for (let i = 0; i < msgs.length; i++) {
+            const m = msgs[i];
+            const role = m.role || "?";
+            let c = m.content || "";
+            if (Array.isArray(c)) c = c.map(x => x.text || "").join(" ");
+            lines.push('<div class="msg">' +
+                '<span class="msg-role msg-role-' + role + '">' + escapeHtml(role) + '</span>' +
+                '<span class="msg-body">' + escapeHtml(String(c)) + '</span>' +
+                '</div>');
+        }
+        return { kind: 'llm', lines: lines, label: msgs.length + ' 消息' };
     }
-    if (!parsed || typeof parsed !== "object") return "(空)";
-    // 优先 _parsed 形态（载荷.parsed.messages）+ 兜底 messages
-    const payload = parsed.载荷 && parsed.载荷.parsed ? parsed.载荷.parsed
-                  : parsed.载荷 && parsed.载荷.messages ? parsed.载荷
-                  : parsed;
-    const msgs = payload.messages || [];
-    const meta = parsed.载荷 || parsed;
-    let out = "模型: " + escapeHtml(meta.model || payload.model || "?") + "\n";
-    out += "max_tokens: " + escapeHtml(meta.max_tokens || payload.max_tokens || "?") + "\n";
-    out += "消息数: " + msgs.length + "\n";
-    if (parsed.接口) out += "接口: " + escapeHtml(parsed.接口) + "\n";
-    if (parsed.关联) out += "关联: " + escapeHtml(JSON.stringify(parsed.关联)) + "\n";
-    out += "\n";
-    msgs.forEach((mm, i) => {
-        out += "── " + (i + 1) + ". [" + escapeHtml(mm.role || "?") + "] ──\n";
-        const c = mm.content || "";
-        if (typeof c === "string") {
-            out += escapeHtml(c.slice(0, 800));
-            if (c.length > 800) out += "\n... (共 " + c.length + " 字)";
-            out += "\n\n";
+    if (t === "工具") {
+        const inner = (full && full.载荷 && full.载荷.parsed) || null;
+        const 附加 = (full && full.载荷 && full.载荷.附加) || null;
+        const isCall = (a["动作"] || "").includes("调用");
+        const lines = [];
+        if (isCall) {
+            lines.push('<div class="msg">调用参数</div>');
+            const params = (附加 && typeof 附加 === "object") ? 附加 : (inner && typeof inner === "object" ? inner : null);
+            if (params) {
+                lines.push('<pre class="msg-body-pre">' + escapeHtml(JSON.stringify(params, null, 2)) + '</pre>');
+            } else {
+                lines.push('<pre class="msg-body-pre">' + escapeHtml(动作) + '</pre>');
+            }
         } else {
-            out += escapeHtml(JSON.stringify(c, null, 2));
-            out += "\n\n";
+            lines.push('<div class="msg">返回内容</div>');
+            const result = (inner && typeof inner === "object") ? inner : (附加 && typeof 附加 === "object" ? 附加 : null);
+            if (result) {
+                lines.push('<pre class="msg-body-pre">' + escapeHtml(JSON.stringify(result, null, 2)) + '</pre>');
+            } else {
+                // 实在没东西就给原始
+                lines.push('<pre class="msg-body-pre">' + escapeHtml(动作) + '</pre>');
+            }
         }
-    });
-    return out;
+        return { kind: 'tool', lines: lines, label: isCall ? "调用" : "返回" };
+    }
+    return { kind: 'other', lines: ['<pre class="msg-body-pre">' + escapeHtml(动作) + '</pre>'], label: t };
 }
 
-function prettyJson(input) {
-    // input: dict（_parsed 已解析）或 str（_raw 兜底）
-    if (input == null || input === "") return "(空)";
-    if (typeof input === "string") {
-        try {
-            return JSON.stringify(JSON.parse(input), null, 2);
-        } catch (e) {
-            return input.length > 2000 ? input.slice(0, 2000) + "\n... (截断)" : input;
+async function loadTasks() {
+    try {
+        const r = await fetch("/api/tasks");
+        const o = await r.json();
+        state.tasks = o.tasks || [];
+        $("#task-count").textContent = state.tasks.length + "/" + state.tasks.length;
+        $("#footer-tasks").textContent = state.tasks.length;
+        renderTasks();
+        if (!state.selectedTaskId && state.tasks.length > 0) {
+            const active = state.tasks.find(t => t.状态 === "实现中") || state.tasks.find(t => t.状态 === "待领") || state.tasks[0];
+            if (active) selectTask(active.id);
         }
-    }
-    if (typeof input === "object") {
-        return JSON.stringify(input, null, 2);
-    }
-    return String(input);
-}
-
-function pillClass(状态) {
-    return "pill pill-" + (状态 || "?");
+    } catch (e) { console.error("tasks", e); }
 }
 
 function renderTasks() {
@@ -112,8 +111,7 @@ function renderTasks() {
         row.innerHTML =
             '<div class="id">' + escapeHtml(t.id) + '</div>' +
             '<div class="meta">' +
-                '<span class="' + pillClass(t.状态) + '">' + escapeHtml(t.状态 || "?") + '</span>' +
-                '<span class="pill">阶段:' + escapeHtml(t.阶段 || "?") + '</span>' +
+                '<span class="pill pill-' + escapeHtml(t.状态 || "?") + '">' + escapeHtml(t.状态 || "?") + '</span>' +
                 '<span class="pill">' + escapeHtml(t.类别 || "?") + '</span>' +
             '</div>' +
             '<div class="dir">' + escapeHtml(t.方向前 || "") + '</div>';
@@ -122,156 +120,91 @@ function renderTasks() {
     }
 }
 
-async function loadTasks() {
-    try {
-        const r = await fetch("/api/tasks");
-        const o = await r.json();
-        state.tasks = o.tasks || [];
-        $("#task-count").textContent = state.tasks.length + "/" + state.tasks.length;
-        $("#footer-tasks").textContent = state.tasks.length;
-        renderTasks();
-        if (!state.selectedTaskId && state.tasks.length > 0) {
-            const active = state.tasks.find(t => t.状态 === "实现中") || state.tasks.find(t => t.状态 === "待领") || state.tasks[0];
-            if (active) selectTask(active.id);
-        }
-    } catch (e) { console.error("tasks", e); }
-}
-
 async function selectTask(id) {
     state.selectedTaskId = id;
     $("#cur-task").textContent = id;
     renderTasks();
-    await loadSession(id);
+    await loadSteps(id);
 }
 
-async function loadSession(id) {
+async function loadSteps(id) {
     try {
-        const enc = encodeURIComponent(id);
-        const r = await fetch("/api/sessions/" + enc);
+        const r = await fetch("/api/sessions/" + encodeURIComponent(id) + "/steps");
         if (r.status === 404) {
-            $("#session-tree").innerHTML = '<div class="task-empty">任务 ' + escapeHtml(id) + ' 未找到</div>';
-            $("#session-title").textContent = id + "（无）";
+            $("#steps-stream").innerHTML = '<div class="step-empty">任务 ' + escapeHtml(id) + ' 未找到</div>';
             return;
         }
         const o = await r.json();
-        state.sessions[id] = o.session;
-        renderSession(o.session);
-    } catch (e) { console.error("session", e); }
+        state.steps = o.steps || [];
+        $("#task-meta").textContent = id + " · " + state.steps.length + " 步";
+        $("#progress").textContent = state.steps.length + " 步";
+        renderSteps();
+    } catch (e) { console.error("steps", e); }
 }
 
-function buildActionNode(a, idx) {
-    // 单个 L2/L3/L4 动作的 <details> 节点。点 summary 直接展开
-    const detail = document.createElement("details");
-    detail.className = "action action-" + (a.层 || "l2") + " type-" + (a.类型 || "其他");
-    detail.dataset.idx = String(idx);
-
-    const summary = document.createElement("summary");
-    summary.innerHTML =
-        '<span class="time">' + fmtTs(a.ts) + '</span>' +
-        '<span class="type-pill type-' + (a.类型 || "其他") + '">' + escapeHtml(a.类型 || "其他") + '</span>' +
-        '<span class="yuan">' + escapeHtml(a.庭 || "?") + '</span>' +
-        '<span class="act">' + escapeHtml(a.动作 || "") + '</span>' +
-        '<span class="tok">' + (a.token || 0) + ' tok</span>' +
-        '<span class="dur">' + (a.耗时ms || 0) + 'ms</span>' +
-        '<span class="hint">▾</span>';
-    detail.appendChild(summary);
-
-    const full = document.createElement("div");
-    full.className = "full";
-    let content = "";
-    if (a.全量) {
-        if (a.层 === "llm") {
-            content = formatLLMContent(a.全量);
-        } else {
-            content = prettyJson(a.全量);
-        }
-    }
-    const pre = document.createElement("pre");
-    pre.className = "full-body";
-    pre.textContent = content;
-    full.appendChild(pre);
-
-    if (a.影响 && a.影响.length) {
-        const meta = document.createElement("div");
-        meta.className = "full-meta";
-        meta.textContent = "影响: " + JSON.stringify(a.影响);
-        full.appendChild(meta);
-    }
-    if (a.证据) {
-        const ev = document.createElement("div");
-        ev.className = "full-evidence";
-        ev.textContent = "证据: " + a.证据;
-        full.appendChild(ev);
-    }
-    detail.appendChild(full);
-    return detail;
-}
-
-function renderSession(sess) {
-    const tree = $("#session-tree");
-    tree.innerHTML = "";
-
-    const title = document.createElement("div");
-    title.className = "session-title";
-    title.innerHTML =
-        '<span class="id-tag">' + escapeHtml(sess.id) + '</span>' +
-        '<span class="' + pillClass(sess.状态) + '">' + escapeHtml(sess.状态 || "?") + '</span>' +
-        '<span class="pill">阶段:' + escapeHtml(sess.阶段 || "?") + '</span>' +
-        '<span class="pill">' + escapeHtml(sess.类别 || "?") + '</span>';
-    tree.appendChild(title);
-
-    const direction = document.createElement("details");
-    direction.className = "session-meta";
-    direction.innerHTML =
-        '<summary>方向 + 验收标准 + 约束（点击展开）</summary>' +
-        '<div class="meta-body">' +
-            '<div><b>方向:</b> ' + escapeHtml(sess.方向 || "(空)") + '</div>' +
-            '<div><b>验收标准:</b> ' + escapeHtml(sess.验收标准 || "(空)") + '</div>' +
-            '<div><b>约束:</b> ' + escapeHtml(JSON.stringify(sess.约束 || {}, null, 2)) + '</div>' +
-        '</div>';
-    tree.appendChild(direction);
-
-    const l2 = (sess.动作们 || []).filter(a => !a.层 || a.层 === "l2");
-    const l34 = (sess.动作们 || []).filter(a => a.层 && a.层 !== "l2");
-
-    if (l2.length === 0 && l34.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "task-empty";
-        empty.textContent = "暂无动作（等待世界执行）";
-        tree.appendChild(empty);
+function renderSteps() {
+    const wrap = $("#steps-stream");
+    wrap.innerHTML = "";
+    if (state.steps.length === 0) {
+        wrap.innerHTML = '<div class="step-empty">暂无步骤 (等待世界执行)</div>';
         return;
     }
-
-    const l2wrap = document.createElement("div");
-    l2wrap.className = "actions-wrap";
-    const l2head = document.createElement("div");
-    l2head.className = "section-head";
-    l2head.textContent = "动作列表 · 共 " + (l2.length + l34.length) + " 条（L2 = " + l2.length + ", L3/L4 = " + l34.length + "）";
-    l2wrap.appendChild(l2head);
-    for (let i = 0; i < l2.length; i++) {
-        const node = buildActionNode(l2[i], i);
-        l2wrap.appendChild(node);
-
-        if (l2[i].类型 === "实现" || l2[i].类型 === "工具循环" || /实现|设计/.test(l2[i].动作 || "")) {
-            const subs = l34.filter(c => c.父idx === i);
-            if (subs.length > 0) {
-                const sub = document.createElement("div");
-                sub.className = "children";
-                for (const c of subs) {
-                    sub.appendChild(buildActionNode(c, -1));
+    const lastIdx = state.steps.length - 1;
+    for (let i = 0; i < state.steps.length; i++) {
+        const s = state.steps[i];
+        const isLast = (i === lastIdx);
+        const isCurrent = isLast;
+        const isDone = !isLast;
+        const card = document.createElement("div");
+        card.className = "step-card" + (isCurrent ? " current" : "") + (isDone ? " done" : "");
+        const expanded = !!state.expandedSteps[i];
+        const elapsed = (s['结束 ts'] || s['开始 ts']) - s['开始 ts'];
+        const head = document.createElement("div");
+        head.className = "step-head";
+        head.innerHTML =
+            '<span class="step-num">#' + s['步骤号'] + '</span>' +
+            '<span class="step-title">' + escapeHtml(s['标题'] || '(无标题)') + '</span>' +
+            '<span class="step-meta">' +
+                '<span>⏱ <b>' + fmtDuration(elapsed) + '</b></span>' +
+                '<span>🎯 <b>' + (s['token sum'] || 0) + '</b> tok</span>' +
+                '<span>LLM <b>' + (s['LLM 数'] || 0) + '</b></span>' +
+                '<span>Tool <b>' + (s['Tool 数'] || 0) + '</b></span>' +
+            '</span>' +
+            '<span class="step-status">' + (isCurrent ? '▸' : (isDone ? '✓' : '○')) + '</span>';
+        head.addEventListener("click", () => {
+            state.expandedSteps[i] = !expanded;
+            renderSteps();
+        });
+        card.appendChild(head);
+        if (expanded) {
+            const body = document.createElement("div");
+            body.className = "step-body";
+            for (const a of (s['组件'] || [])) {
+                const comp = summarize_comp(a);
+                const ts = a['ts'] || 0;
+                const head = document.createElement('div');
+                head.className = 'comp-head';
+                head.innerHTML =
+                    '<span class="comp-icon comp-icon-' + comp.kind + '">' + escapeHtml(comp.label) + '</span>' +
+                    '<span class="comp-time">' + fmtTs(ts) + '</span>';
+                body.appendChild(head);
+                for (const line of (comp.lines || [])) {
+                    const div = document.createElement('div');
+                    div.className = 'comp-line';
+                    div.innerHTML = line;
+                    body.appendChild(div);
                 }
-                l2wrap.appendChild(sub);
             }
+            card.appendChild(body);
         }
+        wrap.appendChild(card);
     }
-    tree.appendChild(l2wrap);
 }
 
 function connectSSE() {
     if (state.es) try { state.es.close(); } catch (e) {}
     state.es = new EventSource("/api/stream");
     $("#live-indicator").textContent = "🟢 直播中";
-    $("#live-state2").textContent = "直播";
     state.es.onmessage = (msg) => {
         try {
             const p = JSON.parse(msg.data);
@@ -280,32 +213,19 @@ function connectSSE() {
             state.rateEvents.push(Date.now());
             while (state.rateEvents.length > 0 && Date.now() - state.rateEvents[0] > 5000) state.rateEvents.shift();
             $("#footer-rate").textContent = (state.rateEvents.length / 5).toFixed(1);
-            if (p.type === "event" && state.selectedTaskId) {
-                if (p.任务id === state.selectedTaskId) loadSession(p.任务id);
-            } else if (p.type === "task-new" || p.type === "task-status-change") {
-                loadTasks();
-                if (state.selectedTaskId === p.任务id) loadSession(p.任务id);
+            if (p.type === "event" || p.type === "task-status-change" || p.type === "task-new") {
+                if (p.type === "task-new" || p.type === "task-status-change") loadTasks();
+                if (state.selectedTaskId === p.任务id) loadSteps(state.selectedTaskId);
             }
         } catch (e) { console.error("sse", e); }
     };
-    state.es.onerror = () => {
-        $("#live-indicator").textContent = "🔴 断了 1s 重连";
-        $("#live-state2").textContent = "重连";
-    };
+    state.es.onerror = () => { $("#live-indicator").textContent = "🔴 1s 重连"; };
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     loadTasks();
     connectSSE();
-    setInterval(() => {
-        $("#footer-rate").textContent = (state.rateEvents.length / 5).toFixed(1);
-    }, 1000);
-    $("#search").addEventListener("input", (e) => {
-        state.filterText = e.target.value;
-        renderTasks();
-    });
-    $("#status-filter").addEventListener("change", (e) => {
-        state.filterStatus = e.target.value;
-        renderTasks();
-    });
+    setInterval(() => { $("#footer-rate").textContent = (state.rateEvents.length / 5).toFixed(1); }, 1000);
+    $("#search").addEventListener("input", (e) => { state.filterText = e.target.value; renderTasks(); });
+    $("#status-filter").addEventListener("change", (e) => { state.filterStatus = e.target.value; renderTasks(); });
 });

@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>洪荒 · 任务直播</title>
+<title>洪荒 · 步骤直播</title>
 <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
 <header id="status-bar">
   <div class="row1">
-    <span class="brand">洪荒 · 任务直播</span>
+    <span class="brand">洪荒 · 步骤直播</span>
     <span class="phase" id="phase">v15 乙阶段</span>
-    <span class="task-info">当前任务:<span id="cur-task">未选</span></span>
+    <span class="task">当前任务: <strong id="cur-task">—</strong></span>
+    <span class="state">进度: <strong id="progress">0 / 0</strong> 步</span>
     <span class="indicator" id="live-indicator">🔴 未连</span>
   </div>
 </header>
@@ -29,20 +30,16 @@
     </select>
     <div id="task-list"></div>
   </aside>
-  <section id="session-pane">
-    <div class="pane-head">会话树 · <span id="session-title">请选左侧任务</span></div>
-    <div id="session-tree"></div>
+  <section id="steps-pane">
+    <div class="pane-head">
+      <span id="task-meta">请选左侧任务</span>
+      <span class="legend">▸ 当前步 · ✓ 已完成 · ▾ 已展开</span>
+    </div>
+    <div id="steps-stream"></div>
   </section>
 </main>
-<div id="detail-drawer" class="hidden">
-  <div class="drawer-head">
-    <span id="detail-title">动作全量</span>
-    <button id="detail-close">关闭</button>
-  </div>
-  <pre id="detail-body"></pre>
-</div>
 <footer id="footer-bar">
-  v15乙 │ 任务<span id="footer-tasks">0</span> │ 事件<span id="footer-events">0</span> │ 流速<span id="footer-rate">0</span> ev/s │ <span id="live-state2">待连</span>
+  v15乙 │ 任务 <span id="footer-tasks">0</span> │ 事件 <span id="footer-events">0</span> │ 流速 <span id="footer-rate">0</span> ev/s │ 网 <span id="net">🟢</span>
 </footer>
 <script src="/static/app.js"></script>
 </body>
