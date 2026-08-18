@@ -635,6 +635,50 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             return
 
+    def _send_events_sse(self):
+        """步骤直播 v3：单源订阅 .上下文/事件流.jsonl 字节增量；payload 固定 {type:'event', ev:<row>}。"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        with EVENT_FOLLOW_LOCK:
+            last = EVENT_FOLLOW_LAST_SIZE
+        try:
+            self.wfile.write(b": stream-open\n\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        beat = 0
+        try:
+            while True:
+                new_rows, new_last = 读事件流增量(last)
+                if new_rows:
+                    for ev in new_rows:
+                        payload = {"type": "event", "ev": ev}
+                        line = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+                        try:
+                            self.wfile.write(line)
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            return
+                    with EVENT_FOLLOW_LOCK:
+                        EVENT_FOLLOW_LAST_SIZE = new_last
+                    last = new_last
+                beat += 1
+                if beat % 5 == 0:
+                    try:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError):
+                        return
+                time.sleep(0.3)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception:
+            return
+
     def _send_replay(self, qs):
         since = int(qs.get("since", ["0"])[0])
         until = int(qs.get("until", [str(int(time.time()*1000))])[0])
@@ -662,6 +706,7 @@ def load_default_rooms():
     ]
 
 def main():
+    global EVENT_FOLLOW_LAST_SIZE
     SHARED["rooms"] = load_default_rooms()
     if ROOMS_FILE.exists():
         try:
@@ -670,6 +715,12 @@ def main():
         except Exception:
             pass
     reload_tasks_raw()
+    # 步骤直播 v3：把 last_size 初始化为当前文件大小，避免新连接回放整段历史（首屏走 /api/events/recent 拉最近 200）。
+    try:
+        if EVENT_FOLLOW_PATH.exists():
+            EVENT_FOLLOW_LAST_SIZE = EVENT_FOLLOW_PATH.stat().st_size
+    except Exception:
+        pass
     port = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_PORT
     SHARED["settings"]["port"] = port
     t = threading.Thread(target=background_scan, daemon=True)

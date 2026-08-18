@@ -10,9 +10,8 @@
 <header id="status-bar">
   <div class="row1">
     <span class="brand">洪荒 · 步骤直播</span>
-    <span class="phase" id="phase">v15 乙阶段</span>
-    <span class="task">当前任务: <strong id="cur-task">—</strong></span>
-    <span class="state">进度: <strong id="progress">0 / 0</strong> 步</span>
+    <span class="phase" id="phase">v3 步骤直播</span>
+    <span class="state">事件 <strong id="footer-events">0</strong> · 流速 <strong id="footer-rate">0</strong> ev/s</span>
     <span class="indicator" id="live-indicator">🔴 未连</span>
   </div>
 </header>
@@ -32,14 +31,18 @@
   </aside>
   <section id="steps-pane">
     <div class="pane-head">
-      <span id="task-meta">请选左侧任务</span>
-      <span class="legend">▸ 当前步 · ✓ 已完成 · ▾ 已展开</span>
+      <div class="view-tabs" id="view-tabs">
+        <button class="tab tab-on" data-tab="timeline">时间线</button>
+        <button class="tab" data-tab="tree">任务树</button>
+      </div>
+      <span class="legend" id="task-meta">—</span>
     </div>
-    <div id="steps-stream"></div>
+    <div id="timeline-view" class="view view-on"></div>
+    <div id="tree-view" class="view"></div>
   </section>
 </main>
 <footer id="footer-bar">
-  v15乙 │ 任务 <span id="footer-tasks">0</span> │ 事件 <span id="footer-events">0</span> │ 流速 <span id="footer-rate">0</span> ev/s │ 网 <span id="net">🟢</span>
+  v3 步骤直播 │ 任务 <span id="footer-tasks">0</span> │ 事件 <span id="footer-events-foot">0</span> │ 网 <span id="net">🟢</span>
 </footer>
 <script src="/static/app.js"></script>
 </body>
