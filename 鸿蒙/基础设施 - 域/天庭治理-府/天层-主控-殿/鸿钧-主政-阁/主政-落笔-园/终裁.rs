@@ -372,22 +372,39 @@ const 现实事实: &str = concat!(
     "- 模块树：按 #[path = \"子目录/模块.rs\"] pub mod 逐级声明接入；「未见 lib.rs」不等于「未接入模块树」。"
 );
 
-/// 产物内容摘要：对 .rs 产物机械提取 pub 符号签名与测试函数名（真实文件事实）。
-/// 治「无法直接读取文件、凭字节增量推断」的猜谜式审验——准圣只审语义，事实层由机械摘要兜底。
+/// 产物内容摘要：对 .rs 产物机械提取 pub 符号签名与测试函数名；对 .md/.json 等非 .rs 文本产物
+/// 提取结构骨架（§14.16 修复：治「准圣凭字节数审验」——文档/配置类任务验收无内容可核对）。
 /// 单文件符号上限 20 条、总摘要上限 2000 字符，防提示词膨胀。
 fn 产物内容摘要(产物们: &[产物条目]) -> String {
     const 单文件符号上限: usize = 20;
     const 总摘要上限: usize = 2_000;
+    // §14.15 配置化：合法产物扩展名从装配配置读（数据驱动）；.rs 走源码提取，其余走骨架提取。
+    let 文本扩展名们 = peizhi_fu::读装配().合法产物扩展名;
     let 根 = shihai_fu::工作区::定位();
     let mut 摘要们 = Vec::new();
     for 产物 in 产物们 {
-        if !产物.路径.ends_with(".rs") {
-            continue;
-        }
         let Ok(内容) = std::fs::read_to_string(根.根路径().join(&产物.路径)) else {
             continue;
         };
         let 总行数 = 内容.lines().count();
+        // 非 .rs 文本产物：结构骨架提取（.md 标题 / .json 顶层键 / 其余截断首 500）。
+        if !产物.路径.ends_with(".rs") {
+            if !文本扩展名们
+                .iter()
+                .any(|扩展名| 产物.路径.ends_with(扩展名))
+            {
+                continue; // 未知扩展名（二进制等）：跳过
+            }
+            let 骨架 = 文本骨架(&产物.路径, &内容);
+            if 骨架.is_empty() {
+                continue;
+            }
+            摘要们.push(format!(
+                "- {}（{}行）\n    骨架：{}",
+                产物.路径, 总行数, 骨架
+            ));
+            continue;
+        }
         let 行们: Vec<&str> = 内容.lines().collect();
         let mut 符号们 = Vec::new();
         let mut 测试们 = Vec::new();
@@ -450,7 +467,7 @@ fn 产物内容摘要(产物们: &[产物条目]) -> String {
         摘要们.push(条目);
     }
     if 摘要们.is_empty() {
-        return "（无非 rs 产物，无内容摘要）".to_string();
+        return "（无内容可提取的产物）".to_string();
     }
     let mut 合并 = 摘要们.join("\n");
     if 合并.chars().count() > 总摘要上限 {
@@ -458,6 +475,35 @@ fn 产物内容摘要(产物们: &[产物条目]) -> String {
         合并.push_str("…（摘要截断，按需 读文件 工具回读）");
     }
     合并
+}
+
+/// 非 .rs 文本产物的结构骨架（§14.16）：
+/// - .md：标题行（`#` 开头章节名，上限 10 条）；
+/// - .json：顶层键名（上限 10 个）；
+/// - 其余文本（.toml/.yaml/.yml/.txt）：截断首 500 字符。
+fn 文本骨架(路径: &str, 内容: &str) -> String {
+    if 路径.ends_with(".md") {
+        let 标题们: Vec<&str> = 内容
+            .lines()
+            .map(|行| 行.trim())
+            .filter(|行| 行.starts_with('#') && !行.starts_with("##")) // 一级标题为主，避免章节噪音
+            .take(10)
+            .collect();
+        if !标题们.is_empty() {
+            return format!("章节：{}", 标题们.join(" / "));
+        }
+    } else if 路径.ends_with(".json") {
+        if let Ok(值) = serde_json::from_str::<serde_json::Value>(内容) {
+            if let Some(对象) = 值.as_object() {
+                let 键们: Vec<String> = 对象.keys().take(10).cloned().collect();
+                if !键们.is_empty() {
+                    return format!("顶层键：{}", 键们.join("、"));
+                }
+            }
+        }
+    }
+    // 其余文本或 md/json 无结构 → 截断首 500 字符。
+    内容.chars().take(500).collect::<String>()
 }
 
 /// 单准圣审验：模型一次调用 → 该维度意见。
@@ -835,16 +881,54 @@ mod 测试 {
         let _锁 = 测试环境锁.lock().unwrap();
         let 根 = std::env::temp_dir().join(format!("终裁摘要测试2-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
-        std::fs::write(根.join("说明.md"), "# 说明").unwrap();
+        std::fs::write(根.join("说明.md"), "# 说明\n\n正文内容。").unwrap();
+        std::fs::write(根.join("空文件.txt"), "").unwrap();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 产物们 = vec![
+            产物条目 {
+                路径: "说明.md".to_string(),
+                类别: "文档".to_string(),
+                字节数: 10,
+                变化类型: "新增".to_string(),
+            },
+            产物条目 {
+                路径: "空文件.txt".to_string(),
+                类别: "文档".to_string(),
+                字节数: 0,
+                变化类型: "新增".to_string(),
+            },
+        ];
+        let 摘要 = 产物内容摘要(&产物们);
+        // §14.16：非 .rs 文本产物提取骨架（.md 标题行）；空文件骨架为空跳过。
+        assert!(摘要.contains("章节："), "应含 .md 骨架章节：{摘要}");
+        assert!(摘要.contains("说明"), "应含章节名：{摘要}");
+        assert!(!摘要.contains("空文件"), "空文件骨架为空应跳过：{摘要}");
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// §14.16：.json 产物提取顶层键名。
+    #[test]
+    fn 产物内容摘要_json提取顶层键() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 根 = std::env::temp_dir().join(format!("终裁摘要测试3-{}", std::process::id()));
+        std::fs::create_dir_all(&根).unwrap();
+        std::fs::write(
+            根.join("配置.json"),
+            r#"{"阶段":"乙","启用扩展":["巡世"],"模型提供者":"http"}"#,
+        )
+        .unwrap();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 产物们 = vec![产物条目 {
-            路径: "说明.md".to_string(),
-            类别: "文档".to_string(),
-            字节数: 10,
+            路径: "配置.json".to_string(),
+            类别: "配置".to_string(),
+            字节数: 60,
             变化类型: "新增".to_string(),
         }];
         let 摘要 = 产物内容摘要(&产物们);
-        assert_eq!(摘要, "（无非 rs 产物，无内容摘要）");
+        assert!(摘要.contains("顶层键"), "应含顶层键标识：{摘要}");
+        assert!(摘要.contains("阶段"), "应含键名 阶段：{摘要}");
+        assert!(摘要.contains("模型提供者"), "应含键名 模型提供者：{摘要}");
         std::env::remove_var("WORLD_WORKSPACE_ROOT");
         let _ = std::fs::remove_dir_all(&根);
     }
