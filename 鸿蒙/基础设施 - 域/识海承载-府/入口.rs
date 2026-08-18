@@ -13,6 +13,6 @@ pub mod 识海_纳藏_殿;
 #[path = "识海-回想-殿/模块.rs"]
 pub mod 识海_回想_殿;
 
-pub use 识海_铭记_殿::*;
-pub use 识海_纳藏_殿::*;
 pub use 识海_回想_殿::*;
+pub use 识海_纳藏_殿::*;
+pub use 识海_铭记_殿::*;

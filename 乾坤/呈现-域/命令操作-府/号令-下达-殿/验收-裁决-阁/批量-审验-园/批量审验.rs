@@ -9,7 +9,7 @@ pub fn 裁决验收(要求id: &str, 结论: &str, 意见: &str) -> String {
         "打回" => tianting_fu::验收结论::打回,
         _ => {
             warn!(要求id, 结论, "验收结论非法");
-            return format!("结论需为 通过|打回，当前：{结论}")
+            return format!("结论需为 通过|打回，当前：{结论}");
         }
     };
     let 回执 = tianting_fu::验收回执 {
@@ -19,7 +19,9 @@ pub fn 裁决验收(要求id: &str, 结论: &str, 意见: &str) -> String {
         产物: Vec::new(),
         耗时秒: 0.0,
     };
-    let 队列 = tianting_fu::落盘队列::<tianting_fu::验收回执>::打开(状态目录().join("验收.jsonl"));
+    let 队列 = tianting_fu::落盘队列::<tianting_fu::验收回执>::打开(
+        状态目录().join("验收.jsonl"),
+    );
     match 队列.入队(&回执) {
         Ok(_) => {
             info!(要求id, 结论, "验收已裁决入历史");

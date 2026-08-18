@@ -49,8 +49,14 @@ const 续跑提示模板: &str = concat!(
 );
 
 /// 渲染落盘提示：注入 {规则}（可操作规则格位内容，可为空串则不注入）。
-pub fn 渲染落盘提示(背景: &str, 现状: &str, 目标: &str, 预算: usize, 规则: &str) -> String {
-    let 规则段 = if 规则.is_empty() { String::new() } else { format!("\n{规则}") };
+pub fn 渲染落盘提示(
+    背景: &str, 现状: &str, 目标: &str, 预算: usize, 规则: &str
+) -> String {
+    let 规则段 = if 规则.is_empty() {
+        String::new()
+    } else {
+        format!("\n{规则}")
+    };
     落盘提示模板
         .replace("{背景}", 背景)
         .replace("{现状}", 现状)

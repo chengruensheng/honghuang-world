@@ -8,6 +8,6 @@ pub mod 增量_检测_园;
 #[path = "批量-登记-园/模块.rs"]
 pub mod 批量_登记_园;
 
-pub use 扫描_落格位_园::*;
 pub use 增量_检测_园::*;
+pub use 扫描_落格位_园::*;
 pub use 批量_登记_园::*;

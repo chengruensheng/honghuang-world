@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod 测试 {
-    use shihai_fu::{当前任务, 进入任务, 回滚垫, 工作区};
+    use shihai_fu::{回滚垫, 工作区, 当前任务, 进入任务};
     use std::fs;
 
     /// 临时根：回滚垫 + 一组文件，测试结束清理。
@@ -51,7 +51,11 @@ mod 测试 {
         垫(&根).备份("任务A", 目标.to_str().unwrap()).unwrap();
         fs::write(&目标, "第二版").unwrap();
         垫(&根).撤销("任务A").unwrap();
-        assert_eq!(fs::read_to_string(&目标).unwrap(), "原始", "只恢复首次备份的原始状态");
+        assert_eq!(
+            fs::read_to_string(&目标).unwrap(),
+            "原始",
+            "只恢复首次备份的原始状态"
+        );
         let _ = fs::remove_dir_all(&根);
     }
 
@@ -68,7 +72,11 @@ mod 测试 {
         fs::write(&乙, "乙新").unwrap();
         垫(&根).撤销("任务A").unwrap();
         assert_eq!(fs::read_to_string(&甲).unwrap(), "甲旧");
-        assert_eq!(fs::read_to_string(&乙).unwrap(), "乙新", "任务B 的存档不受影响");
+        assert_eq!(
+            fs::read_to_string(&乙).unwrap(),
+            "乙新",
+            "任务B 的存档不受影响"
+        );
         let _ = fs::remove_dir_all(&根);
     }
 
@@ -94,11 +102,16 @@ mod 测试 {
     #[test]
     fn 工作区外路径不归档() {
         let 根 = 临时根("外路径");
-        let 外部 = std::env::temp_dir().join(format!("证道_回滚垫_外部_{}.txt", std::process::id()));
+        let 外部 =
+            std::env::temp_dir().join(format!("证道_回滚垫_外部_{}.txt", std::process::id()));
         fs::write(&外部, "外部").unwrap();
         垫(&根).备份("任务A", 外部.to_str().unwrap()).unwrap();
         垫(&根).撤销("任务A").unwrap();
-        assert_eq!(fs::read_to_string(&外部).unwrap(), "外部", "工作区外文件不应被归档或撤销");
+        assert_eq!(
+            fs::read_to_string(&外部).unwrap(),
+            "外部",
+            "工作区外文件不应被归档或撤销"
+        );
         let _ = fs::remove_file(&外部);
         let _ = fs::remove_dir_all(&根);
     }

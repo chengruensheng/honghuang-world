@@ -13,7 +13,11 @@ mod 测试 {
     /// 临时工作区：建目录 + 设 WORLD_WORKSPACE_ROOT，返回 (根, 锁)；持有 guard 至测试结束。
     fn 临时工作区(名: &str) -> (std::path::PathBuf, std::sync::MutexGuard<'static, ()>) {
         let 锁 = 环境变量锁.lock().unwrap_or_else(|e| e.into_inner());
-        let 根 = std::env::temp_dir().join(format!("手脚架_删文件_工作区_{}_{}", std::process::id(), 名));
+        let 根 = std::env::temp_dir().join(format!(
+            "手脚架_删文件_工作区_{}_{}",
+            std::process::id(),
+            名
+        ));
         let _ = std::fs::remove_dir_all(&根);
         std::fs::create_dir_all(&根).unwrap();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
@@ -44,7 +48,11 @@ mod 测试 {
         删文件(&[甲.to_str().unwrap()]).unwrap();
         assert!(!甲.exists());
         回滚垫::在工作区(&工作区::新(&根)).撤销("任务A").unwrap();
-        assert_eq!(std::fs::read_to_string(&甲).unwrap(), "旧内容", "撤销应恢复被删文件");
+        assert_eq!(
+            std::fs::read_to_string(&甲).unwrap(),
+            "旧内容",
+            "撤销应恢复被删文件"
+        );
         let _ = std::fs::remove_dir_all(&根);
     }
 }

@@ -18,7 +18,10 @@ pub fn 世界直播() -> String {
         let 行们: Vec<&str> = 内容.lines().filter(|行| !行.trim().is_empty()).collect();
         已见行数 = 行们.len();
         let 尾部 = 行们.iter().rev().take(3).rev();
-        println!("[直播就绪] 事件流共 {} 条历史事件，以下只跟随新事件（最近 3 条：）", 已见行数);
+        println!(
+            "[直播就绪] 事件流共 {} 条历史事件，以下只跟随新事件（最近 3 条：）",
+            已见行数
+        );
         for 行 in 尾部 {
             if let Some(渲染) = 渲染事件(行) {
                 println!("  {渲染}");
@@ -51,7 +54,10 @@ pub fn 世界直播() -> String {
         if 有新 {
             上次输出 = std::time::Instant::now();
         } else if 上次输出.elapsed().as_secs() >= 30 {
-            println!("…等待中（{} 秒无新事件：模型思考中，或网络卡顿）", 上次输出.elapsed().as_secs());
+            println!(
+                "…等待中（{} 秒无新事件：模型思考中，或网络卡顿）",
+                上次输出.elapsed().as_secs()
+            );
             上次输出 = std::time::Instant::now();
         }
         std::thread::sleep(Duration::from_millis(800));
@@ -70,7 +76,12 @@ fn 渲染观测段(新段: &str, 有新: &mut bool) {
         let 时间戳 = 块
             .lines()
             .next()
-            .and_then(|行| 行.trim_end_matches(" ==========").trim().parse::<u64>().ok())
+            .and_then(|行| {
+                行.trim_end_matches(" ==========")
+                    .trim()
+                    .parse::<u64>()
+                    .ok()
+            })
             .unwrap_or(0);
         let 距今秒 = shihai_fu::当前毫秒().saturating_sub(时间戳) / 1000;
         let 时间 = 相对时间(距今秒);
@@ -135,8 +146,18 @@ fn 渲染载荷(类型: &str, 载荷: &serde_json::Value) -> String {
     };
     match 类型 {
         "想法投递" => format!("【界主想法】{}{}", 截(取("内容")), 想法id尾(取("想法id"))),
-        "要求入池" => format!("【要求入池】{}{} [{}]", 截(取("方向")), 要求id尾(取("要求id")), 取("状态")),
-        "设计上呈" => format!("【设计上呈】{}{}（拆解 {} 项）", 要求id尾(取("要求id")), 截(取("摘要")), 载荷["拆解数"].as_u64().unwrap_or(0)),
+        "要求入池" => format!(
+            "【要求入池】{}{} [{}]",
+            截(取("方向")),
+            要求id尾(取("要求id")),
+            取("状态")
+        ),
+        "设计上呈" => format!(
+            "【设计上呈】{}{}（拆解 {} 项）",
+            要求id尾(取("要求id")),
+            截(取("摘要")),
+            载荷["拆解数"].as_u64().unwrap_or(0)
+        ),
         "工具调用" => {
             let 工具 = 取("工具");
             let 参数 = 截(取("参数"));
@@ -144,9 +165,21 @@ fn 渲染载荷(类型: &str, 载荷: &serde_json::Value) -> String {
             let 结果长度 = 载荷["结果长度"].as_u64().unwrap_or(0);
             let 轮次 = 载荷["轮次"].as_u64().unwrap_or(0);
             if 失败 {
-                format!("【工具:{}】✗ {}{}（轮 {}）", 工具, 参数, 结果标注(结果长度), 轮次)
+                format!(
+                    "【工具:{}】✗ {}{}（轮 {}）",
+                    工具,
+                    参数,
+                    结果标注(结果长度),
+                    轮次
+                )
             } else {
-                format!("【工具:{}】{}{}（轮 {}）", 工具, 参数, 结果标注(结果长度), 轮次)
+                format!(
+                    "【工具:{}】{}{}（轮 {}）",
+                    工具,
+                    参数,
+                    结果标注(结果长度),
+                    轮次
+                )
             }
         }
         "验收结论" => format!(
@@ -156,10 +189,25 @@ fn 渲染载荷(类型: &str, 载荷: &serde_json::Value) -> String {
             取("结论"),
             截(取("终裁依据"))
         ),
-        "要求状态推进" => format!("【状态】{}{} → {}", 要求id尾(取("要求id")), 截(取("状态")), 截(取("说明"))),
-        "失败沉淀" => format!("【失败】{}{} 依据:{}", 要求id尾(取("要求id")), 尝试标注(载荷["尝试"].as_u64().unwrap_or(0)), 截(取("终裁依据"))),
+        "要求状态推进" => format!(
+            "【状态】{}{} → {}",
+            要求id尾(取("要求id")),
+            截(取("状态")),
+            截(取("说明"))
+        ),
+        "失败沉淀" => format!(
+            "【失败】{}{} 依据:{}",
+            要求id尾(取("要求id")),
+            尝试标注(载荷["尝试"].as_u64().unwrap_or(0)),
+            截(取("终裁依据"))
+        ),
         "版本存档" => format!("【定档】{} {}", 截(取("版本号")), 截(取("说明"))),
-        "想法状态推进" => format!("【想法】{}{} → {}", 想法id尾(取("想法id")), 截(取("状态")), 截(取("说明"))),
+        "想法状态推进" => format!(
+            "【想法】{}{} → {}",
+            想法id尾(取("想法id")),
+            截(取("状态")),
+            截(取("说明"))
+        ),
         _ => format!("【{类型}】{}", 截(&载荷.to_string())),
     }
 }
@@ -184,7 +232,17 @@ fn 想法id尾(想法id: &str) -> String {
     if 想法id.is_empty() {
         String::new()
     } else {
-        format!("（{}）", 想法id.chars().rev().take(8).collect::<String>().chars().rev().collect::<String>())
+        format!(
+            "（{}）",
+            想法id
+                .chars()
+                .rev()
+                .take(8)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>()
+        )
     }
 }
 
@@ -198,7 +256,7 @@ fn 要求id尾(要求id: &str) -> String {
 
 #[cfg(test)]
 mod 测试 {
-    use super::{渲染观测段, 渲染事件};
+    use super::{渲染事件, 渲染观测段};
 
     #[test]
     fn 渲染事件_工具调用可读() {

@@ -39,7 +39,11 @@ mod 测试 {
         改文件(目标.to_str().unwrap(), "旧文本", "新文本").unwrap();
         assert_eq!(std::fs::read_to_string(&目标).unwrap(), "新文本");
         回滚垫::在工作区(&工作区::新(&根)).撤销("任务A").unwrap();
-        assert_eq!(std::fs::read_to_string(&目标).unwrap(), "旧文本", "撤销应恢复改写前原文");
+        assert_eq!(
+            std::fs::read_to_string(&目标).unwrap(),
+            "旧文本",
+            "撤销应恢复改写前原文"
+        );
         let _ = std::fs::remove_dir_all(&根);
         drop(_锁);
     }

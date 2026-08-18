@@ -1,11 +1,13 @@
 //! 依赖 - 边：扫描 use / pub use 依赖边 → 依赖图。
 
-use crate::{依赖图, 符号档案, 扫描排除项, 工作区};
+use crate::{依赖图, 工作区, 扫描排除项, 符号档案};
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::收集::{收集源文件, 归属crate, 相对路径};
-use super::符号解析::{提取定义块, 提取上方注释, 提取use引用, 提取符号签名};
+use super::收集::{归属crate, 收集源文件, 相对路径};
+use super::符号解析::{
+    提取use引用, 提取上方注释, 提取定义块, 提取符号签名
+};
 
 /// 扫描 use / pub use 依赖边 → 依赖图（符号档案：五层标识 + 解释 + 波及）。
 /// 不动格位，产出依赖图交给依赖-边-园落盘。
@@ -39,13 +41,18 @@ pub fn 扫描依赖边(根目录: &Path) -> Result<依赖图, String> {
                 本文件符号数 += 1;
                 let 解释 = 提取上方注释(&行们, 序号);
                 let 解释 = if 解释.is_empty() {
-                    旧解释.get(&format!("{}::{}", 相对, 名)).cloned().unwrap_or_default()
+                    旧解释
+                        .get(&format!("{}::{}", 相对, 名))
+                        .cloned()
+                        .unwrap_or_default()
                 } else {
                     解释
                 };
                 // 代码字段 = 完整定义体（M4 配方：执行层按函数级切片读现状，防签名幻觉）
                 let 定义体 = 提取定义块(&行们, 序号);
-                图.档案们.push(符号档案::新(&项目名, &模块, &相对, &名, &定义体, &签名, &解释));
+                图.档案们.push(符号档案::新(
+                    &项目名, &模块, &相对, &名, &定义体, &签名, &解释,
+                ));
             }
         }
         文件符号数.insert(相对, 本文件符号数);
@@ -71,7 +78,15 @@ pub fn 扫描依赖边(根目录: &Path) -> Result<依赖图, String> {
             .trim_start_matches("//!")
             .trim()
             .to_string();
-        图.档案们.push(符号档案::新(&项目名, &归属crate(文件), &相对, &名, &内容, &format!("文件 {名}"), &解释));
+        图.档案们.push(符号档案::新(
+            &项目名,
+            &归属crate(文件),
+            &相对,
+            &名,
+            &内容,
+            &format!("文件 {名}"),
+            &解释,
+        ));
     }
 
     // 第二遍：use / pub use 引用，回填波及。
@@ -109,7 +124,11 @@ fn crate内目录段们(根目录: &Path, 文件: &Path) -> Option<Vec<String>> 
     let 相对crate = 文件.strip_prefix(&crate目录).ok()?;
     let 相对str = 相对crate.to_string_lossy().replace('\\', "/");
     let crate路径 = 相对路径(根目录, &crate目录).replace('\\', "/");
-    let 根段 = if crate路径.is_empty() { crate名 } else { crate路径 };
+    let 根段 = if crate路径.is_empty() {
+        crate名
+    } else {
+        crate路径
+    };
     let mut 段们 = vec![根段];
     段们.extend(目录段们(&相对str));
     Some(段们)

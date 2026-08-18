@@ -1,10 +1,10 @@
 //! 工具 - 循环 - 园 · 测试
 
-use super::*;
 use super::工具执行::{执行工具, 落盘内容上限};
+use super::*;
 use crate::读文件;
 use moxing_fu::工具调用;
-use shihai_fu::{记录, 模型存储};
+use shihai_fu::{模型存储, 记录};
 use std::fs;
 use std::path::PathBuf;
 
@@ -21,7 +21,11 @@ fn 临时目录(名: &str) -> PathBuf {
 }
 
 fn 造调用(名字: &str, 参数: &str) -> 工具调用 {
-    工具调用 { 标识: "t".to_string(), 名字: 名字.to_string(), 参数: 参数.to_string() }
+    工具调用 {
+        标识: "t".to_string(),
+        名字: 名字.to_string(),
+        参数: 参数.to_string(),
+    }
 }
 
 #[test]
@@ -32,9 +36,16 @@ fn 全部工具定义共十个且与手脚对应() {
     assert_eq!(
         名字们,
         vec![
-            "写文件", "读文件", "改文件", "删文件",
-            "列举目录", "寻找文件", "搜索内容", "运行命令",
-            "读格位", "查格位历史",
+            "写文件",
+            "读文件",
+            "改文件",
+            "删文件",
+            "列举目录",
+            "寻找文件",
+            "搜索内容",
+            "运行命令",
+            "读格位",
+            "查格位历史",
         ]
     );
     for 定义 in 定义们 {
@@ -48,7 +59,9 @@ fn 写文件读文件往返() {
     let 根 = 临时目录("读写");
     let mut 写入 = Vec::new();
     let 写 = 造调用("写文件", r#"{"路径":"子/新建.txt","内容":"洪荒"}"#);
-    assert!(执行工具(&写, &根, &mut 写入, &[]).unwrap().contains("已写入"));
+    assert!(执行工具(&写, &根, &mut 写入, &[])
+        .unwrap()
+        .contains("已写入"));
     assert_eq!(写入, vec![("子/新建.txt".to_string(), 6)]);
 
     let 读 = 造调用("读文件", r#"{"路径":"子/新建.txt"}"#);
@@ -64,12 +77,21 @@ fn 改文件与列举目录() {
     let 写 = 造调用("写文件", r#"{"路径":"甲.rs","内容":"旧文本"}"#);
     执行工具(&写, &根, &mut 写入, &[]).unwrap();
 
-    let 改 = 造调用("改文件", r#"{"路径":"甲.rs","旧文":"旧文本","新文":"新文本"}"#);
-    assert!(执行工具(&改, &根, &mut 写入, &[]).unwrap().contains("已改写"));
-    assert!(读文件(根.join("甲.rs").to_str().unwrap()).unwrap().contains("新文本"));
+    let 改 = 造调用(
+        "改文件",
+        r#"{"路径":"甲.rs","旧文":"旧文本","新文":"新文本"}"#,
+    );
+    assert!(执行工具(&改, &根, &mut 写入, &[])
+        .unwrap()
+        .contains("已改写"));
+    assert!(读文件(根.join("甲.rs").to_str().unwrap())
+        .unwrap()
+        .contains("新文本"));
 
     let 列 = 造调用("列举目录", r#"{"路径":""}"#);
-    assert!(执行工具(&列, &根, &mut 写入, &[]).unwrap().contains("甲.rs"));
+    assert!(执行工具(&列, &根, &mut 写入, &[])
+        .unwrap()
+        .contains("甲.rs"));
     let _ = fs::remove_dir_all(&根);
 }
 
@@ -89,11 +111,18 @@ fn 命令护栏拦截进程终止与自身二进制() {
     let 根 = 临时目录("护栏拦");
     let mut 写入 = Vec::new();
     let mut 拦 = |命令: &str, 参数: &str| {
-        let 调用 = 造调用("运行命令", &format!(r#"{{"命令":"{命令}","参数们":{参数}}}"#));
-        执行工具(&调用, &根, &mut 写入, &[]).err().expect("应被拦截")
+        let 调用 = 造调用(
+            "运行命令",
+            &format!(r#"{{"命令":"{命令}","参数们":{参数}}}"#),
+        );
+        执行工具(&调用, &根, &mut 写入, &[]).expect_err("应被拦截")
     };
     assert!(拦("taskkill", r#"["/F","/IM","号令.exe"]"#).contains("护栏拦截"));
-    assert!(拦("powershell.exe", r#"["-Command","Stop-Process -Name 号令"]"#).contains("护栏拦截"));
+    assert!(拦(
+        "powershell.exe",
+        r#"["-Command","Stop-Process -Name 号令"]"#
+    )
+    .contains("护栏拦截"));
     assert!(拦("cargo", r#"["run","--bin","号令","--","世界","时间"]"#).contains("护栏拦截"));
     assert!(拦("cargo", r#"["build","--bin","号令"]"#).contains("护栏拦截"));
     assert!(拦("cmd.exe", r#"["/c","号令.exe","世界","时间"]"#).contains("护栏拦截"));
@@ -106,7 +135,10 @@ fn 命令护栏放行编译类命令() {
     let 根 = 临时目录("护栏放");
     let mut 写入 = Vec::new();
     let mut 放 = |命令: &str, 参数: &str| {
-        let 调用 = 造调用("运行命令", &format!(r#"{{"命令":"{命令}","参数们":{参数}}}"#));
+        let 调用 = 造调用(
+            "运行命令",
+            &format!(r#"{{"命令":"{命令}","参数们":{参数}}}"#),
+        );
         执行工具(&调用, &根, &mut 写入, &[]).expect("应放行")
     };
     assert!(放("cargo", r#"["build","--workspace","--lib"]"#).contains("退出码"));
@@ -130,7 +162,9 @@ fn 护栏拒空拒超长拒越界() {
     assert!(校验落盘(&根, "空.rs", "").unwrap_err().contains("空文件"));
     assert!(校验落盘(&根, "空.rs", "  \n  ").is_err());
     // 超长拒写。
-    assert!(校验落盘(&根, "大.rs", &"x".repeat(落盘内容上限 + 1)).unwrap_err().contains("超长"));
+    assert!(校验落盘(&根, "大.rs", &"x".repeat(落盘内容上限 + 1))
+        .unwrap_err()
+        .contains("超长"));
     // 路径越界：../ 逃逸到工作区根之外拒写。
     let 逃逸 = 校验落盘(&根, "../../逃逸目标", "内容");
     assert!(逃逸.is_err(), "越界应被拒：{逃逸:?}");
@@ -145,12 +179,16 @@ fn 工具护栏_统一入口解耦() {
     let 根 = 临时目录("护栏统一");
     // 写文件空内容：guard 拒绝。
     let 空内容: serde_json::Value = serde_json::from_str(r#"{"路径":"空.rs","内容":""}"#).unwrap();
-    assert!(工具护栏(&根, "写文件", &空内容).unwrap_err().contains("空文件"));
+    assert!(工具护栏(&根, "写文件", &空内容)
+        .unwrap_err()
+        .contains("空文件"));
     // 改文件越界：guard 拒绝。
-    let 越界: serde_json::Value = serde_json::from_str(r#"{"路径":"../../逃逸","旧文":"a","新文":"b"}"#).unwrap();
+    let 越界: serde_json::Value =
+        serde_json::from_str(r#"{"路径":"../../逃逸","旧文":"a","新文":"b"}"#).unwrap();
     assert!(工具护栏(&根, "改文件", &越界).is_err());
     // 运行命令危险命令：guard 拒绝。
-    let 危险: serde_json::Value = serde_json::from_str(r#"{"命令":"taskkill","参数们":[]}"#).unwrap();
+    let 危险: serde_json::Value =
+        serde_json::from_str(r#"{"命令":"taskkill","参数们":[]}"#).unwrap();
     assert!(工具护栏(&根, "运行命令", &危险).is_err());
     // 读文件：guard 放行（只读无护栏）。
     let 读: serde_json::Value = serde_json::from_str(r#"{"路径":"任意.rs"}"#).unwrap();
@@ -165,26 +203,42 @@ fn 源码维度白名单_拦根内越界() {
     let 根 = 临时目录("白名单");
     // 造一个含源码的维度目录 + 一个空壳维度目录。
     fs::create_dir_all(根.join("鸿蒙/基础设施 - 域/测试-府")).unwrap();
-    fs::write(根.join("鸿蒙/基础设施 - 域/测试-府/Cargo.toml"), "[package]").unwrap();
+    fs::write(
+        根.join("鸿蒙/基础设施 - 域/测试-府/Cargo.toml"),
+        "[package]",
+    )
+    .unwrap();
     fs::create_dir_all(根.join("太初/仅说明")).unwrap();
     fs::write(根.join("太初/仅说明/维度说明.md"), "说明文档").unwrap();
 
     // 根级非源码文件：拒写。
     let 根级 = 校验落盘(&根, "Cargo.toml", "成员");
-    assert!(根级.is_err() && 根级.unwrap_err().contains("根内越界"), "根 Cargo.toml 应拒写");
+    assert!(
+        根级.is_err() && 根级.unwrap_err().contains("根内越界"),
+        "根 Cargo.toml 应拒写"
+    );
     let 根级md = 校验落盘(&根, "多智能体架构设计.md", "设计");
     assert!(根级md.is_err(), "根级 .md 设计稿应拒写");
 
     // 根级 .rs：放行（本质是源码，可新建）。
-    assert!(校验落盘(&根, "根.rs", "pub fn 甲() {}").is_ok(), "根级 .rs 应放行");
+    assert!(
+        校验落盘(&根, "根.rs", "pub fn 甲() {}").is_ok(),
+        "根级 .rs 应放行"
+    );
 
     // 隐藏目录：拒写（记忆/版本库等非源码资产）。
     let 隐 = 校验落盘(&根, ".上下文/事件流.jsonl", "{}");
-    assert!(隐.is_err() && 隐.unwrap_err().contains("隐藏目录"), ".上下文 应拒写");
+    assert!(
+        隐.is_err() && 隐.unwrap_err().contains("隐藏目录"),
+        ".上下文 应拒写"
+    );
 
     // 空壳维度：拒写（太初无源码，臆造目录的实测根因）。
     let 壳 = 校验落盘(&根, "太初/星宿-殿/星轨绘制.rs", "代码");
-    assert!(壳.is_err() && 壳.unwrap_err().contains("非源码维度"), "空壳维度应拒写");
+    assert!(
+        壳.is_err() && 壳.unwrap_err().contains("非源码维度"),
+        "空壳维度应拒写"
+    );
 
     // 源码维度内：放行。
     assert!(
@@ -207,14 +261,23 @@ fn 删文件_同走白名单() {
     let mut 写入 = Vec::new();
     // 删根级 Cargo.toml：拒。
     let 删根级 = 造调用("删文件", r#"{"路径们":["Cargo.toml"]}"#);
-    assert!(执行工具(&删根级, &根, &mut 写入, &[]).is_err(), "删根级 Cargo.toml 应被拦");
+    assert!(
+        执行工具(&删根级, &根, &mut 写入, &[]).is_err(),
+        "删根级 Cargo.toml 应被拦"
+    );
     // 删 .上下文 资产：拒。
     let 删隐藏 = 造调用("删文件", r#"{"路径们":[".上下文/状态.json"]}"#);
-    assert!(执行工具(&删隐藏, &根, &mut 写入, &[]).is_err(), "删 .上下文 应被拦");
+    assert!(
+        执行工具(&删隐藏, &根, &mut 写入, &[]).is_err(),
+        "删 .上下文 应被拦"
+    );
     // 删源码维度内文件：放行（先造一个）。
     fs::write(根.join("鸿蒙/测试-府/待删.rs"), "代码").unwrap();
     let 删源码 = 造调用("删文件", r#"{"路径们":["鸿蒙/测试-府/待删.rs"]}"#);
-    assert!(执行工具(&删源码, &根, &mut 写入, &[]).is_ok(), "删源码维度内文件应放行");
+    assert!(
+        执行工具(&删源码, &根, &mut 写入, &[]).is_ok(),
+        "删源码维度内文件应放行"
+    );
     let _ = fs::remove_dir_all(&根);
 }
 
@@ -224,9 +287,15 @@ fn 删文件_同走白名单() {
 fn 读格位与查格位历史() {
     let 根 = 临时目录("格位");
     let 存储 = 模型存储::打开(根.join(".上下文").join("格位"));
-    存储.写记录(&记录::新("结构", "第一条", "证据a", "代码")).unwrap();
-    存储.写记录(&记录::新("结构", "第二条", "证据b", "LLM")).unwrap();
-    存储.写记录(&记录::新("结构", "第三条", "证据c", "人类")).unwrap();
+    存储
+        .写记录(&记录::新("结构", "第一条", "证据a", "代码"))
+        .unwrap();
+    存储
+        .写记录(&记录::新("结构", "第二条", "证据b", "LLM"))
+        .unwrap();
+    存储
+        .写记录(&记录::新("结构", "第三条", "证据c", "人类"))
+        .unwrap();
     let mut 别链 = 记录::新("结构", "别链", "证据d", "代码");
     别链.实体键 = "别键".to_string();
     存储.写记录(&别链).unwrap();
@@ -274,7 +343,10 @@ fn 微压缩结果_未超阈值不追加() {
 fn 微压缩结果_超阈值追加按需回读入口() {
     let 长 = "a".repeat(结果_微压缩_字符阈值 + 100);
     let 结果 = 微压缩结果(&长);
-    assert!(结果.starts_with(&"a".repeat(结果_微压缩_字符阈值)), "应保留原内容前缀");
+    assert!(
+        结果.starts_with(&"a".repeat(结果_微压缩_字符阈值)),
+        "应保留原内容前缀"
+    );
     assert!(结果.contains("字符"), "应注明字符数");
     assert!(结果.contains("读文件"), "应提示用 读文件 按需回读");
 }
@@ -316,9 +388,16 @@ fn 摘要历史_超阈值中间段被摘要() {
     for i in 0..8 {
         历史.push(对话消息::助手_带工具调用(
             format!("助手{i}"),
-            vec![工具调用 { 标识: format!("id{i}"), 名字: "读文件".to_string(), 参数: "{}".to_string() }],
+            vec![工具调用 {
+                标识: format!("id{i}"),
+                名字: "读文件".to_string(),
+                参数: "{}".to_string(),
+            }],
         ));
-        历史.push(对话消息::工具结果(&format!("id{i}"), format!("中间{i}_{}", "x".repeat(4000))));
+        历史.push(对话消息::工具结果(
+            format!("id{i}"),
+            format!("中间{i}_{}", "x".repeat(4000)),
+        ));
     }
     历史.push(对话消息::用户("用户最新".to_string()));
 
@@ -330,7 +409,10 @@ fn 摘要历史_超阈值中间段被摘要() {
     // 中间 2 块（4 条消息）折叠为 1 条摘要：总条数 = 18 - 4 + 1 = 15。
     assert_eq!(历史.len(), 15);
     // 摘要消息应包含「会话内压缩」标识。
-    assert!(历史.iter().any(|m| m.内容.contains("会话内压缩")), "应存在摘要占位消息");
+    assert!(
+        历史.iter().any(|m| m.内容.contains("会话内压缩")),
+        "应存在摘要占位消息"
+    );
     // 首尾不变。
     assert_eq!(历史[0].内容, "用户首条");
     assert_eq!(历史.last().unwrap().内容, "用户最新");
@@ -343,12 +425,18 @@ fn 摘要历史_超阈值中间段被摘要() {
             }
         }
         if let Some(标识) = &m.工具调用标识 {
-            assert!(存活标识.contains(标识), "孤立工具结果 {标识} 无配对 assistant");
+            assert!(
+                存活标识.contains(标识),
+                "孤立工具结果 {标识} 无配对 assistant"
+            );
         }
     }
     // 压缩后字符数应显著减少。
     let 总字符后 = 历史_字符数(&历史);
-    assert!(总字符后 < 总字符前, "压缩后应更短：{总字符前} -> {总字符后}");
+    assert!(
+        总字符后 < 总字符前,
+        "压缩后应更短：{总字符前} -> {总字符后}"
+    );
 }
 
 /// 摘要历史：消息太少时不触发（保护首尾不被压缩）。
@@ -356,8 +444,8 @@ fn 摘要历史_超阈值中间段被摘要() {
 fn 摘要历史_消息太少时不触发() {
     use moxing_fu::对话消息;
     let mut 历史 = vec![
-        对话消息::用户(&"x".repeat(20_000)),
-        对话消息::助手_带工具调用(&"x".repeat(20_000), vec![]),
+        对话消息::用户("x".repeat(20_000)),
+        对话消息::助手_带工具调用("x".repeat(20_000), vec![]),
     ];
     let 触发 = 摘要历史(&mut 历史);
     assert!(!触发);

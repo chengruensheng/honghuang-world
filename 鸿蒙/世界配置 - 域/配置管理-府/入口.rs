@@ -10,5 +10,5 @@ pub mod 类型_定义_殿;
 #[path = "密钥-注入-殿/模块.rs"]
 pub mod 密钥_注入_殿;
 
-pub use 类型_定义_殿::*;
 pub use 密钥_注入_殿::*;
+pub use 类型_定义_殿::*;

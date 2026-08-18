@@ -11,5 +11,5 @@ mod 符号解析;
 #[path = "收集.rs"]
 mod 收集;
 
-pub use 扫描执行::*;
 pub use 依赖边::*;
+pub use 扫描执行::*;

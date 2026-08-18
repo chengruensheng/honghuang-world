@@ -8,6 +8,6 @@ pub mod 波及_追溯_园;
 #[path = "教训-归因-园/模块.rs"]
 pub mod 教训_归因_园;
 
+pub use 教训_归因_园::*;
 pub use 机制_提炼_园::*;
 pub use 波及_追溯_园::*;
-pub use 教训_归因_园::*;

@@ -1,7 +1,7 @@
 // 兜底构建 —— 订阅器兜底构建：按配置装配并安装全局订阅器
 #![allow(non_snake_case)]
 
-use crate::{日志配置, 日志级别, 日志去向, 落地器, 渲染器};
+use crate::{日志去向, 日志级别, 日志配置, 渲染器, 落地器};
 
 use tracing_subscriber::util::SubscriberInitExt;
 

@@ -4,7 +4,7 @@
 //! 只比对「上一轮基线 vs 当前盘面」，不重复全量扫描。
 //! 测试在 测试.rs。
 
-use crate::{扫描排除项, 工作区};
+use crate::{工作区, 扫描排除项};
 use rizhi_fu::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -61,7 +61,8 @@ pub fn 保存执行基线(工作区: &工作区, 索引: &文件索引) -> Resul
     let 路径 = 执行基线路径(工作区);
     let 父 = 路径.parent().ok_or("执行基线目录缺失")?;
     std::fs::create_dir_all(父).map_err(|错误| format!("建执行基线目录失败: {错误}"))?;
-    let 内容 = serde_json::to_string_pretty(索引).map_err(|错误| format!("序列化执行基线失败: {错误}"))?;
+    let 内容 =
+        serde_json::to_string_pretty(索引).map_err(|错误| format!("序列化执行基线失败: {错误}"))?;
     std::fs::write(&路径, 内容).map_err(|错误| format!("写执行基线失败: {错误}"))?;
     debug!(路径 = %路径.display(), 文件数 = 索引.指纹们.len(), "执行前基线已保存");
     Ok(())
@@ -70,14 +71,18 @@ pub fn 保存执行基线(工作区: &工作区, 索引: &文件索引) -> Resul
 /// 读执行前基线（文件缺失 / 解析失败时返回空基线）。
 pub fn 读执行基线(工作区: &工作区) -> 文件索引 {
     let 路径 = 执行基线路径(工作区);
-    let Ok(内容) = std::fs::read_to_string(&路径) else { return 文件索引::default() };
+    let Ok(内容) = std::fs::read_to_string(&路径) else {
+        return 文件索引::default();
+    };
     serde_json::from_str(&内容).unwrap_or_default()
 }
 
 /// 读文件索引基线（文件缺失 / 解析失败时返回空基线）。
 pub fn 读基线(工作区: &工作区) -> 文件索引 {
     let 路径 = 基线路径(工作区);
-    let Ok(内容) = std::fs::read_to_string(&路径) else { return 文件索引::default() };
+    let Ok(内容) = std::fs::read_to_string(&路径) else {
+        return 文件索引::default();
+    };
     serde_json::from_str(&内容).unwrap_or_default()
 }
 
@@ -86,7 +91,8 @@ pub fn 保存基线(工作区: &工作区, 索引: &文件索引) -> Result<(), 
     let 路径 = 基线路径(工作区);
     let 父 = 路径.parent().ok_or("基线目录缺失")?;
     std::fs::create_dir_all(父).map_err(|错误| format!("建基线目录失败: {错误}"))?;
-    let 内容 = serde_json::to_string_pretty(索引).map_err(|错误| format!("序列化基线失败: {错误}"))?;
+    let 内容 =
+        serde_json::to_string_pretty(索引).map_err(|错误| format!("序列化基线失败: {错误}"))?;
     std::fs::write(&路径, 内容).map_err(|错误| format!("写基线失败: {错误}"))?;
     debug!(路径 = %路径.display(), 文件数 = 索引.指纹们.len(), "文件索引基线已保存");
     Ok(())
@@ -124,7 +130,12 @@ pub fn 增量变更(根: &Path, 旧: &文件索引) -> 变更报告 {
             报告.删除.push(路径.clone());
         }
     }
-    debug!(新增 = 报告.新增.len(), 修改 = 报告.修改.len(), 删除 = 报告.删除.len(), "增量变更检测完成");
+    debug!(
+        新增 = 报告.新增.len(),
+        修改 = 报告.修改.len(),
+        删除 = 报告.删除.len(),
+        "增量变更检测完成"
+    );
     报告
 }
 
@@ -149,13 +160,17 @@ pub fn 地道整理(工作区: &工作区) -> Result<变更报告, String> {
 }
 
 /// 递归收集源文件指纹（.rs + Cargo.toml），相对路径统一正斜杠。
-fn 收集指纹(根: &Path, 目录: &Path, 排除项: &[String], 结果: &mut BTreeMap<String, 文件指纹>) {
-    let Ok(条目们) = std::fs::read_dir(目录) else { return };
+fn 收集指纹(
+    根: &Path, 目录: &Path, 排除项: &[String], 结果: &mut BTreeMap<String, 文件指纹>
+) {
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return;
+    };
     for 条目 in 条目们.flatten() {
         let 路径 = 条目.path();
         let 名 = 条目.file_name().to_string_lossy().to_string();
         if 路径.is_dir() {
-            if 排除项.iter().any(|项| *项 == 名) {
+            if 排除项.contains(&名) {
                 continue;
             }
             收集指纹(根, &路径, 排除项, 结果);
@@ -179,12 +194,14 @@ fn 有半写文件(根: &Path) -> bool {
 }
 
 fn 递归查半写(目录: &Path, 排除项: &[String]) -> bool {
-    let Ok(条目们) = std::fs::read_dir(目录) else { return false };
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return false;
+    };
     for 条目 in 条目们.flatten() {
         let 路径 = 条目.path();
         let 名 = 条目.file_name().to_string_lossy().to_string();
         if 路径.is_dir() {
-            if 排除项.iter().any(|项| *项 == 名) {
+            if 排除项.contains(&名) {
                 continue;
             }
             if 递归查半写(&路径, 排除项) {
@@ -206,5 +223,8 @@ fn 文件指纹(路径: &Path) -> Option<文件指纹> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
         .as_millis() as u64;
-    Some(文件指纹 { 大小: 元.len(), 修改 })
+    Some(文件指纹 {
+        大小: 元.len(),
+        修改,
+    })
 }

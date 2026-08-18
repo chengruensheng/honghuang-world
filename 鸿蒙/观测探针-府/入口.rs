@@ -30,7 +30,13 @@ pub enum 观测域 {
 /// 角色标识。
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum 观测角色 {
-    界主, 鸿钧, 执行, 设计, 验收, 归因, 未知,
+    界主,
+    鸿钧,
+    执行,
+    设计,
+    验收,
+    归因,
+    未知,
 }
 
 /// 关联标识：贯穿一次任务的执行链。
@@ -47,11 +53,30 @@ pub struct 关联 {
 }
 
 impl 关联 {
-    pub fn 新() -> 关联 { 关联 { 任务线: None, 要求: None, 轮次: None, 标识: None } }
-    pub fn 任务线(mut self, v: &str) -> 关联 { self.任务线 = Some(v.to_string()); self }
-    pub fn 要求(mut self, v: &str) -> 关联 { self.要求 = Some(v.to_string()); self }
-    pub fn 轮次(mut self, v: usize) -> 关联 { self.轮次 = Some(v); self }
-    pub fn 标识(mut self, v: impl Into<String>) -> 关联 { self.标识 = Some(v.into()); self }
+    pub fn 新() -> 关联 {
+        关联 {
+            任务线: None,
+            要求: None,
+            轮次: None,
+            标识: None,
+        }
+    }
+    pub fn 任务线(mut self, v: &str) -> 关联 {
+        self.任务线 = Some(v.to_string());
+        self
+    }
+    pub fn 要求(mut self, v: &str) -> 关联 {
+        self.要求 = Some(v.to_string());
+        self
+    }
+    pub fn 轮次(mut self, v: usize) -> 关联 {
+        self.轮次 = Some(v);
+        self
+    }
+    pub fn 标识(mut self, v: impl Into<String>) -> 关联 {
+        self.标识 = Some(v.into());
+        self
+    }
 }
 
 /// 载荷：按域类型化的正文。只采能反推「设计/决策是否生效」的信号，砍纯噪音。
@@ -65,9 +90,17 @@ pub struct 载荷 {
 }
 
 impl 载荷 {
-    pub fn 文本(内容: impl Into<String>) -> 载荷 { 载荷 { 内容: 内容.into(), 附加: None } }
+    pub fn 文本(内容: impl Into<String>) -> 载荷 {
+        载荷 {
+            内容: 内容.into(),
+            附加: None,
+        }
+    }
     pub fn 结构化(内容: impl Into<String>, 附加: serde_json::Value) -> 载荷 {
-        载荷 { 内容: 内容.into(), 附加: Some(附加) }
+        载荷 {
+            内容: 内容.into(),
+            附加: Some(附加),
+        }
     }
 }
 
@@ -96,10 +129,22 @@ const 正文_封顶: usize = 200_000;
 
 fn 限长(文本: &str) -> String {
     let 字符们: Vec<char> = 文本.chars().collect();
-    if 字符们.len() <= 正文_封顶 { return 文本.to_string(); }
+    if 字符们.len() <= 正文_封顶 {
+        return 文本.to_string();
+    }
     let 头: String = 字符们[..50_000].iter().collect();
-    let 尾: String = 字符们.iter().rev().take(100).collect::<Vec<_>>().into_iter().rev().collect();
-    format!("{头}\n……（正文过长，共 {} 字符，已截头保尾）\n……尾部：{尾}", 字符们.len())
+    let 尾: String = 字符们
+        .iter()
+        .rev()
+        .take(100)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!(
+        "{头}\n……（正文过长，共 {} 字符，已截头保尾）\n……尾部：{尾}",
+        字符们.len()
+    )
 }
 
 fn 当前毫秒() -> u64 {
@@ -113,10 +158,16 @@ fn 当前毫秒() -> u64 {
 /// 落盘失败静默（可观测性不阻断业务）。
 pub fn 落(记录: 观测记录) {
     let 目录 = 观测目录();
-    if std::fs::create_dir_all(&目录).is_err() { return; }
+    if std::fs::create_dir_all(&目录).is_err() {
+        return;
+    }
     let 路径 = 目录.join("记录.jsonl");
     if let Ok(行) = serde_json::to_string(&记录) {
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&路径) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&路径)
+        {
             let _ = writeln!(f, "{行}");
         }
     }
@@ -124,50 +175,99 @@ pub fn 落(记录: 观测记录) {
 
 /// 便捷：角色→LLM 请求（提示词出站）。域=提示词。
 pub fn 记请求(角色: 观测角色, 接口: &str, 提示词: &str, 关联: 关联) {
-    落(观测记录 { 时间戳: 当前毫秒(), 域: 观测域::提示词, 接口: 接口.to_string(), 角色, 载荷: 载荷::文本(限长(提示词)), 关联 });
+    落(观测记录 {
+        时间戳: 当前毫秒(),
+        域: 观测域::提示词,
+        接口: 接口.to_string(),
+        角色,
+        载荷: 载荷::文本(限长(提示词)),
+        关联,
+    });
 }
 
 /// 便捷：LLM→角色 回复（含思考）。域=回复思考。
-pub fn 记回复(角色: 观测角色, 接口: &str, 思考: &str, 回复: &str, 关联: 关联, 附加: Option<serde_json::Value>) {
+pub fn 记回复(
+    角色: 观测角色,
+    接口: &str,
+    思考: &str,
+    回复: &str,
+    关联: 关联,
+    附加: Option<serde_json::Value>,
+) {
     落(观测记录 {
-        时间戳: 当前毫秒(), 域: 观测域::回复思考, 接口: 接口.to_string(), 角色,
+        时间戳: 当前毫秒(),
+        域: 观测域::回复思考,
+        接口: 接口.to_string(),
+        角色,
         载荷: 造载荷(format!("【回复】\n{}\n【思考】\n{}", 回复, 思考), 附加),
         关联,
     });
 }
 
 /// 便捷：角色→工具 调用（参数出站）。域=工具调用。
-pub fn 记工具调用(角色: 观测角色, 接口: &str, 工具: &str, 参数: &str, 关联: 关联) {
+pub fn 记工具调用(
+    角色: 观测角色, 接口: &str, 工具: &str, 参数: &str, 关联: 关联
+) {
     落(观测记录 {
-        时间戳: 当前毫秒(), 域: 观测域::工具调用, 接口: 接口.to_string(), 角色,
+        时间戳: 当前毫秒(),
+        域: 观测域::工具调用,
+        接口: 接口.to_string(),
+        角色,
         载荷: 载荷::结构化(参数.to_string(), serde_json::json!({ "工具": 工具 })),
         关联,
     });
 }
 
 /// 便捷：工具→角色 返回（结果入站）。域=工具返回。仅「看类」工具记正文。
-pub fn 记工具返回(角色: 观测角色, 接口: &str, 工具: &str, 结果: &str, 关联: 关联) {
+pub fn 记工具返回(
+    角色: 观测角色, 接口: &str, 工具: &str, 结果: &str, 关联: 关联
+) {
     落(观测记录 {
-        时间戳: 当前毫秒(), 域: 观测域::工具返回, 接口: 接口.to_string(), 角色,
+        时间戳: 当前毫秒(),
+        域: 观测域::工具返回,
+        接口: 接口.to_string(),
+        角色,
         载荷: 载荷::结构化(限长(结果), serde_json::json!({ "工具": 工具 })),
         关联,
     });
 }
 
 /// 便捷：跨角色 状态流转。域=状态流转。
-pub fn 记状态(角色: 观测角色, 接口: &str, 要求: &str, 状态: &str, 附加: Option<serde_json::Value>) {
+pub fn 记状态(
+    角色: 观测角色,
+    接口: &str,
+    要求: &str,
+    状态: &str,
+    附加: Option<serde_json::Value>,
+) {
     落(观测记录 {
-        时间戳: 当前毫秒(), 域: 观测域::状态流转, 接口: 接口.to_string(), 角色,
+        时间戳: 当前毫秒(),
+        域: 观测域::状态流转,
+        接口: 接口.to_string(),
+        角色,
         载荷: 造载荷(状态, 附加),
         关联: 关联::新().要求(要求),
     });
 }
 
 /// 便捷：产物判定（构建/测试输出）。域=产物判定。
-pub fn 记构建(角色: 观测角色, 接口: &str, 命令: &str, 退出码: Option<i32>, 输出: &str, 关联: 关联) {
+pub fn 记构建(
+    角色: 观测角色,
+    接口: &str,
+    命令: &str,
+    退出码: Option<i32>,
+    输出: &str,
+    关联: 关联,
+) {
     落(观测记录 {
-        时间戳: 当前毫秒(), 域: 观测域::产物判定, 接口: 接口.to_string(), 角色,
-        载荷: 载荷::结构化(限长(输出), serde_json::json!({ "命令": 命令, "退出码": 退出码 })),
+        时间戳: 当前毫秒(),
+        域: 观测域::产物判定,
+        接口: 接口.to_string(),
+        角色,
+        载荷: 载荷::结构化(
+            限长(输出),
+            serde_json::json!({ "命令": 命令, "退出码": 退出码 }),
+        ),
         关联,
     });
 }
@@ -198,7 +298,12 @@ thread_local! {
 
 /// 进入一段带观测上下文的调用栈：push 一档线程本地上下文，返回守卫在离开时 pop 恢复上层。
 /// 用法：`let _守卫 = 进入观测(角色, 任务线, 要求, 轮次);`。可嵌套。
-pub fn 进入观测(角色: 观测角色, 任务线: Option<String>, 要求: Option<String>, 轮次: Option<u64>) -> impl Drop {
+pub fn 进入观测(
+    角色: 观测角色,
+    任务线: Option<String>,
+    要求: Option<String>,
+    轮次: Option<u64>,
+) -> impl Drop {
     struct 清理;
     impl Drop for 清理 {
         fn drop(&mut self) {
@@ -209,7 +314,12 @@ pub fn 进入观测(角色: 观测角色, 任务线: Option<String>, 要求: Opt
         }
     }
     观测上下文栈.with(|栈| {
-        栈.borrow_mut().push(观测上下文档 { 角色, 任务线, 要求, 轮次 });
+        栈.borrow_mut().push(观测上下文档 {
+            角色,
+            任务线,
+            要求,
+            轮次,
+        });
     });
     清理
 }
@@ -217,11 +327,19 @@ pub fn 进入观测(角色: 观测角色, 任务线: Option<String>, 要求: Opt
 /// 读取当前线程观测上下文栈顶：返回 (角色, 关联)；无上下文则 (未知, 空关联)。
 pub fn 当前观测() -> (观测角色, 关联) {
     let 顶 = 观测上下文栈.with(|栈| 栈.borrow().last().cloned());
-    let Some(档) = 顶 else { return (观测角色::未知, 关联::新()); };
+    let Some(档) = 顶 else {
+        return (观测角色::未知, 关联::新());
+    };
     let mut 关联 = 关联::新();
-    if let Some(任务线) = 档.任务线 { 关联 = 关联.任务线(&任务线); }
-    if let Some(要求) = 档.要求 { 关联 = 关联.要求(&要求); }
-    if let Some(轮次) = 档.轮次 { 关联 = 关联.轮次(轮次 as usize); }
+    if let Some(任务线) = 档.任务线 {
+        关联 = 关联.任务线(&任务线);
+    }
+    if let Some(要求) = 档.要求 {
+        关联 = 关联.要求(&要求);
+    }
+    if let Some(轮次) = 档.轮次 {
+        关联 = 关联.轮次(轮次 as usize);
+    }
     (档.角色, 关联)
 }
 
@@ -279,7 +397,12 @@ mod 测试 {
     #[test]
     fn 线程本地上下文带任务线轮次() {
         {
-            let _g = 进入观测(观测角色::执行, Some("任务-9".to_string()), Some("要求-9".to_string()), Some(5));
+            let _g = 进入观测(
+                观测角色::执行,
+                Some("任务-9".to_string()),
+                Some("要求-9".to_string()),
+                Some(5),
+            );
             let (角色, 关联) = 当前观测();
             assert_eq!(角色, 观测角色::执行);
             assert_eq!(关联.任务线.as_deref(), Some("任务-9"));

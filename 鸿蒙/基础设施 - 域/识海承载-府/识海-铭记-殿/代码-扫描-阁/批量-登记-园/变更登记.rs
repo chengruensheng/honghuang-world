@@ -2,7 +2,7 @@
 //!
 //! 幂等：变更格位按相对路径设实体键，同一路径反复变更只保留最新链头。
 
-use crate::{记录, 模型存储, 变更报告};
+use crate::{变更报告, 模型存储, 记录};
 use rizhi_fu::{debug, info};
 
 /// 登记变更：总处数 > 0 时，事件格位写一条汇总，变更格位逐文件写明细。
@@ -70,7 +70,9 @@ mod 测试 {
         assert_eq!(变更们.len(), 4);
         assert!(事件们[0].内容.contains("地道·变更 4 处"));
         assert!(事件们[0].内容.contains("新增 2"));
-        assert!(变更们.iter().all(|记录| 记录.实体键 == 记录.内容.split(' ').nth(1).unwrap()));
+        assert!(变更们
+            .iter()
+            .all(|记录| 记录.实体键 == 记录.内容.split(' ').nth(1).unwrap()));
         fs::remove_dir_all(&目录).unwrap();
     }
 

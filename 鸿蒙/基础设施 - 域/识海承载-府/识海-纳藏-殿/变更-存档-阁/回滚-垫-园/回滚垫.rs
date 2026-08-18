@@ -25,7 +25,7 @@ pub struct 回滚条目 {
 // 当前任务id（线程本地）：写入/撤销不传任务id时的归属。
 thread_local! {
     #[allow(non_upper_case_globals)]
-    static 当前任务id: RefCell<Option<String>> = RefCell::new(None);
+    static 当前任务id: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 /// 任务守卫：进入派遣时设置当前任务id，作用域结束自动清除。
@@ -45,7 +45,9 @@ pub fn 进入任务(任务id: &str) -> 任务守卫 {
 
 /// 当前任务id（未进入任务则为空串，落在「全局」分组）。
 pub fn 当前任务() -> String {
-    当前任务id.with(|槽| 槽.borrow().clone()).unwrap_or_default()
+    当前任务id
+        .with(|槽| 槽.borrow().clone())
+        .unwrap_or_default()
 }
 
 /// 回滚垫：存档目录 = 工作区 `.上下文/回滚垫`。
@@ -70,7 +72,7 @@ impl 回滚垫 {
     /// 只备份工作区内的文件（外部路径不归档，防临时/测试文件污染）；
     /// 同一路径只备份首次；备份失败只警告不阻断写入（主流程优先）。
     pub fn 备份(&self, 任务id: &str, 路径: &str) -> Result<(), String> {
-        let 任务id = 分组(&任务id);
+        let 任务id = 分组(任务id);
         let 任务目录 = self.目录.join(任务id);
         let 存档 = 任务目录.join(format!("{}.json", 散列(路径)));
         if 存档.exists() {
@@ -102,7 +104,8 @@ impl 回滚垫 {
             内容,
             时间戳: 当前毫秒(),
         };
-        let 文本 = serde_json::to_string(&条目).map_err(|错误| format!("序列化回滚条目失败：{错误}"))?;
+        let 文本 =
+            serde_json::to_string(&条目).map_err(|错误| format!("序列化回滚条目失败：{错误}"))?;
         fs::write(&存档, 文本).map_err(|错误| {
             error!(任务id, 路径, "写回滚存档失败：{错误}");
             format!("写回滚存档失败：{错误}")
@@ -114,12 +117,12 @@ impl 回滚垫 {
     /// 撤销：按时间戳恢复该任务全部写前状态（曾存在→恢复旧内容；曾不存在→删除），返回恢复数。
     /// 指纹跳过：目标文件当前内容与写前一致 → 已一致，不无谓写盘（也防覆盖任务执行后界主的改动）。
     pub fn 撤销(&self, 任务id: &str) -> Result<u32, String> {
-        let 任务id = 分组(&任务id);
+        let 任务id = 分组(任务id);
         let 任务目录 = self.目录.join(任务id);
         if !任务目录.is_dir() {
             return Ok(0);
         }
-        self.撤销组(&任务id, &任务目录)
+        self.撤销组(任务id, &任务目录)
     }
 
     /// 撤销指定任务前缀的全部分组（任务id 及其 -子N/-重试N 变体），不碰其他任务的分组。
@@ -127,7 +130,7 @@ impl 回滚垫 {
     /// 2026-08-17 实锤：`撤销全部` 恢复所有存档组（含其他任务旧组），把旧快照覆盖到工作区，
     /// 未提交的合法改动被覆盖丢失（兜底分发.rs 命令接线曾被 10:50 打回撤销覆盖）。
     pub fn 撤销任务前缀(&self, 任务id: &str) -> Result<u32, String> {
-        let 前缀 = 分组(&任务id);
+        let 前缀 = 分组(任务id);
         if !self.目录.is_dir() {
             return Ok(0);
         }
@@ -166,15 +169,21 @@ impl 回滚垫 {
             info!(前缀, 恢复数 = 总恢复, "回滚垫已恢复该任务前缀全部写前状态");
             Ok(总恢复)
         } else {
-            Err(format!("{失败数} 个任务分组撤销失败（已恢复 {总恢复} 处）：{}", 失败说明们.join("；")))
+            Err(format!(
+                "{失败数} 个任务分组撤销失败（已恢复 {总恢复} 处）：{}",
+                失败说明们.join("；")
+            ))
         }
     }
 
     /// 撤销单个分组：读全部存档条目 → 指纹跳过 → 恢复写前状态。
     fn 撤销组(&self, 任务id: &str, 任务目录: &std::path::Path) -> Result<u32, String> {
         let mut 条目们 = Vec::new();
-        for 条目 in fs::read_dir(任务目录).map_err(|错误| format!("读回滚存档目录失败：{错误}"))? {
-            let 路径 = 条目.map_err(|错误| format!("读回滚存档目录项失败：{错误}"))?.path();
+        for 条目 in fs::read_dir(任务目录).map_err(|错误| format!("读回滚存档目录失败：{错误}"))?
+        {
+            let 路径 = 条目
+                .map_err(|错误| format!("读回滚存档目录项失败：{错误}"))?
+                .path();
             if 路径.extension().map(|末| 末 != "json").unwrap_or(true) {
                 continue;
             }
@@ -198,8 +207,8 @@ impl 回滚垫 {
             let 绝对 = Path::new(&条目.路径);
             if 条目.曾存在 {
                 // 指纹跳过：当前内容与写前一致 → 已一致，不无谓写盘。
-                if let Ok(当前) = fs::read(&绝对) {
-                    if 当前 == 条目.内容.as_bytes() {
+                if let Ok(当前) = fs::read(绝对) {
+                    if 当前.as_slice() == 条目.内容.as_bytes() {
                         continue;
                     }
                 }
@@ -239,7 +248,7 @@ impl 回滚垫 {
 
     /// 清理：任务成功结束后丢弃存档。
     pub fn 清理(&self, 任务id: &str) -> Result<(), String> {
-        let 任务id = 分组(&任务id);
+        let 任务id = 分组(任务id);
         let 任务目录 = self.目录.join(任务id);
         if 任务目录.is_dir() {
             fs::remove_dir_all(&任务目录).map_err(|错误| format!("清理回滚存档失败：{错误}"))?;
@@ -267,7 +276,12 @@ impl 回滚垫 {
             .map_err(|错误| format!("读回滚垫目录失败：{错误}"))?
             .filter_map(|条目| 条目.ok())
             .filter(|条目| 条目.path().is_dir())
-            .filter_map(|条目| 条目.file_name().to_str().map(|名| (名.to_string(), 条目.path())))
+            .filter_map(|条目| {
+                条目
+                    .file_name()
+                    .to_str()
+                    .map(|名| (名.to_string(), 条目.path()))
+            })
             .collect();
         // 组内最晚时间戳：跨组恢复排序依据（晚写组先恢复）。
         let mut 排序们: Vec<(&str, u64)> = 分组们
@@ -291,7 +305,10 @@ impl 回滚垫 {
         if 失败数 == 0 {
             Ok(总恢复)
         } else {
-            Err(format!("{失败数} 个任务分组撤销失败（已恢复 {总恢复} 处）：{}", 失败说明们.join("；")))
+            Err(format!(
+                "{失败数} 个任务分组撤销失败（已恢复 {总恢复} 处）：{}",
+                失败说明们.join("；")
+            ))
         }
     }
 
@@ -300,10 +317,12 @@ impl 回滚垫 {
         if !self.目录.is_dir() {
             return Ok(());
         }
-        for 条目 in fs::read_dir(&self.目录).map_err(|错误| format!("读回滚垫目录失败：{错误}"))? {
+        for 条目 in fs::read_dir(&self.目录).map_err(|错误| format!("读回滚垫目录失败：{错误}"))?
+        {
             let 条目 = 条目.map_err(|错误| format!("读回滚垫目录项失败：{错误}"))?;
             if 条目.path().is_dir() {
-                fs::remove_dir_all(条目.path()).map_err(|错误| format!("清理回滚存档失败：{错误}"))?;
+                fs::remove_dir_all(条目.path())
+                    .map_err(|错误| format!("清理回滚存档失败：{错误}"))?;
             }
         }
         Ok(())
@@ -312,17 +331,18 @@ impl 回滚垫 {
 
 /// 路径散列：路径含分隔符不能直接作文件名，散成短文件名。
 fn 散列(路径: &str) -> String {
-    let 值 = 路径
-        .as_bytes()
-        .iter()
-        .fold(0u64, |累, &字节| 累.wrapping_mul(31).wrapping_add(字节 as u64));
+    let 值 = 路径.as_bytes().iter().fold(0u64, |累, &字节| {
+        累.wrapping_mul(31).wrapping_add(字节 as u64)
+    });
     format!("{值:016x}")
 }
 
 /// 组内最晚时间戳：扫描任务目录全部存档条目，取最大时间戳（供跨组恢复排序）。
 /// 目录不存在/无存档 → 0（最先恢复，弱排序兜底）。
 fn 组最晚时间戳(目录: &Path) -> u64 {
-    let Ok(条目们) = fs::read_dir(目录) else { return 0 };
+    let Ok(条目们) = fs::read_dir(目录) else {
+        return 0;
+    };
     let mut 最晚 = 0u64;
     for 条目 in 条目们.flatten() {
         let 路径 = 条目.path();
@@ -418,7 +438,11 @@ mod 测试 {
             }
         }
         let 恢复数 = 垫.撤销("任务X").unwrap();
-        assert_eq!(fs::read_to_string(&好).unwrap(), "旧好", "未损坏存档应照常恢复");
+        assert_eq!(
+            fs::read_to_string(&好).unwrap(),
+            "旧好",
+            "未损坏存档应照常恢复"
+        );
         assert!(恢复数 >= 1, "损坏条目跳过但正常条目仍恢复：{恢复数}");
         let _ = fs::remove_dir_all(工作区.根路径());
     }

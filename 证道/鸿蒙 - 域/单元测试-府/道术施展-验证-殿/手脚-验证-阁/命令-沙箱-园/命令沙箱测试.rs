@@ -10,7 +10,7 @@ mod 测试 {
     fn 临时工作区(名: &str) -> std::path::PathBuf {
         let 根 = std::env::temp_dir().join(format!("证道_命令沙箱_{名}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&根);
-        fs::create_dir_all(&根.join("甲")).unwrap();
+        fs::create_dir_all(根.join("甲")).unwrap();
         fs::write(根.join("Cargo.toml"), "[package]\nname = \"沙箱\"\n").unwrap();
         fs::write(根.join("甲").join("丙.rs"), "pub fn 丙() {}\n").unwrap();
         根
@@ -18,7 +18,10 @@ mod 测试 {
 
     /// 视图根（沙箱目录布局）：.上下文/命令沙箱/{任务id}/视图。
     fn 视图路径(根: &std::path::Path, 任务id: &str) -> std::path::PathBuf {
-        根.join(".上下文").join("命令沙箱").join(任务id).join("视图")
+        根.join(".上下文")
+            .join("命令沙箱")
+            .join(任务id)
+            .join("视图")
     }
 
     #[test]
@@ -38,8 +41,18 @@ mod 测试 {
         let 沙箱 = 沙箱视图::打开(&根, "任务T");
         // 视图源码文件与真实同 inode（硬链接）：命令改写视图文件即穿透真实。
         let 视图丙 = 视图路径(&根, "任务T").join("甲").join("丙.rs");
-        let 命令 = format!("Set-Content -LiteralPath '{}' -Value '改'", 视图丙.to_string_lossy());
-        let 回执 = 沙箱.运行("powershell.exe", &["-NoProfile", "-Command", &命令], None, None).unwrap();
+        let 命令 = format!(
+            "Set-Content -LiteralPath '{}' -Value '改'",
+            视图丙.to_string_lossy()
+        );
+        let 回执 = 沙箱
+            .运行(
+                "powershell.exe",
+                &["-NoProfile", "-Command", &命令],
+                None,
+                None,
+            )
+            .unwrap();
         assert!(回执.越界数 >= 1, "穿透改写应判越界：{}", 回执.越界详情);
         assert_eq!(
             fs::read_to_string(根.join("甲").join("丙.rs")).unwrap(),
@@ -59,9 +72,19 @@ mod 测试 {
             视图.join("越界.rs").to_string_lossy(),
             视图.join("甲").join("丙.rs").to_string_lossy()
         );
-        let 回执 = 沙箱.运行("powershell.exe", &["-NoProfile", "-Command", &命令], None, None).unwrap();
+        let 回执 = 沙箱
+            .运行(
+                "powershell.exe",
+                &["-NoProfile", "-Command", &命令],
+                None,
+                None,
+            )
+            .unwrap();
         assert!(回执.越界数 >= 2, "新增与删除应各计一处：{}", 回执.越界详情);
-        assert!(根.join("甲").join("丙.rs").exists(), "真实文件不受视图删除影响");
+        assert!(
+            根.join("甲").join("丙.rs").exists(),
+            "真实文件不受视图删除影响"
+        );
         assert!(!根.join("越界.rs").exists(), "越界新增不应落到真实盘面");
         let _ = fs::remove_dir_all(&根);
     }
@@ -71,8 +94,18 @@ mod 测试 {
         let 根 = 临时工作区("绝对");
         let 沙箱 = 沙箱视图::打开(&根, "任务T");
         let 越界文件 = 根.join("真实越界.txt");
-        let 命令 = format!("Set-Content -LiteralPath '{}' -Value 'x'", 越界文件.to_string_lossy());
-        let 回执 = 沙箱.运行("powershell.exe", &["-NoProfile", "-Command", &命令], None, None).unwrap();
+        let 命令 = format!(
+            "Set-Content -LiteralPath '{}' -Value 'x'",
+            越界文件.to_string_lossy()
+        );
+        let 回执 = 沙箱
+            .运行(
+                "powershell.exe",
+                &["-NoProfile", "-Command", &命令],
+                None,
+                None,
+            )
+            .unwrap();
         assert!(回执.越界数 >= 1, "真实区写入应判越界：{}", 回执.越界详情);
         assert!(!越界文件.exists(), "真实区越界新增应被删除");
         let _ = fs::remove_dir_all(&根);
@@ -101,7 +134,11 @@ mod 测试 {
             let 元 = fs::metadata(路径).unwrap();
             (
                 元.len(),
-                元.modified().unwrap().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+                元.modified()
+                    .unwrap()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
             )
         };
         let 前 = 指纹(&视图文件);

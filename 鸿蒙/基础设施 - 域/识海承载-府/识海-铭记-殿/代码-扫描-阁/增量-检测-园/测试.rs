@@ -1,14 +1,18 @@
 //! 增量 - 检测 - 园 · 测试
 
 use super::*;
-use crate::{当前毫秒, 工作区};
+use crate::{工作区, 当前毫秒};
 use std::fs;
 use std::path::Path;
 
 /// 临时假工程：一个 crate，两个源文件。
 fn 建工程(根: &Path) {
     fs::create_dir_all(根.join("工程-a/子")).unwrap();
-    fs::write(根.join("工程-a/Cargo.toml"), "[package]\nname = \"工程-a\"\n").unwrap();
+    fs::write(
+        根.join("工程-a/Cargo.toml"),
+        "[package]\nname = \"工程-a\"\n",
+    )
+    .unwrap();
     fs::write(根.join("工程-a/子/甲.rs"), "pub fn 甲() {}\n").unwrap();
     fs::write(根.join("工程-a/子/乙.rs"), "pub fn 乙() {}\n").unwrap();
 }
@@ -30,7 +34,11 @@ fn 增量变更_识别新增修改删除() {
     建工程(&根);
     let 基线 = 全量基线(&根);
     // 修改甲、删除乙、新增丙
-    fs::write(根.join("工程-a/子/甲.rs"), "pub fn 甲() {}\npub fn 甲2() {}\n").unwrap();
+    fs::write(
+        根.join("工程-a/子/甲.rs"),
+        "pub fn 甲() {}\npub fn 甲2() {}\n",
+    )
+    .unwrap();
     fs::remove_file(根.join("工程-a/子/乙.rs")).unwrap();
     fs::write(根.join("工程-a/子/丙.rs"), "pub fn 丙() {}\n").unwrap();
     let 报告 = 增量变更(&根, &基线);
@@ -56,7 +64,11 @@ fn 半写文件_触发本轮跳过() {
     let 根 = std::env::temp_dir().join(format!("地道半写测试-{}", 当前毫秒()));
     建工程(&根);
     let 基线 = 全量基线(&根);
-    fs::write(根.join("工程-a/子/甲.rs"), "pub fn 甲() {}\npub fn 甲2() {}\n").unwrap();
+    fs::write(
+        根.join("工程-a/子/甲.rs"),
+        "pub fn 甲() {}\npub fn 甲2() {}\n",
+    )
+    .unwrap();
     fs::write(根.join("工程-a/子/甲.rs.tmp"), "半写内容").unwrap();
     let 报告 = 增量变更(&根, &基线);
     assert!(报告.空(), ".tmp 存在时应跳过本轮，不把写入中误判为变更");
@@ -92,7 +104,11 @@ fn 地道整理_二次识别变更() {
     建工程(&根);
     let 工作区 = 工作区::新(&根);
     地道整理(&工作区).unwrap();
-    fs::write(根.join("工程-a/子/甲.rs"), "pub fn 甲() {}\npub fn 甲2() {}\n").unwrap();
+    fs::write(
+        根.join("工程-a/子/甲.rs"),
+        "pub fn 甲() {}\npub fn 甲2() {}\n",
+    )
+    .unwrap();
     fs::write(根.join("工程-a/子/丙.rs"), "pub fn 丙() {}\n").unwrap();
     let 报告 = 地道整理(&工作区).unwrap();
     assert_eq!(报告.总处数(), 2, "修改甲 + 新增丙");
@@ -136,7 +152,10 @@ fn 真实项目_变更闭环() {
         .expect("未找到项目根（AGENTS.md）")
         .to_path_buf();
     let 工作区 = crate::工作区::新(&项目根);
-    let 临时路径 = 项目根.join("鸿蒙").join("基础设施 - 域").join("地道验证临时.rs");
+    let 临时路径 = 项目根
+        .join("鸿蒙")
+        .join("基础设施 - 域")
+        .join("地道验证临时.rs");
     let 临时相对 = "鸿蒙/基础设施 - 域/地道验证临时.rs".to_string();
     fs::write(&临时路径, "// 地道端到端验证临时文件\n").unwrap();
     let 报告 = 地道整理(&工作区).unwrap();
@@ -150,6 +169,12 @@ fn 真实项目_变更闭环() {
     crate::登记变更(&crate::模型存储::在工作区(&工作区), &报告).unwrap();
     let 存储 = crate::模型存储::在工作区(&工作区);
     let 事件们 = 存储.读格位("事件").unwrap();
-    println!("事件格位最新：{}", 事件们.last().map(|记录| 记录.内容.clone()).unwrap_or_default());
+    println!(
+        "事件格位最新：{}",
+        事件们
+            .last()
+            .map(|记录| 记录.内容.clone())
+            .unwrap_or_default()
+    );
     assert!(!临时路径.exists(), "临时文件应已清理");
 }

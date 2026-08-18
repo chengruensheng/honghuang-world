@@ -14,13 +14,11 @@ pub fn 解析落盘文本(文本: &str) -> Result<Vec<落盘文件>, String> {
     const 后缀: &str = "<<<结束>>>";
     let mut 文件们 = Vec::new();
     let mut 剩余 = 文本;
-    loop {
-        let 开始 = match 剩余.find(前缀) {
-            Some(位置) => 位置,
-            None => break,
-        };
-        剩余 = &剩余[开始 + 前缀.len()..];
-        let 路径尾 = 剩余.find(">>>").ok_or_else(|| "文件块前缀未闭合（缺 >>>）".to_string())?;
+    while let Some(位置) = 剩余.find(前缀) {
+        剩余 = &剩余[位置 + 前缀.len()..];
+        let 路径尾 = 剩余
+            .find(">>>")
+            .ok_or_else(|| "文件块前缀未闭合（缺 >>>）".to_string())?;
         let 路径 = 剩余[..路径尾].trim().to_string();
         if 路径.is_empty() || !是具体文件路径(&路径) {
             // 模板复述 / 占位路径，跳过该标记继续找下一个真实块
@@ -28,7 +26,9 @@ pub fn 解析落盘文本(文本: &str) -> Result<Vec<落盘文件>, String> {
             continue;
         }
         剩余 = &剩余[路径尾 + 3..];
-        let 内容尾 = 剩余.find(后缀).ok_or_else(|| format!("文件「{路径}」缺结束标记 <<<结束>>>（输出被中断）"))?;
+        let 内容尾 = 剩余
+            .find(后缀)
+            .ok_or_else(|| format!("文件「{路径}」缺结束标记 <<<结束>>>（输出被中断）"))?;
         let 内容 = 剩余[..内容尾].trim().to_string();
         if 内容.is_empty() {
             return Err(format!("文件「{路径}」内容为空"));

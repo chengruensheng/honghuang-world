@@ -1,11 +1,11 @@
 // 流式渲染 —— 日志行流式渲染：时间 - 级别 - 模块 - 消息
 #![allow(non_snake_case)]
 
+use time::OffsetDateTime;
 use tracing::{Event, Subscriber};
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::registry::LookupSpan;
-use time::OffsetDateTime;
 
 /// 渲染器：把事件渲染成「时间 - 级别 - 模块 - 消息」一行
 pub struct 渲染器 {

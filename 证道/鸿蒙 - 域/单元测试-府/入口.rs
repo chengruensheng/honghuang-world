@@ -3,15 +3,15 @@
 
 #![allow(non_snake_case)]
 
-#[path = "道术施展-验证-殿/模块.rs"]
-pub mod 道术施展_验证_殿;
-#[path = "识海承载-验证-殿/模块.rs"]
-pub mod 识海承载_验证_殿;
 #[path = "天庭治理-验证-殿/模块.rs"]
 pub mod 天庭治理_验证_殿;
 #[path = "日志记录-验证-殿/模块.rs"]
 pub mod 日志记录_验证_殿;
 #[path = "模型连接-验证-殿/模块.rs"]
 pub mod 模型连接_验证_殿;
+#[path = "识海承载-验证-殿/模块.rs"]
+pub mod 识海承载_验证_殿;
+#[path = "道术施展-验证-殿/模块.rs"]
+pub mod 道术施展_验证_殿;
 #[path = "配置管理-验证-殿/模块.rs"]
 pub mod 配置管理_验证_殿;

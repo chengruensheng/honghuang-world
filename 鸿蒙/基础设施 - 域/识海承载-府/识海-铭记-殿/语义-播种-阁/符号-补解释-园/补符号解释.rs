@@ -1,8 +1,8 @@
 //! 符号 - 补解释 - 园：对依赖图里解释为空的 pub 符号，唤起 LLM 读源码补一句语义，写回依赖图。
 
 use crate::{依赖图, 工作区};
-use jiance_fu::{进入观测, 观测角色};
-use moxing_fu::{调用模型, 对话消息, 模型配置};
+use jiance_fu::{观测角色, 进入观测};
+use moxing_fu::{对话消息, 模型配置, 调用模型};
 use rizhi_fu::{info, warn};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -21,10 +21,11 @@ pub fn 补符号解释(根目录: &Path, 配置: &模型配置) -> Result<usize,
         if !档案.解释.is_empty() {
             continue;
         }
-        府符号
-            .entry(档案.模块.clone())
-            .or_default()
-            .push((档案.文件.clone(), 档案.符号.clone(), 档案.签名.clone()));
+        府符号.entry(档案.模块.clone()).or_default().push((
+            档案.文件.clone(),
+            档案.符号.clone(),
+            档案.签名.clone(),
+        ));
     }
     if 府符号.is_empty() {
         info!("无空解释符号，跳过补语义");
@@ -35,7 +36,8 @@ pub fn 补符号解释(根目录: &Path, 配置: &模型配置) -> Result<usize,
     for (府, 符号们) in &府符号 {
         let 证据 = 收集府证据(根目录, 符号们);
         let 提示 = 渲染补解释提示(府, 符号们, &证据);
-        let 回复 = match 调用模型(配置, &[对话消息::用户(&提示)], moxing_fu::精简上限) {
+        let 回复 = match 调用模型(配置, &[对话消息::用户(&提示)], moxing_fu::精简上限)
+        {
             Ok((回复, _用量)) => 回复,
             Err(错误) => {
                 warn!(府, "补解释调用失败：{错误}");
@@ -79,7 +81,9 @@ fn 收集府证据(根目录: &Path, 符号们: &[(String, String, String)]) -> 
 }
 
 /// 渲染补解释提示：符号清单 + 源码文件头，要求逐行输出「符号名：解释」。
-fn 渲染补解释提示(府: &str, 符号们: &[(String, String, String)], 证据: &str) -> String {
+fn 渲染补解释提示(
+    府: &str, 符号们: &[(String, String, String)], 证据: &str
+) -> String {
     let 清单: String = 符号们
         .iter()
         .map(|(文件, 符号, 签名)| format!("{符号}（{文件} · {签名}）"))
@@ -110,8 +114,15 @@ fn 解析解释(文本: &str) -> BTreeMap<String, String> {
         let 分隔 = 全角.or(半角);
         let (符号, 解释) = match 分隔 {
             Some(位置) => {
-                let 宽 = if 全角 == Some(位置) { '：'.len_utf8() } else { 1 };
-                (行[..位置].trim().to_string(), 行[位置 + 宽..].trim().to_string())
+                let 宽 = if 全角 == Some(位置) {
+                    '：'.len_utf8()
+                } else {
+                    1
+                };
+                (
+                    行[..位置].trim().to_string(),
+                    行[位置 + 宽..].trim().to_string(),
+                )
             }
             None => continue,
         };

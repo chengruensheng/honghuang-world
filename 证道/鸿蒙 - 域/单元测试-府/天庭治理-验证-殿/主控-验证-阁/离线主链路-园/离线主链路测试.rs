@@ -29,7 +29,10 @@ mod 测试 {
         assert_eq!(状态们[0].状态, 任务线状态::执行中, "领取后应置执行中");
 
         // 未领取前再次领取应无（已被领取）。
-        assert!(领取待执行任务线().unwrap().is_none(), "单条任务线不应被双跑");
+        assert!(
+            领取待执行任务线().unwrap().is_none(),
+            "单条任务线不应被双跑"
+        );
 
         回填任务线结果(&任务线.id, "要求-1", "通过", "测试汇报").unwrap();
         let 状态们 = 读任务线们().unwrap();
@@ -51,7 +54,10 @@ mod 测试 {
         };
         let 任务线 = 登记任务线(&想法).unwrap();
         中止任务线(&任务线.id).unwrap();
-        assert!(领取待执行任务线().unwrap().is_none(), "已中止任务线不得被领取");
+        assert!(
+            领取待执行任务线().unwrap().is_none(),
+            "已中止任务线不得被领取"
+        );
         let _ = fs::remove_dir_all(&根);
     }
 
@@ -69,14 +75,21 @@ mod 测试 {
             时间: 1,
             状态: 想法状态::未处理,
         };
-        let 想法池 = 落盘队列::<想法>::打开(根.join(".上下文").join("状态").join("想法.jsonl"));
+        let 想法池 =
+            落盘队列::<想法>::打开(根.join(".上下文").join("状态").join("想法.jsonl"));
         想法池.入队(&想法).unwrap();
         推进想法状态(&想法.id, 想法状态::已化为要求).unwrap();
 
         // 读时聚合：世界状态内嵌 想法池 应从 想法.jsonl 聚合出 1 条，且状态已推进。
-        let 读回 = 读世界状态(&根.join(".上下文").join("状态")).unwrap().expect("应有状态");
+        let 读回 = 读世界状态(&根.join(".上下文").join("状态"))
+            .unwrap()
+            .expect("应有状态");
         assert_eq!(读回.界主想法池.len(), 1);
-        assert_eq!(读回.界主想法池[0].状态, 想法状态::已化为要求, "读时聚合应看到最新状态");
+        assert_eq!(
+            读回.界主想法池[0].状态,
+            想法状态::已化为要求,
+            "读时聚合应看到最新状态"
+        );
         let _ = fs::remove_dir_all(&根);
     }
 
@@ -109,9 +122,20 @@ mod 测试 {
         for 线程 in 线程们 {
             线程.join().unwrap();
         }
-        assert_eq!(成功数.load(std::sync::atomic::Ordering::Relaxed), 3, "3 条任务线应恰好被领 3 次（无双跑）");
+        assert_eq!(
+            成功数.load(std::sync::atomic::Ordering::Relaxed),
+            3,
+            "3 条任务线应恰好被领 3 次（无双跑）"
+        );
         let 状态们 = 读任务线们().unwrap();
-        assert_eq!(状态们.iter().filter(|线| 线.状态 == 任务线状态::执行中).count(), 3, "全部进入执行中");
+        assert_eq!(
+            状态们
+                .iter()
+                .filter(|线| 线.状态 == 任务线状态::执行中)
+                .count(),
+            3,
+            "全部进入执行中"
+        );
         let _ = fs::remove_dir_all(&根);
     }
 
@@ -125,7 +149,9 @@ mod 测试 {
             for 序 in 0..30 {
                 let 想法 = 想法 {
                     id: format!("想法-并发写-{序}"),
-                    内容: format!("并发任务 {序}，涉及路径：乾坤/呈现-域/命令操作-府/观览-查询-殿"),
+                    内容: format!(
+                        "并发任务 {序}，涉及路径：乾坤/呈现-域/命令操作-府/观览-查询-殿"
+                    ),
                     时间: 1,
                     状态: 想法状态::未处理,
                 };
@@ -142,11 +168,18 @@ mod 测试 {
         甲.join().unwrap();
         乙.join().unwrap();
         // 并发后：30 条登记全部保留（无覆盖丢失），且每条可解析（无行交错损坏）。
-        let 内容 = fs::read_to_string(根.join(".上下文").join("状态").join("任务线.jsonl")).unwrap();
+        let 内容 =
+            fs::read_to_string(根.join(".上下文").join("状态").join("任务线.jsonl")).unwrap();
         let 行们: Vec<&str> = 内容.lines().filter(|行| !行.trim().is_empty()).collect();
-        assert_eq!(行们.len(), 30, "30 条登记应全部保留（无覆盖丢失），实际 {}", 行们.len());
+        assert_eq!(
+            行们.len(),
+            30,
+            "30 条登记应全部保留（无覆盖丢失），实际 {}",
+            行们.len()
+        );
         for 行 in 行们 {
-            let 线: tianting_fu::任务线 = serde_json::from_str(行).unwrap_or_else(|错误| panic!("损坏行：{错误}：{行}"));
+            let 线: tianting_fu::任务线 =
+                serde_json::from_str(行).unwrap_or_else(|错误| panic!("损坏行：{错误}：{行}"));
             assert!(
                 线.状态 == 任务线状态::待执行 || 线.状态 == 任务线状态::已完成,
                 "状态应为待执行或已完成：{:?}",

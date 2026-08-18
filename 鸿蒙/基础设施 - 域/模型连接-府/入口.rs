@@ -10,6 +10,6 @@ pub mod 类型_定义_殿;
 #[path = "模型-调用-殿/模块.rs"]
 pub mod 模型_调用_殿;
 
-pub use 类型_定义_殿::*;
-pub use 模型_调用_殿::*;
 pub use peizhi_fu::模型配置;
+pub use 模型_调用_殿::*;
+pub use 类型_定义_殿::*;

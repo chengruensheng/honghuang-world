@@ -5,8 +5,8 @@
 use crate::类型_定义_殿::{想法, 想法状态};
 use crate::{判别, 判别结果, 对话意图};
 use daoshu_fu::任务调度;
-use jiance_fu::{进入观测, 观测角色};
-use moxing_fu::{调用模型, 对话消息, 模型配置, 精简上限};
+use jiance_fu::{观测角色, 进入观测};
+use moxing_fu::{对话消息, 模型配置, 精简上限, 调用模型};
 use rizhi_fu::{error, info, warn};
 
 /// 状态目录：工作区根下的 .上下文/状态（与 世界运行.rs 同款，本园复制以保持跨府引用只走 lib 根符号的边界）。
@@ -88,10 +88,12 @@ fn 追问进度回复(消息: &str) -> String {
     // 要求现状：读要求.jsonl 全部，按状态统计。
     let 要求队列 = crate::落盘队列::<crate::要求书>::打开(目录.join("要求.jsonl"));
     let 要求们 = 要求队列.读全部().unwrap_or_default();
-    let 状态数 = 要求们.iter().fold(std::collections::BTreeMap::new(), |mut 表, 要求| {
-        *表.entry(format!("{:?}", 要求.状态)).or_insert(0usize) += 1;
-        表
-    });
+    let 状态数 = 要求们
+        .iter()
+        .fold(std::collections::BTreeMap::new(), |mut 表, 要求| {
+            *表.entry(format!("{:?}", 要求.状态)).or_insert(0usize) += 1;
+            表
+        });
     let 状态段 = if 状态数.is_empty() {
         "（无要求记录）".to_string()
     } else {
@@ -115,10 +117,12 @@ fn 追问进度回复(消息: &str) -> String {
     };
     // 任务线：按状态统计（阶段 3）。
     let 任务线们 = crate::读任务线们().unwrap_or_default();
-    let 线状态数 = 任务线们.iter().fold(std::collections::BTreeMap::new(), |mut 表, 线| {
-        *表.entry(format!("{:?}", 线.状态)).or_insert(0usize) += 1;
-        表
-    });
+    let 线状态数 = 任务线们
+        .iter()
+        .fold(std::collections::BTreeMap::new(), |mut 表, 线| {
+            *表.entry(format!("{:?}", 线.状态)).or_insert(0usize) += 1;
+            表
+        });
     let 线段 = if 线状态数.is_empty() {
         "（无任务线）".to_string()
     } else {
@@ -180,7 +184,9 @@ fn 要求详情(目录: &std::path::Path, 要求id: &str) -> String {
     if !回执.验收.产物.is_empty() {
         行们.push(format!(
             "产物：{}",
-            回执.验收.产物
+            回执
+                .验收
+                .产物
                 .iter()
                 .map(|产物| format!("{}（{} {}）", 产物.路径, 产物.变化类型, 产物.字节数))
                 .collect::<Vec<_>>()
@@ -191,14 +197,19 @@ fn 要求详情(目录: &std::path::Path, 要求id: &str) -> String {
 }
 
 /// 闲聊分流：鸿钧人格直接回应（轻量调用，失败兜底不阻塞对话）。
-fn 闲聊回复(消息: &str, 配置: &模型配置) -> String {    let 提示 = format!(
+fn 闲聊回复(消息: &str, 配置: &模型配置) -> String {
+    let 提示 = format!(
         "你是鸿钧，天层主政之神，界主的对话伙伴。界主对你说：{消息}\n\
 请自然回应，1-3 句即可。项目相关的话题可以简要说说你的看法；与项目无关的轻松回应。"
     );
     match 调用模型(配置, &[对话消息::用户(&提示)], 精简上限) {
         Ok((回复, _)) => {
             let 回复 = 回复.trim().to_string();
-            if 回复.is_empty() { "在听，请继续说。".to_string() } else { 回复 }
+            if 回复.is_empty() {
+                "在听，请继续说。".to_string()
+            } else {
+                回复
+            }
         }
         Err(错误) => {
             warn!(错误 = %错误, "闲聊回复调用失败，兜底回应");
@@ -234,7 +245,11 @@ fn 发布任务(消息: &str, 判别: &判别结果) -> String {
 
 /// 拼装任务文本：方向 + 验收标准 + 涉及路径（与 需求拆分 的 合成文本 同思路，路径明文写入防模型丢失）。
 fn 拼装任务文本(消息: &str, 判别: &判别结果) -> String {
-    let mut 文本 = if 判别.方向.is_empty() { 消息.to_string() } else { 判别.方向.clone() };
+    let mut 文本 = if 判别.方向.is_empty() {
+        消息.to_string()
+    } else {
+        判别.方向.clone()
+    };
     if !判别.验收标准.is_empty() {
         文本.push_str(&format!("。验收标准：{}", 判别.验收标准));
     }

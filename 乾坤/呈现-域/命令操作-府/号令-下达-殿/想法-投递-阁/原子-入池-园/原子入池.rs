@@ -2,7 +2,7 @@
 //! 执行完成后按验收结论推进想法状态（未处理→已化为要求/已打回），
 //! 落盘写回想法.jsonl 对应记录，防同一意图被反复重复投递。
 
-use crate::{读模型配置, 状态目录, 打开存储, 工作区根};
+use crate::{工作区根, 打开存储, 状态目录, 读模型配置};
 use rizhi_fu::{error, info, warn};
 use std::fs;
 
@@ -13,7 +13,7 @@ pub fn 投递想法(内容: &str) -> String {
     }
     let 配置 = 读模型配置();
     let 存储 = 打开存储();
-    let mut 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根());
+    let 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根());
     let 想法 = tianting_fu::想法 {
         id: format!("想法-{}", shihai_fu::当前毫秒()),
         内容: 内容.to_string(),
@@ -29,13 +29,20 @@ pub fn 投递想法(内容: &str) -> String {
         error!(想法id = %想法.id, "想法入池失败：{错误}");
         return format!("想法入池失败：{错误}");
     }
-    let _ = 存储.写记录(&shihai_fu::记录::新("事件", &format!("想法投递：{}", 想法.内容), "号令", "代码"));
+    let _ = 存储.写记录(&shihai_fu::记录::新(
+        "事件",
+        &format!("想法投递：{}", 想法.内容),
+        "号令",
+        "代码",
+    ));
 
-    match tianting_fu::主政一轮(&想法, &配置, &存储, &mut 调度) {
+    match tianting_fu::主政一轮(&想法, &配置, &存储, &调度) {
         Ok(主政回执) => {
             // 验收.jsonl 落盘完整终裁回执（每个子要求/单要求各一条，含六准圣意见/终裁依据/用量），
             // 历史读取方按旧验收回执解析自动兼容。
-            let 验收 = tianting_fu::落盘队列::<tianting_fu::终裁回执>::打开(状态目录().join("验收.jsonl"));
+            let 验收 = tianting_fu::落盘队列::<tianting_fu::终裁回执>::打开(
+                状态目录().join("验收.jsonl"),
+            );
             for 回执 in &主政回执.回执们 {
                 let _ = 验收.入队(回执);
             }
@@ -63,7 +70,11 @@ pub fn 投递想法(内容: &str) -> String {
                 .map(|回执| format!("{} {:?}", 回执.验收.要求id, 回执.验收.结论))
                 .collect::<Vec<_>>()
                 .join("；");
-            let 产物数: usize = 主政回执.回执们.iter().map(|回执| 回执.验收.产物.len()).sum();
+            let 产物数: usize = 主政回执
+                .回执们
+                .iter()
+                .map(|回执| 回执.验收.产物.len())
+                .sum();
             let 耗时秒: f64 = 主政回执.回执们.iter().map(|回执| 回执.验收.耗时秒).sum();
             format!(
                 "想法已执行\n子要求：{} 个\n定档：{} 个\n结论：{:?}\n明细：{}\n产物：{} 件\n耗时：{:.2} 秒",
@@ -71,10 +82,16 @@ pub fn 投递想法(内容: &str) -> String {
             )
         }
         Err(错误) => {
-            let _ = 存储.写记录(&shihai_fu::记录::新("事件", &format!("执行失败：{错误}"), "号令", "代码"));
+            let _ = 存储.写记录(&shihai_fu::记录::新(
+                "事件",
+                &format!("执行失败：{错误}"),
+                "号令",
+                "代码",
+            ));
             error!(想法id = %想法.id, "想法执行失败：{错误}");
             // 推进想法状态：执行失败按已打回处理，防止同一意图被反复重复投递。
-            if let Err(推进错误) = 推进想法状态(&想法.id, tianting_fu::想法状态::已打回) {
+            if let Err(推进错误) = 推进想法状态(&想法.id, tianting_fu::想法状态::已打回)
+            {
                 warn!(想法id = %想法.id, "推进想法状态失败：{推进错误}");
             }
             format!("想法执行失败：{错误}")
@@ -87,7 +104,9 @@ pub fn 投递想法(内容: &str) -> String {
 fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> Result<(), String> {
     let 想法路径 = 状态目录().join("想法.jsonl");
     let 队列 = tianting_fu::落盘队列::<tianting_fu::想法>::打开(想法路径.clone());
-    let mut 项们 = 队列.读全部().map_err(|错误| format!("读想法队列失败: {错误}"))?;
+    let mut 项们 = 队列
+        .读全部()
+        .map_err(|错误| format!("读想法队列失败: {错误}"))?;
     let mut 命中 = false;
     for 项 in 项们.iter_mut() {
         if 项.id == 目标id {
@@ -106,7 +125,11 @@ fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> R
         let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化想法失败: {错误}"))?;
         行们.push(行);
     }
-    let 内容 = if 行们.is_empty() { String::new() } else { format!("{}\n", 行们.join("\n")) };
+    let 内容 = if 行们.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", 行们.join("\n"))
+    };
     fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
     fs::rename(&临时路径, &想法路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
     info!(目标id, 新状态 = ?新状态, "想法状态已推进");

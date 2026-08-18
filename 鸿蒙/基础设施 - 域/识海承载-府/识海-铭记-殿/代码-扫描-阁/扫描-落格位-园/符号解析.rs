@@ -7,7 +7,10 @@ pub(crate) fn 提取符号签名(行: &str) -> Option<(String, String)> {
     let 余 = 行.strip_prefix("pub ")?;
     let 余 = 余.strip_prefix("async ").unwrap_or(余);
     if let Some(余) = 余.strip_prefix("fn ") {
-        let 名: String = 余.chars().take_while(|字符| *字符 != '(' && !字符.is_whitespace()).collect();
+        let 名: String = 余
+            .chars()
+            .take_while(|字符| *字符 != '(' && !字符.is_whitespace())
+            .collect();
         if 名.is_empty() {
             return None;
         }
@@ -16,7 +19,13 @@ pub(crate) fn 提取符号签名(行: &str) -> Option<(String, String)> {
     for 关键字 in ["struct", "trait", "enum", "type"] {
         if let Some(余) = 余.strip_prefix(关键字) {
             if 余.starts_with(' ') {
-                let 名: String = 余.trim_start().chars().take_while(|字符| !字符.is_whitespace() && *字符 != '{' && *字符 != ';' && *字符 != '<').collect();
+                let 名: String = 余
+                    .trim_start()
+                    .chars()
+                    .take_while(|字符| {
+                        !字符.is_whitespace() && *字符 != '{' && *字符 != ';' && *字符 != '<'
+                    })
+                    .collect();
                 if !名.is_empty() {
                     return Some((名.clone(), format!("{关键字} {名}")));
                 }

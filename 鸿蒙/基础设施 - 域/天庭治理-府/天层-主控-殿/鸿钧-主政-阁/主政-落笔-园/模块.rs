@@ -14,7 +14,7 @@ mod 模块树;
 #[path = "建档.rs"]
 mod 建档;
 
+pub use 建档::*;
+pub use 终裁::*;
 pub use 要求化::*;
 pub use 验收::*;
-pub use 终裁::*;
-pub use 建档::*;

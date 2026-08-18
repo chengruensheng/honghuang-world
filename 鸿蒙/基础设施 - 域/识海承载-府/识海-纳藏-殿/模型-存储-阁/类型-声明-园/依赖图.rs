@@ -21,7 +21,15 @@ pub struct 符号档案 {
 
 impl 符号档案 {
     /// 构造符号档案（波及初始为空，扫引用后回填）。
-    pub fn 新(项目: &str, 模块: &str, 文件: &str, 符号: &str, 代码: &str, 签名: &str, 解释: &str) -> 符号档案 {
+    pub fn 新(
+        项目: &str,
+        模块: &str,
+        文件: &str,
+        符号: &str,
+        代码: &str,
+        签名: &str,
+        解释: &str,
+    ) -> 符号档案 {
         符号档案 {
             项目: 项目.to_string(),
             模块: 模块.to_string(),
@@ -57,17 +65,26 @@ impl 依赖图 {
 
     /// 按符号名查档案（512→64 追溯）。
     pub fn 查符号(&self, 符号名: &str) -> Vec<&符号档案> {
-        self.档案们.iter().filter(|档案| 档案.符号 == 符号名).collect()
+        self.档案们
+            .iter()
+            .filter(|档案| 档案.符号 == 符号名)
+            .collect()
     }
 
     /// 按文件查档案（64→512 定位）。
     pub fn 查文件(&self, 文件: &str) -> Vec<&符号档案> {
-        self.档案们.iter().filter(|档案| 档案.文件 == 文件).collect()
+        self.档案们
+            .iter()
+            .filter(|档案| 档案.文件 == 文件)
+            .collect()
     }
 
     /// 按模块（府 / 域）查档案。
     pub fn 查模块(&self, 模块: &str) -> Vec<&符号档案> {
-        self.档案们.iter().filter(|档案| 档案.模块 == 模块).collect()
+        self.档案们
+            .iter()
+            .filter(|档案| 档案.模块 == 模块)
+            .collect()
     }
 
     /// 按涉及路径（符号名 / 文件路径片段）查相关文件集合（含波及文件）。
@@ -82,7 +99,8 @@ impl 依赖图 {
             }
             for 档案 in &self.档案们 {
                 let 文件 = 档案.文件.replace('\\', "/");
-                if 档案.符号 == 涉及 || 档案.符号.contains(&涉及) || 文件.contains(&涉及) {
+                if 档案.符号 == 涉及 || 档案.符号.contains(&涉及) || 文件.contains(&涉及)
+                {
                     文件集.insert(档案.文件.clone());
                     for 波及 in &档案.波及 {
                         文件集.insert(波及.clone());
@@ -105,7 +123,11 @@ impl 依赖图 {
         // 只在档案确有此文件时兜底，硬编码路径失效则自然退回空。
         Self::命令接线文件
             .iter()
-            .filter(|文件| self.档案们.iter().any(|档案| 档案.文件.replace('\\', "/") == **文件))
+            .filter(|文件| {
+                self.档案们
+                    .iter()
+                    .any(|档案| 档案.文件.replace('\\', "/") == **文件)
+            })
             .map(|文件| 文件.to_string())
             .collect()
     }
@@ -117,7 +139,9 @@ impl 依赖图 {
     pub fn 补全同阁(&self, 文件们: &[String]) -> Vec<String> {
         let mut 文件集: HashSet<String> = 文件们.iter().cloned().collect();
         for 文件 in 文件们 {
-            let Some(父) = 父目录(文件) else { continue };
+            let Some(父) = 父目录(文件) else {
+                continue;
+            };
             for 档案 in &self.档案们 {
                 if 档案.文件.replace('\\', "/").starts_with(&父) {
                     文件集.insert(档案.文件.clone());
@@ -135,7 +159,7 @@ impl 依赖图 {
         let 命中 = |根: &结构节点| {
             关键词们.is_empty() || 关键词们.iter().any(|关键词| 树含关键词(根, 关键词))
         };
-        let 兜底 = !关键词们.is_empty() && !self.结构树.子节点.iter().any(|根| 命中(根));
+        let 兜底 = !关键词们.is_empty() && !self.结构树.子节点.iter().any(命中);
         let mut 输出 = String::new();
         for 根 in &self.结构树.子节点 {
             if 兜底 || 命中(根) {
@@ -164,7 +188,7 @@ impl 依赖图 {
             for 档案 in &self.档案们 {
                 let 文件 = 档案.文件.replace('\\', "/");
                 if 文件.contains(&涉及) {
-                    if let Some(crate名) = 档案.模块.split('/').last() {
+                    if let Some(crate名) = 档案.模块.split('/').next_back() {
                         if !crate名.is_empty() {
                             crate名集.insert(crate名.to_string());
                         }
@@ -178,7 +202,7 @@ impl 依赖图 {
                 let 涉及 = 涉及.trim();
                 for 档案 in &self.档案们 {
                     if 档案.模块.replace('\\', "/").ends_with(涉及) {
-                        if let Some(crate名) = 档案.模块.split('/').last() {
+                        if let Some(crate名) = 档案.模块.split('/').next_back() {
                             crate名集.insert(crate名.to_string());
                         }
                     }
@@ -218,7 +242,7 @@ impl 依赖图 {
                 let 涉及 = 涉及.trim().replace('\\', "/");
                 for 档案 in &self.档案们 {
                     if 档案.文件.replace('\\', "/").contains(&涉及) {
-                        if let Some(crate名) = 档案.模块.split('/').last() {
+                        if let Some(crate名) = 档案.模块.split('/').next_back() {
                             集合.insert(crate名.to_string());
                         }
                     }
@@ -229,7 +253,11 @@ impl 依赖图 {
         let 测试档案们: Vec<&符号档案> = self
             .档案们
             .iter()
-            .filter(|档案| 档案.代码.contains("#[cfg(test)]") || 档案.代码.contains("mod 测试") || 档案.代码.contains("mod tests"))
+            .filter(|档案| {
+                档案.代码.contains("#[cfg(test)]")
+                    || 档案.代码.contains("mod 测试")
+                    || 档案.代码.contains("mod tests")
+            })
             .collect();
         if 测试档案们.is_empty() {
             return String::new();
@@ -238,7 +266,11 @@ impl 依赖图 {
             .iter()
             .copied()
             .filter(|档案| {
-                档案.模块.split('/').last().map(|crate名| 涉及crate们.contains(crate名)).unwrap_or(false)
+                档案
+                    .模块
+                    .split('/')
+                    .next_back()
+                    .is_some_and(|crate名| 涉及crate们.contains(crate名))
             })
             .collect();
         let 样例 = if let Some(首) = 同crate.first() {
@@ -246,7 +278,11 @@ impl 依赖图 {
         } else {
             *测试档案们.first().unwrap()
         };
-        let 签名 = if 样例.签名.is_empty() { 样例.符号.clone() } else { 样例.签名.clone() };
+        let 签名 = if 样例.签名.is_empty() {
+            样例.符号.clone()
+        } else {
+            样例.签名.clone()
+        };
         let 摘要: String = 样例.代码.lines().take(5).collect::<Vec<_>>().join("\n");
         // 落位判据 = 通用 Rust 测试落位准则（不依赖本项目 殿/阁/园 或 模块三件套 等专有名词）。
         format!(
@@ -284,7 +320,10 @@ pub struct 结构节点 {
 impl 结构节点 {
     /// 构造结构节点。
     pub fn 新(名字: &str) -> 结构节点 {
-        结构节点 { 名字: 名字.to_string(), 子节点: Vec::new() }
+        结构节点 {
+            名字: 名字.to_string(),
+            子节点: Vec::new(),
+        }
     }
 
     /// 按层级逐段插入一段目录，复用同名节点。
@@ -323,14 +362,47 @@ mod 测试 {
 
     /// 造带两府符号的依赖图（甲府有库根导出符号，乙府有测试符号）。
     fn 造图() -> 依赖图 {
-        let mut 图 = 依赖图::default();
-        图.档案们 = vec![
-            符号档案::新("p", "甲府", "乾坤/甲府/入口.rs", "打开存储", "pub fn 打开存储", "fn 打开存储", "打开识海存储"),
-            符号档案::新("p", "甲府", "乾坤/甲府/入口.rs", "状态目录", "pub fn 状态目录", "fn 状态目录", "状态目录"),
-            符号档案::新("p", "乙府", "乾坤/乙府/入口.rs", "乙函数", "pub fn 乙函数()", "fn 乙函数", "乙函数"),
-            符号档案::新("p", "乙府", "乾坤/乙府/测试园/乙测试.rs", "乙测试", "#[cfg(test)]\nmod 测试 {\n    #[test]\n    fn 用例() {}\n}", "", "测试文件"),
-        ];
-        图
+        依赖图 {
+            档案们: vec![
+                符号档案::新(
+                    "p",
+                    "甲府",
+                    "乾坤/甲府/入口.rs",
+                    "打开存储",
+                    "pub fn 打开存储",
+                    "fn 打开存储",
+                    "打开识海存储",
+                ),
+                符号档案::新(
+                    "p",
+                    "甲府",
+                    "乾坤/甲府/入口.rs",
+                    "状态目录",
+                    "pub fn 状态目录",
+                    "fn 状态目录",
+                    "状态目录",
+                ),
+                符号档案::新(
+                    "p",
+                    "乙府",
+                    "乾坤/乙府/入口.rs",
+                    "乙函数",
+                    "pub fn 乙函数()",
+                    "fn 乙函数",
+                    "乙函数",
+                ),
+                符号档案::新(
+                    "p",
+                    "乙府",
+                    "乾坤/乙府/测试园/乙测试.rs",
+                    "乙测试",
+                    "#[cfg(test)]\nmod 测试 {\n    #[test]\n    fn 用例() {}\n}",
+                    "",
+                    "测试文件",
+                ),
+            ],
+            结构树: 结构节点::新("根结构"),
+        }
     }
 
     #[test]
@@ -347,7 +419,10 @@ mod 测试 {
     fn 查库根导出_目录涉及路径退化匹配() {
         let 图 = 造图();
         let 结果 = 图.查库根导出(&["甲府".to_string()]);
-        assert!(结果.contains("甲府·库根导出"), "目录涉及应退化命中府：{结果}");
+        assert!(
+            结果.contains("甲府·库根导出"),
+            "目录涉及应退化命中府：{结果}"
+        );
     }
 
     #[test]
@@ -381,19 +456,48 @@ mod 测试 {
     fn 补全同阁_按父目录分组补全同组源码() {
         let mut 图 = 造图();
         // 加一个与 入口.rs 同父目录(乾坤/甲府/)的兄弟文件 → 应被补全。
-        图.档案们.push(符号档案::新("p", "甲府", "乾坤/甲府/兄弟.rs", "兄弟", "pub fn 兄弟", "fn 兄弟", ""));
+        图.档案们.push(符号档案::新(
+            "p",
+            "甲府",
+            "乾坤/甲府/兄弟.rs",
+            "兄弟",
+            "pub fn 兄弟",
+            "fn 兄弟",
+            "",
+        ));
         // 加一个在另一父目录(乾坤/乙府/)的文件 → 不应被补全。
-        图.档案们.push(符号档案::新("p", "乙府", "乾坤/乙府/别的.rs", "别的", "pub fn 别的", "fn 别的", ""));
+        图.档案们.push(符号档案::新(
+            "p",
+            "乙府",
+            "乾坤/乙府/别的.rs",
+            "别的",
+            "pub fn 别的",
+            "fn 别的",
+            "",
+        ));
         let 结果 = 图.补全同阁(&["乾坤/甲府/入口.rs".to_string()]);
-        assert!(结果.iter().any(|路径| 路径 == "乾坤/甲府/入口.rs"), "应含自身：{结果:?}");
-        assert!(结果.iter().any(|路径| 路径 == "乾坤/甲府/兄弟.rs"), "应补全同父目录兄弟：{结果:?}");
-        assert!(!结果.iter().any(|路径| 路径.contains("别的.rs")), "他父目录文件不应被补全：{结果:?}");
+        assert!(
+            结果.iter().any(|路径| 路径 == "乾坤/甲府/入口.rs"),
+            "应含自身：{结果:?}"
+        );
+        assert!(
+            结果.iter().any(|路径| 路径 == "乾坤/甲府/兄弟.rs"),
+            "应补全同父目录兄弟：{结果:?}"
+        );
+        assert!(
+            !结果.iter().any(|路径| 路径.contains("别的.rs")),
+            "他父目录文件不应被补全：{结果:?}"
+        );
     }
 
     #[test]
     fn 补全同阁_无父目录返回自身() {
         let 图 = 依赖图::default();
         let 结果 = 图.补全同阁(&["入口.rs".to_string()]);
-        assert_eq!(结果, vec!["入口.rs".to_string()], "单段路径无父目录应仅返回自身：{结果:?}");
+        assert_eq!(
+            结果,
+            vec!["入口.rs".to_string()],
+            "单段路径无父目录应仅返回自身：{结果:?}"
+        );
     }
 }

@@ -15,7 +15,9 @@ pub(crate) fn 收集源文件(根目录: &Path, 排除项: &[String]) -> Vec<Pat
 }
 
 fn 递归(目录: &Path, 排除项: &[String], 结果: &mut Vec<PathBuf>) {
-    let Ok(条目们) = std::fs::read_dir(目录) else { return };
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return;
+    };
     for 条目 in 条目们.flatten() {
         let 路径 = 条目.path();
         let 名 = 条目.file_name().to_string_lossy().to_string();
@@ -38,7 +40,9 @@ pub(crate) fn 收集cargo文件(根目录: &Path, 排除项: &[String]) -> Vec<P
 }
 
 fn 递归cargo(目录: &Path, 排除项: &[String], 结果: &mut Vec<PathBuf>) {
-    let Ok(条目们) = std::fs::read_dir(目录) else { return };
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return;
+    };
     for 条目 in 条目们.flatten() {
         let 路径 = 条目.path();
         let 名 = 条目.file_name().to_string_lossy().to_string();
@@ -61,7 +65,9 @@ pub(crate) fn 收集数据文件(根目录: &Path, 排除项: &[String]) -> Vec<
 }
 
 fn 递归数据(目录: &Path, 排除项: &[String], 结果: &mut Vec<PathBuf>) {
-    let Ok(条目们) = std::fs::read_dir(目录) else { return };
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return;
+    };
     for 条目 in 条目们.flatten() {
         let 路径 = 条目.path();
         let 名 = 条目.file_name().to_string_lossy().to_string();
@@ -78,7 +84,9 @@ fn 递归数据(目录: &Path, 排除项: &[String], 结果: &mut Vec<PathBuf>) 
 
 fn 是数据文件(名: &str) -> bool {
     let 小写 = 名.to_lowercase();
-    [".json", ".jsonl", ".csv", ".db"].iter().any(|后缀| 小写.ends_with(后缀))
+    [".json", ".jsonl", ".csv", ".db"]
+        .iter()
+        .any(|后缀| 小写.ends_with(后缀))
 }
 
 /// 从文件路径向上找最近的 Cargo.toml，返回其目录名（crate 名）。

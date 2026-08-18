@@ -7,7 +7,12 @@ mod 测试 {
 
     #[test]
     fn 确认设计拒空拆解() {
-        let 方案 = 设计方案 { 要求id: "r1".to_string(), 设计: "".to_string(), 拆解: vec![], 自评: "自评".to_string() };
+        let 方案 = 设计方案 {
+            要求id: "r1".to_string(),
+            设计: "".to_string(),
+            拆解: vec![],
+            自评: "自评".to_string(),
+        };
         assert_eq!(确认设计(&方案), 验收结论::打回);
     }
 
@@ -16,7 +21,11 @@ mod 测试 {
         let 方案 = 设计方案 {
             要求id: "r1".to_string(),
             设计: "设计".to_string(),
-            拆解: vec![拆解项 { 目标: "目标".to_string(), 执行层角色: vec![], 工作流: "L2_script".to_string() }],
+            拆解: vec![拆解项 {
+                目标: "目标".to_string(),
+                执行层角色: vec![],
+                工作流: "L2_script".to_string(),
+            }],
             自评: "自评".to_string(),
         };
         assert_eq!(确认设计(&方案), 验收结论::通过);
@@ -62,16 +71,40 @@ mod 测试 {
             "#[path = \"流式读取.rs\"]\npub mod 流式读取;\npub use 流式读取::*;\n",
         )
         .unwrap();
-        std::fs::write(园.join("流式读取.rs"), "pub fn 呈现世界时间() -> String {\"时间\".to_string()}\n").unwrap();
+        std::fs::write(
+            园.join("流式读取.rs"),
+            "pub fn 呈现世界时间() -> String {\"时间\".to_string()}\n",
+        )
+        .unwrap();
 
         let 锁 = 环境变量锁.lock().unwrap_or_else(|e| e.into_inner());
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 产物们 = vec![
-            产物条目 { 路径: "观览-查询-殿/世界-观览-阁/流式-读取-园/流式读取.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() },
-            产物条目 { 路径: "观览-查询-殿/世界-观览-阁/流式-读取-园/模块.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() },
-            产物条目 { 路径: "观览-查询-殿/世界-观览-阁/模块.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() },
-            产物条目 { 路径: "观览-查询-殿/模块.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() },
+            产物条目 {
+                路径: "观览-查询-殿/世界-观览-阁/流式-读取-园/流式读取.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 1,
+                变化类型: "新增".to_string(),
+            },
+            产物条目 {
+                路径: "观览-查询-殿/世界-观览-阁/流式-读取-园/模块.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 1,
+                变化类型: "新增".to_string(),
+            },
+            产物条目 {
+                路径: "观览-查询-殿/世界-观览-阁/模块.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 1,
+                变化类型: "新增".to_string(),
+            },
+            产物条目 {
+                路径: "观览-查询-殿/模块.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 1,
+                变化类型: "新增".to_string(),
+            },
         ];
         let 回执 = 验收裁决("r1", &产物们, 0.0, &[], None);
         match 旧根 {
@@ -81,6 +114,11 @@ mod 测试 {
         drop(锁);
         let _ = std::fs::remove_dir_all(&根);
 
-        assert_eq!(回执.结论, 验收结论::通过, "模块.rs 自身也应视为已接入，验收意见：{:?}", 回执.验收意见);
+        assert_eq!(
+            回执.结论,
+            验收结论::通过,
+            "模块.rs 自身也应视为已接入，验收意见：{:?}",
+            回执.验收意见
+        );
     }
 }

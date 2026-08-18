@@ -18,22 +18,44 @@ pub struct 对话消息 {
 impl 对话消息 {
     /// 构造一条用户消息。
     pub fn 用户(内容: impl Into<String>) -> 对话消息 {
-        对话消息 { 角色: "user".to_string(), 内容: 内容.into(), 工具调用们: None, 工具调用标识: None }
+        对话消息 {
+            角色: "user".to_string(),
+            内容: 内容.into(),
+            工具调用们: None,
+            工具调用标识: None,
+        }
     }
 
     /// 构造一条系统消息。
     pub fn 系统(内容: impl Into<String>) -> 对话消息 {
-        对话消息 { 角色: "system".to_string(), 内容: 内容.into(), 工具调用们: None, 工具调用标识: None }
+        对话消息 {
+            角色: "system".to_string(),
+            内容: 内容.into(),
+            工具调用们: None,
+            工具调用标识: None,
+        }
     }
 
     /// assistant 消息：回传本轮工具调用，内容保留模型原回复（含 think，官方要求多轮保留完整 assistant 消息）。
-    pub fn 助手_带工具调用(内容: impl Into<String>, 调用们: Vec<工具调用>) -> 对话消息 {
-        对话消息 { 角色: "assistant".to_string(), 内容: 内容.into(), 工具调用们: Some(调用们), 工具调用标识: None }
+    pub fn 助手_带工具调用(
+        内容: impl Into<String>, 调用们: Vec<工具调用>
+    ) -> 对话消息 {
+        对话消息 {
+            角色: "assistant".to_string(),
+            内容: 内容.into(),
+            工具调用们: Some(调用们),
+            工具调用标识: None,
+        }
     }
 
     /// tool 消息：回传某次工具调用的执行结果。
     pub fn 工具结果(标识: impl Into<String>, 结果: impl Into<String>) -> 对话消息 {
-        对话消息 { 角色: "tool".to_string(), 内容: 结果.into(), 工具调用们: None, 工具调用标识: Some(标识.into()) }
+        对话消息 {
+            角色: "tool".to_string(),
+            内容: 结果.into(),
+            工具调用们: None,
+            工具调用标识: Some(标识.into()),
+        }
     }
 }
 

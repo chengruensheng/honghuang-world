@@ -1,6 +1,6 @@
 //! 巡世 - 扫描 - 园：扫描世界，产出巡世报告与违逆清单。
 
-use crate::类型_定义_殿::{巡世报告, 巡世候选, 要求类别, 优先级};
+use crate::类型_定义_殿::{优先级, 巡世候选, 巡世报告, 要求类别};
 use rizhi_fu::info;
 use std::path::{Path, PathBuf};
 
@@ -34,7 +34,9 @@ fn 收集源文件(根目录: &Path) -> Vec<PathBuf> {
 }
 
 fn 递归(目录: &Path, 排除项: &[String], 结果: &mut Vec<PathBuf>) {
-    let Ok(条目们) = std::fs::read_dir(目录) else { return };
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return;
+    };
     for 条目 in 条目们.flatten() {
         let 路径 = 条目.path();
         let 名 = 条目.file_name().to_string_lossy().to_string();

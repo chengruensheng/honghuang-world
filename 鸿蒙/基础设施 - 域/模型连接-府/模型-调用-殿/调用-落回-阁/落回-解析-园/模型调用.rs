@@ -1,7 +1,7 @@
 //! 调用 - 落回 - 园：调用模型，解析落回内容。
 
 use crate::类型_定义_殿::{对话消息, 工具定义, 工具调用, 模型回复, 用量};
-use jiance_fu::{当前观测, 记请求, 记回复};
+use jiance_fu::{当前观测, 记回复, 记请求};
 use peizhi_fu::模型配置;
 use rizhi_fu::{error, info, warn};
 
@@ -22,7 +22,9 @@ pub const 请求超时: std::time::Duration = std::time::Duration::from_secs(120
 /// ureq 的 DNS 失败信息含糊且慢（实测 os error 11001 把任务整轮打挂 3 次）；预检在发请求前
 /// 用系统解析器确认 host 可达，失败直接返回（DNS 失败重试无益，不进入指数退避）。
 pub fn 预检地址(地址: &str) -> Result<(), String> {
-    let 无协议 = 地址.trim_start_matches("https://").trim_start_matches("http://");
+    let 无协议 = 地址
+        .trim_start_matches("https://")
+        .trim_start_matches("http://");
     let 主机端口 = 无协议.split('/').next().unwrap_or(无协议);
     let (主机, 端口) = match 主机端口.rsplit_once(':') {
         Some((主机, 端口)) if 端口.chars().all(|字| 字.is_ascii_digit()) => {
@@ -31,9 +33,9 @@ pub fn 预检地址(地址: &str) -> Result<(), String> {
         _ => (主机端口, 443),
     };
     use std::net::ToSocketAddrs;
-    (主机, 端口)
-        .to_socket_addrs()
-        .map_err(|错误| format!("DNS 解析失败：{主机}:{端口}（{错误}）——请检查网络连接与域名可用性"))?;
+    (主机, 端口).to_socket_addrs().map_err(|错误| {
+        format!("DNS 解析失败：{主机}:{端口}（{错误}）——请检查网络连接与域名可用性")
+    })?;
     Ok(())
 }
 
@@ -74,7 +76,9 @@ where
                 if 重试次数 >= 最大重试次数 {
                     let 详情 = 请求错误详情(错误);
                     error!(模型 = %模型, 重试次数, "瞬时故障重试耗尽仍失败：{详情}");
-                    return Err(format!("模型请求失败(重试{最大重试次数}次后仍瞬时故障): {详情}"));
+                    return Err(format!(
+                        "模型请求失败(重试{最大重试次数}次后仍瞬时故障): {详情}"
+                    ));
                 }
                 let 间隔 = 退避间隔(重试次数);
                 重试次数 += 1;
@@ -100,7 +104,14 @@ fn 请求错误详情(错误: ureq::Error) -> String {
 }
 
 /// 一次模型调用：发送消息，取回文本内容与用量。
-pub fn 调用模型(配置: &模型配置, 消息们: &[对话消息], 输出上限: u32) -> Result<(String, 用量), String> {
+/// clippy result_large_err：闭包返回 ureq::Result，ureq::Error 272 字节（第三方库类型，
+/// 无法通过本仓改小；Box 需动 发送并重试 泛型签名，收益低于成本，故允许）。
+#[allow(clippy::result_large_err)]
+pub fn 调用模型(
+    配置: &模型配置,
+    消息们: &[对话消息],
+    输出上限: u32,
+) -> Result<(String, 用量), String> {
     预检地址(&配置.地址)?;
     let 请求体 = 构造请求体(配置, 消息们, 输出上限);
     let (角色, 关联) = 当前观测();
@@ -124,7 +135,14 @@ pub fn 调用模型(配置: &模型配置, 消息们: &[对话消息], 输出上
 
     let 内容 = 解析回复(&文本)?;
     let 用量 = 解析用量(&文本);
-    记回复(角色, "模型连接-府::调用模型", "", &内容, 关联, Some(用量附加(配置, &用量)));
+    记回复(
+        角色,
+        "模型连接-府::调用模型",
+        "",
+        &内容,
+        关联,
+        Some(用量附加(配置, &用量)),
+    );
     info!(
         模型 = %配置.模型, 内容长度 = 内容.len(),
         提示词 = 用量.提示词, 输出 = 用量.输出, 缓存命中 = 用量.缓存命中,
@@ -134,6 +152,8 @@ pub fn 调用模型(配置: &模型配置, 消息们: &[对话消息], 输出上
 }
 
 /// 调用模型并允许工具调用（function calling）：发送消息与工具定义，落回文本或工具调用（附用量）。
+/// clippy result_large_err：同上（ureq::Error 第三方库类型，允许）。
+#[allow(clippy::result_large_err)]
 pub fn 调用模型带工具(
     配置: &模型配置,
     消息们: &[对话消息],
@@ -164,7 +184,14 @@ pub fn 调用模型带工具(
     let 回复 = 解析工具回复(&文本)?;
     let 用量 = 解析用量(&文本);
     let 概要 = 回复概要(&回复);
-    记回复(角色, "模型连接-府::调用模型带工具", "", &概要, 关联, Some(用量附加(配置, &用量)));
+    记回复(
+        角色,
+        "模型连接-府::调用模型带工具",
+        "",
+        &概要,
+        关联,
+        Some(用量附加(配置, &用量)),
+    );
     info!(
         模型 = %配置.模型, 内容长度 = 文本.len(),
         提示词 = 用量.提示词, 输出 = 用量.输出, 缓存命中 = 用量.缓存命中,
@@ -213,11 +240,18 @@ pub fn 解析用量(文本: &str) -> 用量 {
         .or_else(|| 用量值["prompt_tokens_details"]["cached_tokens"].as_u64())
         .unwrap_or(0);
     let 总计 = 用量值["total_tokens"].as_u64().unwrap_or(提示词 + 输出);
-    用量 { 提示词, 输出, 缓存命中, 总计 }
+    用量 {
+        提示词,
+        输出,
+        缓存命中,
+        总计,
+    }
 }
 
 /// 构造 OpenAI 兼容请求体（独立出便于测试）。
-pub fn 构造请求体(配置: &模型配置, 消息们: &[对话消息], 输出上限: u32) -> String {
+pub fn 构造请求体(
+    配置: &模型配置, 消息们: &[对话消息], 输出上限: u32
+) -> String {
     serde_json::json!({
         "model": 配置.模型,
         "messages": 消息们.iter().map(|消息| serde_json::json!({
@@ -232,7 +266,12 @@ pub fn 构造请求体(配置: &模型配置, 消息们: &[对话消息], 输出
 /// 构造带工具定义的 OpenAI 兼容请求体（独立出便于测试）。
 /// 显式声明 temperature 与 thinking：服务端默认值漂移曾致 MiniMax-M3 工具参数退化
 /// （arguments={} 缺必填字段，见设计稿 4.1-4），显式固定可复现、可收敛。
-pub fn 构造工具请求体(配置: &模型配置, 消息们: &[对话消息], 工具们: &[工具定义], 输出上限: u32) -> String {
+pub fn 构造工具请求体(
+    配置: &模型配置,
+    消息们: &[对话消息],
+    工具们: &[工具定义],
+    输出上限: u32,
+) -> String {
     serde_json::json!({
         "model": 配置.模型,
         "messages": 消息们_带工具(消息们),
@@ -337,7 +376,8 @@ pub fn 提取对象(文本: &str) -> Result<String, String> {
         }
     }
     // 2) 剥掉 <think>...</think> 思维链再找首个对象
-    let 去think = if let (Some(开), Some(闭)) = (文本.find("<think>"), 文本.find("</think>")) {
+    let 去think = if let (Some(开), Some(闭)) = (文本.find("<think>"), 文本.find("</think>"))
+    {
         let mut 拼接 = String::from(&文本[..开]);
         拼接.push_str(&文本[闭 + "</think>".len()..]);
         拼接
@@ -384,43 +424,71 @@ fn 配平首个对象(文本: &str) -> Option<&str> {
 
 /// 消息序列化：工具链路用（额外携带 tool_calls / tool_call_id 回传）。
 fn 消息们_带工具(消息们: &[对话消息]) -> Vec<serde_json::Value> {
-    消息们.iter().map(|消息| {
-        let mut 对象 = serde_json::json!({
-            "role": 消息.角色,
-            "content": 消息.内容,
-        });
-        if let Some(调用们) = &消息.工具调用们 {
-            对象["tool_calls"] = serde_json::json!(调用们.iter().map(|调用| {
-                serde_json::json!({
-                    "id": 调用.标识,
-                    "type": "function",
-                    "function": { "name": 调用.名字, "arguments": 调用.参数 }
-                })
-            }).collect::<Vec<_>>());
-        }
-        if let Some(标识) = &消息.工具调用标识 {
-            对象["tool_call_id"] = serde_json::json!(标识);
-        }
-        对象
-    }).collect()
+    消息们
+        .iter()
+        .map(|消息| {
+            let mut 对象 = serde_json::json!({
+                "role": 消息.角色,
+                "content": 消息.内容,
+            });
+            if let Some(调用们) = &消息.工具调用们 {
+                对象["tool_calls"] = serde_json::json!(调用们
+                    .iter()
+                    .map(|调用| {
+                        serde_json::json!({
+                            "id": 调用.标识,
+                            "type": "function",
+                            "function": { "name": 调用.名字, "arguments": 调用.参数 }
+                        })
+                    })
+                    .collect::<Vec<_>>());
+            }
+            if let Some(标识) = &消息.工具调用标识 {
+                对象["tool_call_id"] = serde_json::json!(标识);
+            }
+            对象
+        })
+        .collect()
 }
 
 /// 模型提供者：换模型不改主循环的抽象契约（对齐 DeepSeek「模型无关」）。
 /// 本质：任何 LLM 提供者的通用协议——发消息（可带工具）→ 回复 + 用量。
 /// HTTP 走 OpenAI 兼容；模拟提供者供测试/离线演练，不耗真实 API。
 pub trait 模型提供者 {
-    fn 调用(&self, 配置: &模型配置, 消息们: &[对话消息], 输出上限: u32) -> Result<(String, 用量), String>;
-    fn 调用带工具(&self, 配置: &模型配置, 消息们: &[对话消息], 工具们: &[工具定义], 输出上限: u32) -> Result<(模型回复, 用量), String>;
+    fn 调用(
+        &self,
+        配置: &模型配置,
+        消息们: &[对话消息],
+        输出上限: u32,
+    ) -> Result<(String, 用量), String>;
+    fn 调用带工具(
+        &self,
+        配置: &模型配置,
+        消息们: &[对话消息],
+        工具们: &[工具定义],
+        输出上限: u32,
+    ) -> Result<(模型回复, 用量), String>;
 }
 
 /// HTTP 模型提供者：走 OpenAI 兼容 HTTP（当前 MiniMax-M3），退避重试 + 解析。
 pub struct HTTP模型提供者;
 
 impl 模型提供者 for HTTP模型提供者 {
-    fn 调用(&self, 配置: &模型配置, 消息们: &[对话消息], 输出上限: u32) -> Result<(String, 用量), String> {
+    fn 调用(
+        &self,
+        配置: &模型配置,
+        消息们: &[对话消息],
+        输出上限: u32,
+    ) -> Result<(String, 用量), String> {
         调用模型(配置, 消息们, 输出上限)
     }
-    fn 调用带工具(&self, 配置: &模型配置, 消息们: &[对话消息], 工具们: &[工具定义], 输出上限: u32) -> Result<(模型回复, 用量), String> {
+    fn 调用带工具(
+        &self,
+        配置: &模型配置,
+        消息们: &[对话消息],
+        工具们: &[工具定义],
+        输出上限: u32,
+    ) -> Result<(模型回复, 用量), String> {
         调用模型带工具(配置, 消息们, 工具们, 输出上限)
     }
 }
@@ -431,17 +499,30 @@ pub struct 模拟模型提供者 {
 }
 
 impl 模型提供者 for 模拟模型提供者 {
-    fn 调用(&self, _配置: &模型配置, _消息们: &[对话消息], _输出上限: u32) -> Result<(String, 用量), String> {
+    fn 调用(
+        &self,
+        _配置: &模型配置,
+        _消息们: &[对话消息],
+        _输出上限: u32,
+    ) -> Result<(String, 用量), String> {
         Ok((self.回复文本.clone(), 用量::default()))
     }
-    fn 调用带工具(&self, _配置: &模型配置, _消息们: &[对话消息], _工具们: &[工具定义], _输出上限: u32) -> Result<(模型回复, 用量), String> {
+    fn 调用带工具(
+        &self,
+        _配置: &模型配置,
+        _消息们: &[对话消息],
+        _工具们: &[工具定义],
+        _输出上限: u32,
+    ) -> Result<(模型回复, 用量), String> {
         Ok((模型回复::文本(self.回复文本.clone()), 用量::default()))
     }
 }
 
 #[cfg(test)]
 mod 测试 {
-    use super::{退避间隔, 提取对象, 解析用量, 最大重试次数, 是瞬时故障, 预检地址};
+    use super::{
+        提取对象, 是瞬时故障, 最大重试次数, 解析用量, 退避间隔, 预检地址
+    };
 
     #[test]
     fn 预检地址_本机地址通过() {
@@ -546,8 +627,10 @@ Wait, let me output the real JSON.</think>
 
     #[test]
     fn 模拟提供者返回固定文本不耗api() {
-        use super::{模型提供者, 模拟模型提供者, 模型回复};
-        let 模拟 = 模拟模型提供者 { 回复文本: "固定回复".to_string() };
+        use super::{模型回复, 模型提供者, 模拟模型提供者};
+        let 模拟 = 模拟模型提供者 {
+            回复文本: "固定回复".to_string(),
+        };
         let 配置 = peizhi_fu::模型配置 {
             密钥: String::new(),
             地址: String::new(),

@@ -1,27 +1,32 @@
 //! 工具 - 执行：执行单个工具调用 + 落盘护栏 + 参数摘要。
 
-use crate::{列举目录, 寻找文件, 搜索内容, 写文件, 改文件, 读文件, 删文件, 校验命令护栏, 沙箱视图};
+use crate::{
+    写文件, 列举目录, 删文件, 寻找文件, 搜索内容, 改文件, 校验命令护栏, 沙箱视图, 读文件
+};
 use moxing_fu::工具调用;
 use shihai_fu::{工作区, 模型存储};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 单文件落盘内容上限（字节）：超限拒写，防一次性灌爆盘面。
 pub(crate) const 落盘内容上限: usize = 512 * 1024;
 
 /// 源码维度缓存：目录绝对路径 → 该目录（含子孙）是否含源码（.rs / Cargo.toml）。
 /// 写文件次次校验，递归扫盘太贵；维度归属基本不变，进程内缓存一次即可。
-static 源码维度缓存: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, bool>>> =
-    std::sync::OnceLock::new();
+static 源码维度缓存: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, bool>>,
+> = std::sync::OnceLock::new();
 
 /// 目录（含子孙）是否含源码：递归找 `.rs` 或 `Cargo.toml`，跳过构建/记忆等非源码目录。
 /// 命中缓存直接返回；未命中则实扫一次并落缓存。
-fn 目录含源码(目录: &PathBuf) -> bool {
+fn 目录含源码(目录: &Path) -> bool {
     let 缓存 = 源码维度缓存.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     if let Some(&命中) = 缓存.lock().unwrap().get(目录) {
         return 命中;
     }
     fn 递归找(目录: &std::path::Path) -> bool {
-        let Ok(条目们) = std::fs::read_dir(目录) else { return false };
+        let Ok(条目们) = std::fs::read_dir(目录) else {
+            return false;
+        };
         for 条目 in 条目们.flatten() {
             let 路径 = 条目.path();
             let 名 = 条目.file_name().to_string_lossy().to_string();
@@ -40,7 +45,7 @@ fn 目录含源码(目录: &PathBuf) -> bool {
         false
     }
     let 有 = 递归找(目录);
-    缓存.lock().unwrap().insert(目录.clone(), 有);
+    缓存.lock().unwrap().insert(目录.to_path_buf(), 有);
     有
 }
 
@@ -49,8 +54,8 @@ fn 目录含源码(目录: &PathBuf) -> bool {
 /// - 点开头隐藏目录（.上下文/.git）拒写（记忆/版本库/依赖图等非源码资产，执行者不得写）；
 /// - 首段目录已存在但无源码（太初等空壳维度）拒写；
 /// - 首段目录尚不存在（新园/新阁首次落盘）放行，由调用方后续 canonicalize 根内校验把关。
-/// 写/改/删共用同一把尺；路径须已用 `/` 归一、去首尾空白。
-pub fn 校验路径范围(根: &PathBuf, 路径: &str) -> Result<(), String> {
+///   写/改/删共用同一把尺；路径须已用 `/` 归一、去首尾空白。
+pub fn 校验路径范围(根: &Path, 路径: &str) -> Result<(), String> {
     let 首段 = 路径.split('/').next().unwrap_or("");
     if 路径.contains('/') {
         if 首段.starts_with('.') {
@@ -77,8 +82,8 @@ pub fn 校验路径范围(根: &PathBuf, 路径: &str) -> Result<(), String> {
 /// 2) 内容超长拒写——防一次性灌爆盘面/上下文；
 /// 3) 根内越界拒绝（源码维度白名单）——见 校验路径范围；
 /// 4) 路径越界拒绝——从目标路径逐级上溯最近已存在祖先，规范化后必须位于工作区根内（防 ../ 逃逸）。
-/// 工具模式与纯文本回退共用，保证两条落盘路径同等受约束。
-pub fn 校验落盘(根: &PathBuf, 路径: &str, 内容: &str) -> Result<(), String> {
+///    工具模式与纯文本回退共用，保证两条落盘路径同等受约束。
+pub fn 校验落盘(根: &Path, 路径: &str, 内容: &str) -> Result<(), String> {
     let 路径 = 路径.trim().replace('\\', "/");
     if 路径.is_empty() {
         return Err("拒写：路径为空".to_string());
@@ -87,10 +92,15 @@ pub fn 校验落盘(根: &PathBuf, 路径: &str, 内容: &str) -> Result<(), Str
         return Err(format!("拒写空文件：{路径}（内容为空）"));
     }
     if 内容.len() > 落盘内容上限 {
-        return Err(format!("拒写超长文件：{路径}（{} 字节，超上限 {落盘内容上限}）", 内容.len()));
+        return Err(format!(
+            "拒写超长文件：{路径}（{} 字节，超上限 {落盘内容上限}）",
+            内容.len()
+        ));
     }
     校验路径范围(根, &路径)?;
-    let 根规范 = 根.canonicalize().map_err(|错误| format!("工作区根无法解析：{错误}"))?;
+    let 根规范 = 根
+        .canonicalize()
+        .map_err(|错误| format!("工作区根无法解析：{错误}"))?;
     let 绝对 = 根.join(&路径);
     let mut 检查 = 绝对.as_path();
     loop {
@@ -110,7 +120,10 @@ pub fn 校验落盘(根: &PathBuf, 路径: &str, 内容: &str) -> Result<(), Str
         }
         检查 = 父;
     }
-    Err(format!("路径无法解析：{路径}（最近已存在祖先不在工作区根 {} 内）", 根规范.display()))
+    Err(format!(
+        "路径无法解析：{路径}（最近已存在祖先不在工作区根 {} 内）",
+        根规范.display()
+    ))
 }
 
 /// 涉及路径护栏：目标路径必须落在要求书涉及路径内——
@@ -129,11 +142,16 @@ pub fn 校验涉及路径(原始: &str, 涉及路径: &[String]) -> Result<(), S
         }
         // 同目录：仅当涉及路径形态为文件（末段含扩展名）时，允许改/建同目录文件（补测试/同园场景）；
         // 目录型涉及路径走 ② 目录树前缀，不适用同目录（防兄弟目录误放行）。
-        let 涉及是文件 = 涉及.rsplit('/').next().map(|末| 末.contains('.')).unwrap_or(false);
+        let 涉及是文件 = 涉及
+            .rsplit('/')
+            .next()
+            .map(|末| 末.contains('.'))
+            .unwrap_or(false);
         match 涉及.rsplit_once('/') {
-            Some((涉及父, _)) if 涉及是文件 => {
-                目标.rsplit_once('/').map(|(目标父, _)| 目标父 == 涉及父).unwrap_or(false)
-            }
+            Some((涉及父, _)) if 涉及是文件 => 目标
+                .rsplit_once('/')
+                .map(|(目标父, _)| 目标父 == 涉及父)
+                .unwrap_or(false),
             _ => false,
         }
     });
@@ -150,7 +168,11 @@ pub fn 校验涉及路径(原始: &str, 涉及路径: &[String]) -> Result<(), S
 /// 工具护栏（guard 阶段）：执行前统一护栏，与 execute 解耦（对齐 DeepSeek 工具流水线）。
 /// 本质：任何项目的通用安全护栏——落盘非空/非超长/路径不越界，命令不越权。
 /// 读类工具（读文件/列举/寻找/搜索/读格位/查格位历史）天然只读，无护栏。
-pub(crate) fn 工具护栏(根: &PathBuf, 调用名: &str, 参数: &serde_json::Value) -> Result<(), String> {
+pub(crate) fn 工具护栏(
+    根: &Path,
+    调用名: &str,
+    参数: &serde_json::Value,
+) -> Result<(), String> {
     match 调用名 {
         "写文件" => {
             let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
@@ -164,9 +186,10 @@ pub(crate) fn 工具护栏(根: &PathBuf, 调用名: &str, 参数: &serde_json::
         }
         "运行命令" => {
             let 命令 = 参数["命令"].as_str().ok_or("缺参数 命令")?;
-            let 参数们 = 参数["参数们"].as_array().map(|数组| {
-                数组.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>()
-            }).unwrap_or_default();
+            let 参数们 = 参数["参数们"]
+                .as_array()
+                .map(|数组| 数组.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>())
+                .unwrap_or_default();
             let 超时毫秒 = 参数.get("超时毫秒").and_then(|值| 值.as_u64());
             校验命令护栏(命令, &参数们, 超时毫秒)
         }
@@ -181,7 +204,7 @@ pub(crate) fn 工具护栏(根: &PathBuf, 调用名: &str, 参数: &serde_json::
 /// 时放行（纪律靠执行提示）。
 pub(crate) fn 执行工具(
     调用: &工具调用,
-    根: &PathBuf,
+    根: &Path,
     写入文件们: &mut Vec<(String, u64)>,
     涉及路径: &[String],
 ) -> Result<String, String> {
@@ -231,7 +254,10 @@ pub(crate) fn 执行工具(
         }
         "删文件" => {
             let 路径们 = 参数["路径们"].as_array().ok_or("缺参数 路径们")?;
-            let 文本们 = 路径们.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>();
+            let 文本们 = 路径们
+                .iter()
+                .filter_map(|值| 值.as_str())
+                .collect::<Vec<_>>();
             if 文本们.is_empty() {
                 return Err("路径们 为空".to_string());
             }
@@ -241,8 +267,14 @@ pub(crate) fn 执行工具(
                 校验路径范围(根, &路径.trim().replace('\\', "/"))?;
             }
             let 绝对的 = 文本们.iter().map(|路径| 根.join(路径)).collect::<Vec<_>>();
-            let 字符串们 = 绝对的.iter().map(|路径| 路径.to_string_lossy().into_owned()).collect::<Vec<String>>();
-            let 参数们 = 字符串们.iter().map(|路径| 路径.as_str()).collect::<Vec<_>>();
+            let 字符串们 = 绝对的
+                .iter()
+                .map(|路径| 路径.to_string_lossy().into_owned())
+                .collect::<Vec<String>>();
+            let 参数们 = 字符串们
+                .iter()
+                .map(|路径| 路径.as_str())
+                .collect::<Vec<_>>();
             删文件(&参数们)?;
             Ok(format!("已删除 {} 个文件", 参数们.len()))
         }
@@ -252,7 +284,12 @@ pub(crate) fn 执行工具(
             let 条目们 = 列举目录(绝对.to_str().ok_or("路径含非 UTF-8 字符")?)?;
             let mut 行 = String::new();
             for 条目 in 条目们 {
-                行.push_str(&format!("{}{}（{} 字节）\n", 条目.名称, if 条目.是目录 { "/" } else { "" }, 条目.字节数));
+                行.push_str(&format!(
+                    "{}{}（{} 字节）\n",
+                    条目.名称,
+                    if 条目.是目录 { "/" } else { "" },
+                    条目.字节数
+                ));
             }
             Ok(行)
         }
@@ -264,7 +301,12 @@ pub(crate) fn 执行工具(
             if 文件们.is_empty() {
                 return Ok("（未找到匹配文件）".to_string());
             }
-            Ok(文件们.iter().take(100).cloned().collect::<Vec<_>>().join("\n"))
+            Ok(文件们
+                .iter()
+                .take(100)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n"))
         }
         "搜索内容" => {
             let 根参 = 参数["根"].as_str().unwrap_or("");
@@ -276,17 +318,25 @@ pub(crate) fn 执行工具(
             }
             let mut 行 = String::new();
             for 命中 in 命中们.iter().take(60) {
-                行.push_str(&format!("{}:{} {}\n", 命中.路径, 命中.行号, 命中.行内容.trim()));
+                行.push_str(&format!(
+                    "{}:{} {}\n",
+                    命中.路径,
+                    命中.行号,
+                    命中.行内容.trim()
+                ));
             }
             Ok(行)
         }
         "运行命令" => {
             let 命令 = 参数["命令"].as_str().ok_or("缺参数 命令")?;
-            let 参数们 = 参数["参数们"].as_array().map(|数组| {
-                数组.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>()
-            }).unwrap_or_default();
+            let 参数们 = 参数["参数们"]
+                .as_array()
+                .map(|数组| 数组.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>())
+                .unwrap_or_default();
             let 超时毫秒 = 参数.get("超时毫秒").and_then(|值| 值.as_u64());
-            let 工作目录 = 参数["工作目录"].as_str().map(|相对| 根.join(相对).to_string_lossy().into_owned());
+            let 工作目录 = 参数["工作目录"]
+                .as_str()
+                .map(|相对| 根.join(相对).to_string_lossy().into_owned());
             // 沙箱执行：命令在隔离视图内跑，构建物落视图内，越界写入自动回滚，真实盘面零污染。
             let 沙箱 = 沙箱视图::打开当前(根);
             let 回执 = 沙箱.运行(命令, &参数们, 工作目录.as_deref(), 超时毫秒)?;
@@ -314,11 +364,18 @@ pub(crate) fn 执行工具(
             let 链头 = 存储.读链头集(格位名)?;
             let 取条 = 链头.len().saturating_sub(上限);
             let 窗口 = &链头[取条..];
-            let mut 输出 = format!("【格位：{格位名}】链头 {} 条（返回 {} 条）\n", 链头.len(), 窗口.len());
+            let mut 输出 = format!(
+                "【格位：{格位名}】链头 {} 条（返回 {} 条）\n",
+                链头.len(),
+                窗口.len()
+            );
             for (序号, 记录) in 窗口.iter().enumerate() {
                 输出.push_str(&format!(
                     "#{} [ts={} 来源={:?}] {}\n",
-                    序号 + 1 + 取条, 记录.时间戳, 记录.来源, 记录.内容
+                    序号 + 1 + 取条,
+                    记录.时间戳,
+                    记录.来源,
+                    记录.内容
                 ));
                 if !记录.证据.is_empty() {
                     输出.push_str(&format!("    证据：{}\n", 记录.证据));
@@ -335,15 +392,28 @@ pub(crate) fn 执行工具(
             let 全部 = 存储.读格位(格位名)?;
             let 终 = (起始 + 上限).min(全部.len());
             if 起始 >= 全部.len() {
-                return Ok(format!("【格位：{格位名}】共 {} 条，偏移 {起始} 越界", 全部.len()));
+                return Ok(format!(
+                    "【格位：{格位名}】共 {} 条，偏移 {起始} 越界",
+                    全部.len()
+                ));
             }
             let 窗口 = &全部[起始..终];
-            let mut 输出 = format!("【格位：{格位名}】共 {} 条，返回第 {}..{} 条（{} 条）\n", 全部.len(), 起始, 终, 窗口.len());
+            let mut 输出 = format!(
+                "【格位：{格位名}】共 {} 条，返回第 {}..{} 条（{} 条）\n",
+                全部.len(),
+                起始,
+                终,
+                窗口.len()
+            );
             for (序号, 记录) in 窗口.iter().enumerate() {
                 let 失效 = if 记录.失效 { " [失效]" } else { "" };
                 输出.push_str(&format!(
                     "#{} [ts={} 来源={:?}]{} {}\n",
-                    起始 + 序号 + 1, 记录.时间戳, 记录.来源, 失效, 记录.内容
+                    起始 + 序号 + 1,
+                    记录.时间戳,
+                    记录.来源,
+                    失效,
+                    记录.内容
                 ));
                 if !记录.证据.is_empty() {
                     输出.push_str(&format!("    证据：{}\n", 记录.证据));
@@ -377,9 +447,16 @@ pub(crate) fn 参数摘要(调用: &工具调用) -> String {
         "运行命令" => format!(
             "{} {:?}",
             参数["命令"].as_str().unwrap_or("?"),
-            参数["参数们"].as_array().map(|数组| 数组.iter().filter_map(|项| 项.as_str()).collect::<Vec<_>>()).unwrap_or_default()
+            参数["参数们"]
+                .as_array()
+                .map(|数组| 数组.iter().filter_map(|项| 项.as_str()).collect::<Vec<_>>())
+                .unwrap_or_default()
         ),
-        "读格位" => format!("格位={} 上限={}", 参数["格位名"].as_str().unwrap_or("?"), 参数["上限"].as_u64().unwrap_or(20)),
+        "读格位" => format!(
+            "格位={} 上限={}",
+            参数["格位名"].as_str().unwrap_or("?"),
+            参数["上限"].as_u64().unwrap_or(20)
+        ),
         "查格位历史" => format!(
             "格位={} 起始={} 上限={}",
             参数["格位名"].as_str().unwrap_or("?"),
@@ -397,30 +474,78 @@ mod 测试 {
     #[test]
     fn 涉及路径_文件精确与目录树内放行() {
         let 涉及 = vec![
-            "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放.rs".to_string(),
+            "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放.rs"
+                .to_string(),
             "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-直播-园".to_string(),
         ];
-        assert!(校验涉及路径("乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放.rs", &涉及).is_ok(), "涉及文件本身可写");
-        assert!(校验涉及路径("乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放测试.rs", &涉及).is_ok(), "涉及文件同目录可新建（补测试场景）");
-        assert!(校验涉及路径("乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-直播-园/流式直播.rs", &涉及).is_ok(), "涉及目录树下可写");
-        assert!(校验涉及路径("乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园", &涉及).is_err(), "涉及文件的上级目录本身不可写");
+        assert!(
+            校验涉及路径(
+                "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放.rs",
+                &涉及
+            )
+            .is_ok(),
+            "涉及文件本身可写"
+        );
+        assert!(
+            校验涉及路径(
+                "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放测试.rs",
+                &涉及
+            )
+            .is_ok(),
+            "涉及文件同目录可新建（补测试场景）"
+        );
+        assert!(
+            校验涉及路径(
+                "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-直播-园/流式直播.rs",
+                &涉及
+            )
+            .is_ok(),
+            "涉及目录树下可写"
+        );
+        assert!(
+            校验涉及路径(
+                "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园",
+                &涉及
+            )
+            .is_err(),
+            "涉及文件的上级目录本身不可写"
+        );
     }
 
     #[test]
     fn 涉及路径_越界拒绝() {
-        let 涉及 = vec!["乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放.rs".to_string()];
+        let 涉及 = vec![
+            "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-回放-园/流式回放.rs"
+                .to_string(),
+        ];
         let 错 = 校验涉及路径("证道/鸿蒙 - 域/单元测试-府/Cargo.toml", &涉及).unwrap_err();
         assert!(错.contains("涉及路径外拒写"), "涉及路径外应拒写：{错}");
-        assert!(校验涉及路径("鸿蒙/基础设施 - 域/天庭治理-府/Cargo.toml", &涉及).is_err(), "其他府文件拒写");
+        assert!(
+            校验涉及路径("鸿蒙/基础设施 - 域/天庭治理-府/Cargo.toml", &涉及).is_err(),
+            "其他府文件拒写"
+        );
         // 相似前缀不可误放行：涉及 甲-园，不能写 甲-园X。
         let 涉及目录 = vec!["乾坤/甲-园".to_string()];
-        assert!(校验涉及路径("乾坤/甲-园X/乙.rs", &涉及目录).is_err(), "前缀相似不应放行");
+        assert!(
+            校验涉及路径("乾坤/甲-园X/乙.rs", &涉及目录).is_err(),
+            "前缀相似不应放行"
+        );
         // 同目录放行不跨目录：涉及 流式-回放-园 下的文件，不能写 流式-直播-园。
-        assert!(校验涉及路径("乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-直播-园/流式直播.rs", &涉及).is_err(), "同目录规则不跨目录");
+        assert!(
+            校验涉及路径(
+                "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/流式-直播-园/流式直播.rs",
+                &涉及
+            )
+            .is_err(),
+            "同目录规则不跨目录"
+        );
     }
 
     #[test]
     fn 涉及路径_空放行() {
-        assert!(校验涉及路径("任何/路径.rs", &[]).is_ok(), "审验类无涉及路径应放行");
+        assert!(
+            校验涉及路径("任何/路径.rs", &[]).is_ok(),
+            "审验类无涉及路径应放行"
+        );
     }
 }

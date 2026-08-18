@@ -8,6 +8,6 @@ pub mod 鸿钧_对话_阁;
 #[path = "天道-巡世-阁/模块.rs"]
 pub mod 天道_巡世_阁;
 
+pub use 天道_巡世_阁::*;
 pub use 鸿钧_主政_阁::*;
 pub use 鸿钧_对话_阁::*;
-pub use 天道_巡世_阁::*;

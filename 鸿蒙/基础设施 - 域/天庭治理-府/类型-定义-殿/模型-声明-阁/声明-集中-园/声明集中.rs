@@ -8,37 +8,75 @@ use serde::{Deserialize, Serialize};
 
 /// 世界生长阶段。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 阶段 { 甲, 乙 }
+pub enum 阶段 {
+    甲,
+    乙,
+}
 
 /// 世界进入路径。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 进入路径 { 从零创建, 半路接手, 版本回退 }
+pub enum 进入路径 {
+    从零创建,
+    半路接手,
+    版本回退,
+}
 
 /// 要求来源。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 要求来源 { 界主, 天道巡世, 鸿钧自主 }
+pub enum 要求来源 {
+    界主,
+    天道巡世,
+    鸿钧自主,
+}
 
 /// 要求类别。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 要求类别 { 功能, 性能, 美观, 优化, 维护, 新能力, 补基础 }
+pub enum 要求类别 {
+    功能,
+    性能,
+    美观,
+    优化,
+    维护,
+    新能力,
+    补基础,
+}
 
 /// 要求书状态机（八态）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum 要求状态 {
-    待领, 设计中, 待确认, 已确认, 待实现, 实现中, 已验收, 已存档,
+    待领,
+    设计中,
+    待确认,
+    已确认,
+    待实现,
+    实现中,
+    已验收,
+    已存档,
 }
 
 /// 验收结论。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 验收结论 { 通过, 打回 }
+pub enum 验收结论 {
+    通过,
+    打回,
+}
 
 /// 缺陷归属层（打回必填）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 缺陷层 { 设计层, 实现层 }
+pub enum 缺陷层 {
+    设计层,
+    实现层,
+}
 
 /// 进化调整级别（①-⑤）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 调整级别 { 调提示词, 调分工, 调流程, 重组团队, 结构级 }
+pub enum 调整级别 {
+    调提示词,
+    调分工,
+    调流程,
+    重组团队,
+    结构级,
+}
 
 /// 优先级。
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -51,15 +89,27 @@ pub enum 优先级 {
 
 /// 项目成熟度。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 成熟度 { 成熟完整, 半成品, 损坏需修复 }
+pub enum 成熟度 {
+    成熟完整,
+    半成品,
+    损坏需修复,
+}
 
 /// 想法状态。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 想法状态 { 未处理, 已化为要求, 已打回, 已解决 }
+pub enum 想法状态 {
+    未处理,
+    已化为要求,
+    已打回,
+    已解决,
+}
 
 /// 构建状态。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 构建状态 { 可编译, 不可编译(String) }
+pub enum 构建状态 {
+    可编译,
+    不可编译(String),
+}
 
 // ── 核心结构 ──
 

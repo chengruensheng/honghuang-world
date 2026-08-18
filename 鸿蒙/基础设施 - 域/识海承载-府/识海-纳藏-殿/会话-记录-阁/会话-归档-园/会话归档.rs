@@ -1,6 +1,6 @@
 //! 会话 - 归档 - 园：会话记录读写与归档。
 
-use crate::{会话记录, 当前毫秒, 记录, 模型存储};
+use crate::{会话记录, 当前毫秒, 模型存储, 记录};
 use rizhi_fu::{debug, error};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,8 @@ impl 会话缓存 {
             内容: 内容.to_string(),
             时间戳: 当前毫秒(),
         };
-        let 文本 = serde_json::to_string(&记录).map_err(|错误| format!("序列化会话失败: {错误}"))?;
+        let 文本 =
+            serde_json::to_string(&记录).map_err(|错误| format!("序列化会话失败: {错误}"))?;
         fs::write(self.路径(会话id), 文本).map_err(|错误| {
             error!(会话id, "写会话失败：{错误}");
             format!("写会话失败: {错误}")
@@ -46,14 +47,25 @@ impl 会话缓存 {
             return Ok(None);
         }
         let 文本 = fs::read_to_string(&路径).map_err(|错误| format!("读会话失败: {错误}"))?;
-        let 记录 = serde_json::from_str::<会话记录>(&文本).map_err(|错误| format!("解析会话失败: {错误}"))?;
+        let 记录 = serde_json::from_str::<会话记录>(&文本)
+            .map_err(|错误| format!("解析会话失败: {错误}"))?;
         Ok(Some(记录))
     }
 
     /// 归档一份会话：写入「事件」格位（经历记忆），再移动文件到归档目录。
-    pub fn 归档会话(&self, 会话id: &str, 归档目录: &Path, 存储: &模型存储) -> Result<(), String> {
+    pub fn 归档会话(
+        &self,
+        会话id: &str,
+        归档目录: &Path,
+        存储: &模型存储,
+    ) -> Result<(), String> {
         if let Some(会话) = self.读会话(会话id)? {
-            存储.写记录(&记录::新("事件", &会话.内容, &format!("会话「{会话id}」归档"), "代码"))?;
+            存储.写记录(&记录::新(
+                "事件",
+                &会话.内容,
+                &format!("会话「{会话id}」归档"),
+                "代码",
+            ))?;
         }
         let 源 = self.路径(会话id);
         if !源.exists() {
@@ -96,8 +108,7 @@ mod 测试 {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis())
                 .unwrap_or(0);
-            let 路径 =
-                std::env::temp_dir().join(format!("{前缀}_{毫秒}_{序号}"));
+            let 路径 = std::env::temp_dir().join(format!("{前缀}_{毫秒}_{序号}"));
             fs::create_dir_all(&路径).expect("创建临时目录失败");
             临时目录守卫 { 路径 }
         }
@@ -148,14 +159,8 @@ mod 测试 {
         );
 
         // 各自读回自身写入
-        assert_eq!(
-            缓存1.读会话("仅在一号").unwrap().unwrap().内容,
-            "内容一"
-        );
-        assert_eq!(
-            缓存2.读会话("仅在二号").unwrap().unwrap().内容,
-            "内容二"
-        );
+        assert_eq!(缓存1.读会话("仅在一号").unwrap().unwrap().内容, "内容一");
+        assert_eq!(缓存2.读会话("仅在二号").unwrap().unwrap().内容, "内容二");
 
         // 二、自动清理（守卫存活时目录应存在）
         assert!(守卫1.路径().exists(), "守卫存活时目录应存在");
@@ -217,9 +222,9 @@ mod 测试 {
         // 事件格位应至少含一条本次归档记录
         let 事件链头 = 存储.读格位("事件").unwrap();
         assert!(!事件链头.is_empty(), "事件格位应至少含一条记录");
-        let 含本次 = 事件链头.iter().any(|记录| {
-            记录.格位名 == "事件" && 记录.内容.contains("待归档内容")
-        });
+        let 含本次 = 事件链头
+            .iter()
+            .any(|记录| 记录.格位名 == "事件" && 记录.内容.contains("待归档内容"));
         assert!(含本次, "事件格位应含本次归档内容");
     }
 }

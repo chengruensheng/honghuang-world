@@ -20,6 +20,12 @@ pub fn 渲染播种提示(种子: &str, 素材: &str, 印证: &str) -> String {
     播种提示模板
         .replace("{种子}", 种子)
         .replace("{素材}", 素材)
-        .replace("{印证}", if 印证.is_empty() { "（无）" } else { 印证 })
+        .replace(
+            "{印证}",
+            if 印证.is_empty() {
+                "（无）"
+            } else {
+                印证
+            },
+        )
 }
-

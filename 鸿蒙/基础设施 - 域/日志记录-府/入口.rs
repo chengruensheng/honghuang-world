@@ -14,5 +14,5 @@ pub mod 日志_输出_殿;
 pub mod 日志_记录_殿;
 
 pub use 日志_初始化_殿::*;
-pub use 日志_输出_殿::*;
 pub use 日志_记录_殿::*;
+pub use 日志_输出_殿::*;

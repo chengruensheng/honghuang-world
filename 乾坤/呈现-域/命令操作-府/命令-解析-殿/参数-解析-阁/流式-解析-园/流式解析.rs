@@ -33,9 +33,15 @@ pub fn 解析调用(输入: Vec<String>) -> 调用 {
         match 词.as_str() {
             "--json" => 调用.要JSON = true,
             "--全文" => 调用.旗标.push(("全文".to_string(), "true".to_string())),
-            "-t" | "--令牌" => 调用.旗标.push(("令牌".to_string(), 迭代.next().unwrap_or_default())),
-            "-f" | "--文件" => 调用.旗标.push(("文件".to_string(), 迭代.next().unwrap_or_default())),
-            "-意见" | "--意见" => 调用.旗标.push(("意见".to_string(), 迭代.next().unwrap_or_default())),
+            "-t" | "--令牌" => 调用
+                .旗标
+                .push(("令牌".to_string(), 迭代.next().unwrap_or_default())),
+            "-f" | "--文件" => 调用
+                .旗标
+                .push(("文件".to_string(), 迭代.next().unwrap_or_default())),
+            "-意见" | "--意见" => 调用
+                .旗标
+                .push(("意见".to_string(), 迭代.next().unwrap_or_default())),
             _ => {
                 if 段位 == 0 {
                     调用.域 = 词;

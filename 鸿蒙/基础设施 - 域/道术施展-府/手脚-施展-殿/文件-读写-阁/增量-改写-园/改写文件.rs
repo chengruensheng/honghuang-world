@@ -2,7 +2,7 @@
 //! 写前经 回滚垫 备份旧内容：任务失败时可单文件撤销恢复。
 
 use rizhi_fu::{debug, error, warn};
-use shihai_fu::{当前任务, 回滚垫, 工作区};
+use shihai_fu::{回滚垫, 工作区, 当前任务};
 
 /// 把文件里第一次出现的旧文替换为新文，旧文不存在则报错；写前先备份进回滚垫。
 pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<(), String> {
@@ -43,7 +43,8 @@ mod tests {
     /// 让 LLM 看到真实内容（2026-08-18 容错补齐）。
     #[test]
     fn 改文件_未找到时_附原文片段便于诊断() {
-        let 临时目录 = std::env::temp_dir().join(format!("改文件测试-未找到-{}", std::process::id()));
+        let 临时目录 =
+            std::env::temp_dir().join(format!("改文件测试-未找到-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "实际内容是 ABCDEF, 不含要找的子串").unwrap();
@@ -52,11 +53,27 @@ mod tests {
         let 结果 = 改文件(临时文件.to_str().unwrap(), "目标字符串", "新内容");
         assert!(结果.is_err());
         let 错误 = 结果.unwrap_err();
-        assert!(错误.contains("未找到待替换内容"), "错误信息应含'未找到'：{}", 错误);
-        assert!(错误.contains("文件长度"), "错误信息应含文件长度便于 LLM 诊断：{}", 错误);
+        assert!(
+            错误.contains("未找到待替换内容"),
+            "错误信息应含'未找到'：{}",
+            错误
+        );
+        assert!(
+            错误.contains("文件长度"),
+            "错误信息应含文件长度便于 LLM 诊断：{}",
+            错误
+        );
         assert!(错误.contains("旧文长度"), "错误信息应含旧文长度：{}", 错误);
-        assert!(错误.contains("旧文前 80 字符"), "错误信息应含旧文前 80 字符：{}", 错误);
-        assert!(错误.contains("文件前 200 字符"), "错误信息应含文件前 200 字符：{}", 错误);
+        assert!(
+            错误.contains("旧文前 80 字符"),
+            "错误信息应含旧文前 80 字符：{}",
+            错误
+        );
+        assert!(
+            错误.contains("文件前 200 字符"),
+            "错误信息应含文件前 200 字符：{}",
+            错误
+        );
         let _ = std::fs::remove_file(&临时文件);
     }
 
@@ -73,4 +90,3 @@ mod tests {
         let _ = std::fs::remove_file(&临时文件);
     }
 }
-

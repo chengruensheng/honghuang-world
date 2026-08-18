@@ -6,7 +6,7 @@
 //! 故多线程能在不同时刻各自领到不同任务线并行跑；构建由调度器内部锁串行，id 全局唯一。
 //! 收益：队列积压时总墙钟从 N×单条 降到 ≈单条，直击"一条任务等十几分钟"的感知慢。
 
-use crate::{读模型配置, 打开存储, 工作区根};
+use crate::{工作区根, 打开存储, 读模型配置};
 use rizhi_fu::{info, warn};
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ pub fn 并发度() -> usize {
     std::env::var("WORLD_WORKER_N")
         .ok()
         .and_then(|值| 值.trim().parse().ok())
-        .filter(|&n| n >= 1 && n <= 16)
+        .filter(|&n| (1..=16).contains(&n))
         .unwrap_or(4)
 }
 
@@ -60,9 +60,9 @@ pub fn 世界守护() -> String {
                 loop {
                     轮 += 1;
                     // 周期维护：只在第一个工作线程做，防多线程重复全量扫描（阻塞任务消费）。
-                    if 序号 == 0 && 轮 % 维护间隔轮数 == 0 {
+                    if 序号 == 0 && 轮.is_multiple_of(维护间隔轮数) {
                         let 根 = 工作区根();
-                        match shihai_fu::扫描(&存储, &根) {
+                        match shihai_fu::扫描(存储, &根) {
                             Ok(条数) => info!(条数, "周期维护：依赖图已刷新"),
                             Err(说明) => warn!(说明 = %说明, "周期维护：依赖图刷新失败"),
                         }
@@ -70,7 +70,7 @@ pub fn 世界守护() -> String {
                             warn!(说明 = %说明, "周期维护：档案重建失败");
                         }
                     }
-                    match tianting_fu::执行一条待执行任务线(&配置, &存储) {
+                    match tianting_fu::执行一条待执行任务线(配置, 存储) {
                         Ok(Some(汇报)) => {
                             info!(汇报 = %汇报.chars().take(120).collect::<String>(), "任务线完成");
                         }

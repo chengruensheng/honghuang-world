@@ -4,23 +4,26 @@ use crate::状态目录;
 use rizhi_fu::{error, info, warn};
 
 pub fn 上呈设计(要求id: &str, 文件: &str) -> String {
-    let 队列 = tianting_fu::落盘队列::<tianting_fu::要求书>::打开(状态目录().join("要求.jsonl"));
+    let 队列 =
+        tianting_fu::落盘队列::<tianting_fu::要求书>::打开(状态目录().join("要求.jsonl"));
     let 要求们 = match 队列.读全部() {
         Ok(项们) => 项们,
         Err(错误) => {
             error!(要求id, "读要求队列失败：{错误}");
-            return format!("读要求队列失败：{错误}")
+            return format!("读要求队列失败：{错误}");
         }
     };
     let 要求 = match 要求们.iter().find(|项| 项.id == 要求id) {
         Some(项) => 项.clone(),
         None => {
             warn!(要求id, "要求不在队列中");
-            return format!("要求 {要求id} 不在队列中（先用「要求 化为」）")
+            return format!("要求 {要求id} 不在队列中（先用「要求 化为」）");
         }
     };
     let 方案 = tianting_fu::模板设计(&要求);
-    let 设计队列 = tianting_fu::落盘队列::<tianting_fu::设计方案>::打开(状态目录().join("设计.jsonl"));
+    let 设计队列 = tianting_fu::落盘队列::<tianting_fu::设计方案>::打开(
+        状态目录().join("设计.jsonl"),
+    );
     match 设计队列.入队(&方案) {
         Ok(_) => {
             info!(要求id, 拆解数 = 方案.拆解.len(), "设计方案已上呈");

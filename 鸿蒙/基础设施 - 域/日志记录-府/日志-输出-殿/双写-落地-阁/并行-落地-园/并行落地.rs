@@ -49,7 +49,7 @@ impl Write for 落地器 {
         if let Some(文件) = &self.文件 {
             let mut 锁 = 文件
                 .lock()
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "落地器文件锁失效"))?;
+                .map_err(|_| io::Error::other("落地器文件锁失效"))?;
             锁.write(buf)?;
         }
         Ok(buf.len())
@@ -62,7 +62,7 @@ impl Write for 落地器 {
         if let Some(文件) = &self.文件 {
             let mut 锁 = 文件
                 .lock()
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "落地器文件锁失效"))?;
+                .map_err(|_| io::Error::other("落地器文件锁失效"))?;
             锁.flush()?;
         }
         Ok(())

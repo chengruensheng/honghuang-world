@@ -15,17 +15,27 @@ pub fn 寻找文件(根: &str, 模式: &str) -> Result<Vec<String>, String> {
     let 段们 = 拆分路径段(模式);
     let 命中们 = 递归找(根路径, &段们);
     debug!(根, 命中数 = 命中们.len(), "通配找档完成");
-    Ok(命中们.iter().map(|路径| 路径.to_string_lossy().to_string()).collect())
+    Ok(命中们
+        .iter()
+        .map(|路径| 路径.to_string_lossy().to_string())
+        .collect())
 }
 
 /// 把模式拆成路径段，忽略空段。
 fn 拆分路径段(模式: &str) -> Vec<&str> {
-    模式.split(['/', '\\']).filter(|段| !段.is_empty()).collect()
+    模式
+        .split(['/', '\\'])
+        .filter(|段| !段.is_empty())
+        .collect()
 }
 
 fn 递归找(当前: &Path, 段们: &[&str]) -> Vec<PathBuf> {
     if 段们.is_empty() {
-        return if 当前.exists() { vec![当前.to_path_buf()] } else { Vec::new() };
+        return if 当前.exists() {
+            vec![当前.to_path_buf()]
+        } else {
+            Vec::new()
+        };
     }
 
     let 首段 = 段们[0];
@@ -76,7 +86,9 @@ fn 通配匹配(模式: &str, 文本: &str) -> bool {
     let (mut 星位, mut 星后) = (None, 0usize);
 
     while 文本位 < 文本字符.len() {
-        if 模式位 < 模式字符.len() && (模式字符[模式位] == '?' || 模式字符[模式位] == 文本字符[文本位]) {
+        if 模式位 < 模式字符.len()
+            && (模式字符[模式位] == '?' || 模式字符[模式位] == 文本字符[文本位])
+        {
             模式位 += 1;
             文本位 += 1;
         } else if 模式位 < 模式字符.len() && 模式字符[模式位] == '*' {
@@ -96,4 +108,3 @@ fn 通配匹配(模式: &str, 文本: &str) -> bool {
     }
     模式位 == 模式字符.len()
 }
-

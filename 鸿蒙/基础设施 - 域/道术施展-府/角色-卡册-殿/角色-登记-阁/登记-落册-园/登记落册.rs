@@ -64,7 +64,8 @@ impl 角色册 {
 
     /// 保存到 json 文件。
     pub fn 保存(&self, 路径: &str) -> Result<(), String> {
-        let 文本 = serde_json::to_string_pretty(&self.角色们).map_err(|错误| format!("序列化角色册失败: {错误}"))?;
+        let 文本 = serde_json::to_string_pretty(&self.角色们)
+            .map_err(|错误| format!("序列化角色册失败: {错误}"))?;
         std::fs::write(路径, 文本).map_err(|错误| {
             error!(路径, "保存角色册失败：{错误}");
             format!("保存角色册失败: {错误}")
@@ -119,7 +120,10 @@ mod 测试 {
         // 可用池含 executor → 无缺失。
         assert!(册.缺失模型池("多宝", &["executor", "sage"]).is_none());
         // 可用池不含 executor → 缺失 executor。
-        assert_eq!(册.缺失模型池("多宝", &["sage"]).as_deref(), Some("executor"));
+        assert_eq!(
+            册.缺失模型池("多宝", &["sage"]).as_deref(),
+            Some("executor")
+        );
         // 未登记 → None（不误报缺失）。
         assert!(册.缺失模型池("不存在", &["executor"]).is_none());
     }
@@ -131,4 +135,3 @@ mod 测试 {
         assert!(册.缺失模型池("无名", &[]).is_none(), "模型池为空视为无依赖");
     }
 }
-

@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod 测试 {
-    use rizhi_fu::{落地器, 日志去向};
+    use rizhi_fu::{日志去向, 落地器};
 
     #[test]
     fn 仅控制台无文件() {

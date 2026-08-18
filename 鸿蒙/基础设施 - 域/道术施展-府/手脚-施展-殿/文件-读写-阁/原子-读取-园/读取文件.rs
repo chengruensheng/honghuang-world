@@ -11,4 +11,3 @@ pub fn 读文件(路径: &str) -> Result<String, String> {
     debug!(路径, 长度 = 内容.len(), "文件已读取");
     Ok(内容)
 }
-

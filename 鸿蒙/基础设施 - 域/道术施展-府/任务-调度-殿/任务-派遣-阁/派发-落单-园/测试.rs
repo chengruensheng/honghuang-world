@@ -1,7 +1,9 @@
 //! 派发 - 落单 - 园 · 测试
 
 use super::*;
-use crate::类型_定义_殿::{执行任务, 工作流级别, 产物条目, 执行回执, 执行状态};
+use crate::类型_定义_殿::{
+    产物条目, 工作流级别, 执行任务, 执行回执, 执行状态
+};
 use moxing_fu::{模型配置, 用量};
 use shihai_fu::全量基线;
 use std::path::PathBuf;
@@ -9,7 +11,11 @@ use std::path::PathBuf;
 /// 造一个调度器（测试用假配置，不触网）。
 fn 假调度(根: PathBuf) -> 任务调度 {
     任务调度::新(
-        模型配置 { 密钥: String::new(), 地址: String::new(), 模型: String::new() },
+        模型配置 {
+            密钥: String::new(),
+            地址: String::new(),
+            模型: String::new(),
+        },
         根,
     )
 }
@@ -36,10 +42,25 @@ fn 全是占位块时仍报未找到() {
 #[test]
 fn 合并产物_主优先兜底补缺按路径去重() {
     let 调度 = 假调度(std::env::temp_dir());
-    let 主们 = vec![产物条目 { 路径: "甲.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "修改".to_string() }];
+    let 主们 = vec![产物条目 {
+        路径: "甲.rs".to_string(),
+        类别: "代码".to_string(),
+        字节数: 1,
+        变化类型: "修改".to_string(),
+    }];
     let 兜底们 = vec![
-        产物条目 { 路径: "甲.rs".to_string(), 类别: "代码".to_string(), 字节数: 999, 变化类型: "修改".to_string() },
-        产物条目 { 路径: "乙.rs".to_string(), 类别: "代码".to_string(), 字节数: 2, 变化类型: "新增".to_string() },
+        产物条目 {
+            路径: "甲.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 999,
+            变化类型: "修改".to_string(),
+        },
+        产物条目 {
+            路径: "乙.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 2,
+            变化类型: "新增".to_string(),
+        },
     ];
     let 结果 = 调度.合并产物(主们, 兜底们);
     assert_eq!(结果.len(), 2);
@@ -57,7 +78,11 @@ fn diff补产物_识别任务期间新增与修改() {
     std::fs::write(根.join("Cargo.toml"), "[package]\nname = \"兜底\"\n").unwrap();
     let 基线 = 全量基线(&根);
     std::fs::write(根.join("子.rs"), "pub fn 甲() {}\n").unwrap();
-    std::fs::write(根.join("Cargo.toml"), "[package]\nname = \"兜底\"\nversion = \"0.2.0\"\n").unwrap();
+    std::fs::write(
+        根.join("Cargo.toml"),
+        "[package]\nname = \"兜底\"\nversion = \"0.2.0\"\n",
+    )
+    .unwrap();
     let 调度 = 假调度(根.clone());
     let 产物们 = 调度.diff补产物(&基线);
     let 路径们: Vec<&str> = 产物们.iter().map(|产物| 产物.路径.as_str()).collect();
@@ -89,7 +114,11 @@ fn diff补产物_未变文件不补入清单() {
     let 产物们 = 调度.diff补产物(&基线);
     let 路径们: Vec<&str> = 产物们.iter().map(|产物| 产物.路径.as_str()).collect();
     assert!(路径们.contains(&"要改.rs"), "修改应被识别：{:?}", 路径们);
-    assert!(!路径们.contains(&"未变.rs"), "未变文件不应在产物清单中：{:?}", 路径们);
+    assert!(
+        !路径们.contains(&"未变.rs"),
+        "未变文件不应在产物清单中：{:?}",
+        路径们
+    );
     assert_eq!(产物们.len(), 1, "只有修改的文件应在产物清单中");
     let _ = std::fs::remove_dir_all(&根);
 }
@@ -129,7 +158,10 @@ fn 执行任务结构与轮数接口对齐() {
 #[test]
 fn 环境故障判定_负码与缺失判真() {
     // 负退出码 = 系统级异常终止（Windows SEH，如 DLL 初始化失败 0xC0000142）
-    assert!(super::是环境故障(Some(-1073741502)), "0xC0000142 应为环境故障");
+    assert!(
+        super::是环境故障(Some(-1073741502)),
+        "0xC0000142 应为环境故障"
+    );
     assert!(super::是环境故障(Some(-1)));
     // None = 进程未能产生退出码（启动失败）→ 环境故障
     assert!(super::是环境故障(None));
@@ -139,9 +171,14 @@ fn 环境故障判定_负码与缺失判真() {
 fn 环境故障判定_正常编译码判假() {
     // 编译错误 / 构建失败 的正常非 0 正退出码：非环境故障，可重试
     assert!(!super::是环境故障(Some(0)), "退出码0=构建通过，非故障");
-    assert!(!super::是环境故障(Some(101)), "101=Rust编译错误，非环境故障");
+    assert!(
+        !super::是环境故障(Some(101)),
+        "101=Rust编译错误，非环境故障"
+    );
     assert!(!super::是环境故障(Some(1)), "普通失败非环境故障");
     assert!(!super::是环境故障(Some(2)));
     // 普通正整数都不应误判为环境故障
-    for 码 in 0..200 { assert!(!super::是环境故障(Some(码)), "正码 {码} 非环境故障"); }
+    for 码 in 0..200 {
+        assert!(!super::是环境故障(Some(码)), "正码 {码} 非环境故障");
+    }
 }

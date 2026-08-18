@@ -2,7 +2,7 @@
 //! 写前经 回滚垫 备份旧内容：任务失败时可单文件撤销恢复。
 
 use rizhi_fu::{debug, error};
-use shihai_fu::{当前任务, 回滚垫, 工作区};
+use shihai_fu::{回滚垫, 工作区, 当前任务};
 use std::path::Path;
 
 /// 写文件全部内容，父目录不存在时自动创建；写前先备份进回滚垫（失败只警告不阻断）。
@@ -25,4 +25,3 @@ pub fn 写文件(路径: &str, 内容: &str) -> Result<(), String> {
     debug!(路径, 字节数 = 内容.len(), "写文件完成");
     Ok(())
 }
-

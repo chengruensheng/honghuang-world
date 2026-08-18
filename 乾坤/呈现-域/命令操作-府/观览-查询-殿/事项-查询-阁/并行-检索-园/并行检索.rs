@@ -6,7 +6,9 @@ use rizhi_fu::{debug, error, warn};
 pub fn 事项列表(域: &str) -> String {
     match 域 {
         "想法" => {
-            let 队列 = tianting_fu::落盘队列::<tianting_fu::想法>::打开(状态目录().join("想法.jsonl"));
+            let 队列 = tianting_fu::落盘队列::<tianting_fu::想法>::打开(
+                状态目录().join("想法.jsonl"),
+            );
             match 队列.读全部() {
                 Ok(项们) => {
                     debug!(域, 条数 = 项们.len(), "事项列表已读");
@@ -26,7 +28,9 @@ pub fn 事项列表(域: &str) -> String {
             }
         }
         "要求" => {
-            let 队列 = tianting_fu::落盘队列::<tianting_fu::要求书>::打开(状态目录().join("要求.jsonl"));
+            let 队列 = tianting_fu::落盘队列::<tianting_fu::要求书>::打开(
+                状态目录().join("要求.jsonl"),
+            );
             match 队列.读全部() {
                 Ok(项们) => {
                     debug!(域, 条数 = 项们.len(), "事项列表已读");
@@ -46,7 +50,9 @@ pub fn 事项列表(域: &str) -> String {
             }
         }
         "设计" => {
-            let 队列 = tianting_fu::落盘队列::<tianting_fu::设计方案>::打开(状态目录().join("设计.jsonl"));
+            let 队列 = tianting_fu::落盘队列::<tianting_fu::设计方案>::打开(
+                状态目录().join("设计.jsonl"),
+            );
             match 队列.读全部() {
                 Ok(项们) => {
                     debug!(域, 条数 = 项们.len(), "事项列表已读");
@@ -66,7 +72,9 @@ pub fn 事项列表(域: &str) -> String {
             }
         }
         "验收" => {
-            let 队列 = tianting_fu::落盘队列::<tianting_fu::验收回执>::打开(状态目录().join("验收.jsonl"));
+            let 队列 = tianting_fu::落盘队列::<tianting_fu::验收回执>::打开(
+                状态目录().join("验收.jsonl"),
+            );
             match 队列.读全部() {
                 Ok(项们) => {
                     debug!(域, 条数 = 项们.len(), "事项列表已读");

@@ -5,5 +5,5 @@ mod 格位类型;
 #[path = "依赖图.rs"]
 mod 依赖图类型;
 
-pub use 格位类型::*;
 pub use 依赖图类型::*;
+pub use 格位类型::*;

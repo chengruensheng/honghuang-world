@@ -11,7 +11,7 @@
 //!
 //! 沙箱目录：`.上下文/命令沙箱/{任务id}/视图` 与 `.../备份`；清理时整箱删除。
 
-use crate::{默认超时毫秒, 运行命令超时};
+use crate::{运行命令超时, 默认超时毫秒};
 use rizhi_fu::{debug, info, warn};
 use shihai_fu::当前任务 as 取当前任务;
 use std::collections::HashMap;
@@ -22,7 +22,14 @@ use std::sync::Mutex;
 /// 源码区排除目录：记忆数据、版本库、构建物、依赖树、临时目录不进视图、不进快照。
 /// 与 识海承载-府 扫描排除项 对齐（含 临时文件夹——模型观测日志等临时文件不进视图，
 /// 防命令误碰/误判越界，2026-08-17 轮5 体检对齐）。
-const 排除目录们: [&str; 6] = [".上下文", ".git", "道果树", "target", "node_modules", "临时文件夹"];
+const 排除目录们: [&str; 6] = [
+    ".上下文",
+    ".git",
+    "道果树",
+    "target",
+    "node_modules",
+    "临时文件夹",
+];
 
 /// 文件指纹：大小 + 修改纳秒（Windows NTFS 100ns 精度，足够捕捉命令改写）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,7 +58,11 @@ impl 沙箱视图 {
     /// 打开沙箱：目录落在 `.上下文/命令沙箱/{任务id}/`（空任务id 归「全局」分组）。
     pub fn 打开(工作区根: impl AsRef<Path>, 任务id: &str) -> 沙箱视图 {
         let 工作区根 = 工作区根.as_ref().to_path_buf();
-        let 任务id = if 任务id.is_empty() { "全局" } else { 任务id };
+        let 任务id = if 任务id.is_empty() {
+            "全局"
+        } else {
+            任务id
+        };
         let 箱 = 工作区根.join(".上下文").join("命令沙箱").join(任务id);
         info!(任务id, "沙箱已打开：{}", 箱.display());
         沙箱视图 {
@@ -160,7 +171,11 @@ impl 沙箱视图 {
         info!(命令, cwd = %视图cwd, 超时, "沙箱内执行命令");
         let 结果 = 运行命令超时(命令, 参数们, Some(&视图cwd), 超时)?;
         let (越界数, 越界详情) = self.检测回滚(&前视图, &前真实)?;
-        Ok(沙箱结果 { 结果, 越界数, 越界详情 })
+        Ok(沙箱结果 {
+            结果,
+            越界数,
+            越界详情,
+        })
     }
 
     /// 越界检测与回滚：对比命令前后指纹，源码区变化一律判越界并恢复。
@@ -231,7 +246,11 @@ impl 沙箱视图 {
             Ok((0, String::new()))
         } else {
             let 详情 = 越界们.join("\n");
-            warn!(越界数 = 越界们.len(), "沙箱拦截并回滚 {} 处越界写入", 越界们.len());
+            warn!(
+                越界数 = 越界们.len(),
+                "沙箱拦截并回滚 {} 处越界写入",
+                越界们.len()
+            );
             Ok((越界们.len() as u32, 详情))
         }
     }
@@ -343,8 +362,16 @@ fn 取指纹(路径: &Path) -> Option<指纹> {
     if !元.is_file() {
         return None;
     }
-    let 纳秒 = 元.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
-    Some(指纹 { 大小: 元.len(), 纳秒 })
+    let 纳秒 = 元
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    Some(指纹 {
+        大小: 元.len(),
+        纳秒,
+    })
 }
 
 /// 两文件是否同指纹（都存在且一致）。

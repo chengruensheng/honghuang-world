@@ -12,7 +12,11 @@ pub const 最大超时毫秒: u64 = 600_000;
 
 /// 校验命令护栏：命令进沙箱前的最后拦截。
 /// 含超时校验：超时毫秒必须 > 0 且 <= 最大超时毫秒。
-pub fn 校验命令护栏(命令: &str, 参数们: &[&str], 超时毫秒: Option<u64>) -> Result<(), String> {
+pub fn 校验命令护栏(
+    命令: &str,
+    参数们: &[&str],
+    超时毫秒: Option<u64>,
+) -> Result<(), String> {
     let 整行 = std::iter::once(命令)
         .chain(参数们.iter().copied())
         .collect::<Vec<_>>()
@@ -34,9 +38,17 @@ pub fn 校验命令护栏(命令: &str, 参数们: &[&str], 超时毫秒: Option
     }
 
     // 进程终止/管理类操作一律拦截（含 cmd/powershell 内嵌参数）。
-    for 词 in ["taskkill", "stop-process", "stop-service", "pkill", "killall"] {
+    for 词 in [
+        "taskkill",
+        "stop-process",
+        "stop-service",
+        "pkill",
+        "killall",
+    ] {
         if 小写.contains(词) {
-            return Err(format!("命令被护栏拦截：含进程终止操作「{词}」，不得终止任何进程"));
+            return Err(format!(
+                "命令被护栏拦截：含进程终止操作「{词}」，不得终止任何进程"
+            ));
         }
     }
     if 命令.eq_ignore_ascii_case("kill") {
@@ -63,7 +75,10 @@ pub fn 校验命令护栏(命令: &str, 参数们: &[&str], 超时毫秒: Option
 
     // 其余命令一律不得引用项目自身二进制名：运行号令.exe、探查其进程都会诱导模型误操作。
     if 小写.contains("号令") {
-        return Err("命令被护栏拦截：不得运行或探查项目自身二进制（号令），命令功能验证由界主执行".to_string());
+        return Err(
+            "命令被护栏拦截：不得运行或探查项目自身二进制（号令），命令功能验证由界主执行"
+                .to_string(),
+        );
     }
 
     Ok(())

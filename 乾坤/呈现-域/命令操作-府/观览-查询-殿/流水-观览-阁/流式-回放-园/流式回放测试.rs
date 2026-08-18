@@ -3,9 +3,9 @@
 
 #[cfg(test)]
 mod 测试 {
+    use super::super::流式回放::{全流程总览, 流水列表, 流水跟踪, 流水跟随};
     use std::fs;
     use std::sync::Mutex;
-    use super::super::流式回放::{流水列表, 流水跟踪, 流水跟随, 全流程总览};
 
     /// 串行互斥：四个用例都会改 WORLD_WORKSPACE_ROOT，必须串行跑。
     static 串行: Mutex<()> = Mutex::new(());
@@ -57,8 +57,14 @@ mod 测试 {
 
         let 输出 = 流水跟踪("测试会话-A", false);
         assert!(输出.contains("测试会话-A"), "会话 id 应回填到标题：{输出}");
-        assert!(输出.contains("执行过程"), "应含「执行过程」流程标识：{输出}");
-        assert!(输出.contains("条事件") || 输出.contains("（空）"), "应含事件条数：{输出}");
+        assert!(
+            输出.contains("执行过程"),
+            "应含「执行过程」流程标识：{输出}"
+        );
+        assert!(
+            输出.contains("条事件") || 输出.contains("（空）"),
+            "应含事件条数：{输出}"
+        );
 
         清理(&根);
     }

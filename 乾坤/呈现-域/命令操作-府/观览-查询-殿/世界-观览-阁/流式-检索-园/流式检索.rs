@@ -27,7 +27,7 @@ pub fn 全文检索(关键词: &str) -> String {
     扫描目录(&根, 关键词, &根, &mut 命中);
 
     // 按命中数降序排序
-    命中.sort_by(|a, b| b.1.cmp(&a.1));
+    命中.sort_by_key(|条目| std::cmp::Reverse(条目.1));
 
     let 总命中: usize = 命中.iter().map(|(_, n)| n).sum();
     let mut 输出 = format!(

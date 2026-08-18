@@ -31,7 +31,11 @@ pub struct 命令结果 {
 }
 
 /// 运行外部命令，使用默认超时上限（10 分钟）。
-pub fn 运行命令(命令: &str, 参数们: &[&str], 工作目录: Option<&str>) -> Result<命令结果, String> {
+pub fn 运行命令(
+    命令: &str,
+    参数们: &[&str],
+    工作目录: Option<&str>,
+) -> Result<命令结果, String> {
     运行命令超时(命令, 参数们, 工作目录, 默认超时毫秒)
 }
 
@@ -60,7 +64,10 @@ pub fn 运行命令超时(
                 p.extend(参数们.iter().map(|s| s.to_string()));
                 ("cmd.exe".to_string(), p)
             }
-            _ => (命令.to_string(), 参数们.iter().map(|s| s.to_string()).collect()),
+            _ => (
+                命令.to_string(),
+                参数们.iter().map(|s| s.to_string()).collect(),
+            ),
         }
     };
     #[cfg(not(windows))]
@@ -166,12 +173,8 @@ pub fn 运行命令超时(
         }
     };
 
-    let stdout_bytes = stdout_线程
-        .and_then(|t| t.join().ok())
-        .unwrap_or_default();
-    let stderr_bytes = stderr_线程
-        .and_then(|t| t.join().ok())
-        .unwrap_or_default();
+    let stdout_bytes = stdout_线程.and_then(|t| t.join().ok()).unwrap_or_default();
+    let stderr_bytes = stderr_线程.and_then(|t| t.join().ok()).unwrap_or_default();
 
     let 码 = 退出状态.code();
     if 码 != Some(0) {
@@ -208,9 +211,18 @@ mod tests {
         let 内容 = "hello cat 翻译测试";
         std::fs::write(&临时文件, 内容).unwrap();
 
-        let 结果 = 运行命令("cat", &[临时文件.to_str().unwrap()], Some(临时目录.to_str().unwrap())).unwrap();
+        let 结果 = 运行命令(
+            "cat",
+            &[临时文件.to_str().unwrap()],
+            Some(临时目录.to_str().unwrap()),
+        )
+        .unwrap();
         assert_eq!(结果.退出码, Some(0), "cat 退出码应为 0：{}", 结果.标准错误);
-        assert!(结果.标准输出.contains(内容), "cat 输出应包含写入内容：{}", 结果.标准输出);
+        assert!(
+            结果.标准输出.contains(内容),
+            "cat 输出应包含写入内容：{}",
+            结果.标准输出
+        );
         let _ = std::fs::remove_file(&临时文件);
     }
 
@@ -220,8 +232,18 @@ mod tests {
     fn ls_被翻译成_cmd_dir() {
         let 临时目录 = std::env::temp_dir().join(format!("跑命令测试-ls-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);
-        let 结果 = 运行命令("ls", &[临时目录.to_str().unwrap()], Some(临时目录.to_str().unwrap())).unwrap();
-        assert_eq!(结果.退出码, Some(0), "ls (dir) 退出码应为 0：{}", 结果.标准错误);
+        let 结果 = 运行命令(
+            "ls",
+            &[临时目录.to_str().unwrap()],
+            Some(临时目录.to_str().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(
+            结果.退出码,
+            Some(0),
+            "ls (dir) 退出码应为 0：{}",
+            结果.标准错误
+        );
         let _ = std::fs::remove_dir_all(&临时目录);
     }
 

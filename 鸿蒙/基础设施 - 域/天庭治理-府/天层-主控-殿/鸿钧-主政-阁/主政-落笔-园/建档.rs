@@ -2,19 +2,21 @@
 //! 设计稿 §6.7：项目档案（规模/结构地图/构建状态/风格约定/成熟度/基线版本）。
 //! 动机：世界状态.项目档案 长期为 null，世界对自己没有档案（鸿钧答不出「项目什么状态」）。
 
-use crate::类型_定义_殿::{
-    构建状态, 成熟度, 项目档案, 规模统计, 世界状态,
-};
+use crate::类型_定义_殿::{世界状态, 成熟度, 构建状态, 规模统计, 项目档案};
 use rizhi_fu::info;
 
 /// 扫描工作区生成项目档案（纯机械事实，不调 LLM）。
 pub fn 生成项目档案() -> 项目档案 {
     let 根 = shihai_fu::工作区::定位();
     let 根路径 = 根.根路径();
-    let 规模 = 统计规模(&根路径);
-    let 结构地图 = 生成结构地图(&根路径);
-    let 已知坑 = 扫描已知坑(&根路径);
-    let 成熟度 = if 规模.rs文件数 > 0 { 成熟度::成熟完整 } else { 成熟度::半成品 };
+    let 规模 = 统计规模(根路径);
+    let 结构地图 = 生成结构地图(根路径);
+    let 已知坑 = 扫描已知坑(根路径);
+    let 成熟度 = if 规模.rs文件数 > 0 {
+        成熟度::成熟完整
+    } else {
+        成熟度::半成品
+    };
     项目档案 {
         来源: 根路径.display().to_string(),
         接手时间: shihai_fu::当前毫秒(),
@@ -39,8 +41,15 @@ fn 读最近成功率() -> String {
     if 尾部.is_empty() {
         return "（暂无验收记录）".to_string();
     }
-    let 通过数 = 尾部.iter().filter(|回执| 回执.验收.结论 == crate::验收结论::通过).count();
-    format!("通过 {通过数}/{} · {}%", 尾部.len(), 通过数 * 100 / 尾部.len())
+    let 通过数 = 尾部
+        .iter()
+        .filter(|回执| 回执.验收.结论 == crate::验收结论::通过)
+        .count();
+    format!(
+        "通过 {通过数}/{} · {}%",
+        尾部.len(),
+        通过数 * 100 / 尾部.len()
+    )
 }
 
 /// 规模统计：rs 文件数 / 总行数 / crate 数（读根 Cargo.toml members）。
@@ -52,14 +61,28 @@ fn 统计规模(根: &std::path::Path) -> 规模统计 {
     let crate数 = std::fs::read_to_string(根.join("Cargo.toml"))
         .map(|内容| 内容.lines().filter(|行| 行.contains("-府\"")).count())
         .unwrap_or(0) as u32;
-    规模统计 { rs文件数: rs文件数 as u32, 总行数, crate数 }
+    规模统计 {
+        rs文件数: rs文件数 as u32,
+        总行数,
+        crate数,
+    }
 }
 
 /// 扫描排除项：与识海承载-府 扫描排除一致（版本库/构建物/临时/工具目录不入世界认知）。
 fn 应排除(路径: &std::path::Path) -> bool {
     const 排除名们: &[&str] = &[
-        ".git", ".svn", ".hg", ".上下文", ".cargo", ".arts", ".codeartsdoer", "target",
-        "node_modules", "vendor", "临时文件夹", "道果树",
+        ".git",
+        ".svn",
+        ".hg",
+        ".上下文",
+        ".cargo",
+        ".arts",
+        ".codeartsdoer",
+        "target",
+        "node_modules",
+        "vendor",
+        "临时文件夹",
+        "道果树",
     ];
     if let Some(名) = 路径.file_name().and_then(|名| 名.to_str()) {
         return 排除名们.contains(&名);
@@ -122,7 +145,11 @@ fn 生成结构地图(根: &std::path::Path) -> String {
             }
         }
     }
-    if 行们.is_empty() { "（无）".to_string() } else { 行们.join("\n") }
+    if 行们.is_empty() {
+        "（无）".to_string()
+    } else {
+        行们.join("\n")
+    }
 }
 
 /// 已知坑：扫描出可机械判定的历史遗留（空目录园等）。
@@ -146,7 +173,9 @@ fn 递归找空园(目录: &std::path::Path, 坑们: &mut Vec<String>) {
         .file_name()
         .map(|名| 名.to_string_lossy().ends_with("-园"))
         .unwrap_or(false)
-        && std::fs::read_dir(目录).map(|mut 条目| 条目.next().is_none()).unwrap_or(false)
+        && std::fs::read_dir(目录)
+            .map(|mut 条目| 条目.next().is_none())
+            .unwrap_or(false)
     {
         坑们.push(format!("空园残留：{}", 目录.display()));
     }
@@ -205,7 +234,11 @@ mod 测试 {
         let 根 = std::env::temp_dir().join(format!("建档测试-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
         std::fs::write(根.join("a.rs"), "fn 甲() {}\nfn 乙() {}\n").unwrap();
-        std::fs::write(根.join("Cargo.toml"), "[workspace]\nmembers = [\"某-府\"]\n").unwrap();
+        std::fs::write(
+            根.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"某-府\"]\n",
+        )
+        .unwrap();
         let 规模 = 统计规模(&根);
         assert_eq!(规模.rs文件数, 1);
         assert_eq!(规模.总行数, 2);
@@ -220,7 +253,10 @@ mod 测试 {
         std::fs::create_dir_all(&府).unwrap();
         std::fs::write(府.join("Cargo.toml"), "").unwrap();
         let 地图 = 生成结构地图(&根);
-        assert!(地图.contains("呈现-域/命令操作-府"), "应识别域内府，实际：{地图}");
+        assert!(
+            地图.contains("呈现-域/命令操作-府"),
+            "应识别域内府，实际：{地图}"
+        );
         let _ = std::fs::remove_dir_all(&根);
     }
 

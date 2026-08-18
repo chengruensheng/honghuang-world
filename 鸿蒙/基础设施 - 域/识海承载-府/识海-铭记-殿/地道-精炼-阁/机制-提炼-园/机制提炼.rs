@@ -3,10 +3,10 @@
 //! 定位：地道在执行期做增量收尾——小变更只记痕迹、零 LLM 成本；
 //! 复杂变更白嫖任务生成等待期唤 LLM，把耦合文件共同支撑的机制沉淀下来。
 
-use crate::{变更报告, 记录, 模型存储, 依赖图};
 use crate::推演波及;
-use jiance_fu::{进入观测, 观测角色};
-use moxing_fu::{调用模型, 对话消息, 模型配置, 精简上限};
+use crate::{依赖图, 变更报告, 模型存储, 记录};
+use jiance_fu::{观测角色, 进入观测};
+use moxing_fu::{对话消息, 模型配置, 精简上限, 调用模型};
 use rizhi_fu::info;
 use std::path::Path;
 
@@ -43,7 +43,13 @@ pub fn 机制归纳(
         &format!("地道机制归纳：{} 处变更", 报告.总处数()),
         "LLM",
     ))?;
-    info!(变更数 = 波及.变更们.len(), 波及数 = 波及.波及们.len(), 内容长度 = 回复.len(), 提示词 = 用量.提示词, "机制归纳完成");
+    info!(
+        变更数 = 波及.变更们.len(),
+        波及数 = 波及.波及们.len(),
+        内容长度 = 回复.len(),
+        提示词 = 用量.提示词,
+        "机制归纳完成"
+    );
     Ok(Some(回复))
 }
 
@@ -78,13 +84,23 @@ mod 测试 {
 
     /// 造一个不触网的假配置（机制归纳只在超阈值 + 有素材时才调 LLM，假配置足矣）。
     fn 假配置() -> 模型配置 {
-        模型配置 { 密钥: String::new(), 地址: String::new(), 模型: String::new() }
+        模型配置 {
+            密钥: String::new(),
+            地址: String::new(),
+            模型: String::new(),
+        }
     }
 
     #[test]
     fn 机制归纳_低于阈值不唤_llm() {
-        let 存储 = crate::模型存储::打开(std::env::temp_dir().join(format!("机制阈值测试-{}", crate::当前毫秒())));
-        let 报告 = 变更报告 { 新增: vec!["甲.rs".to_string()], 修改: Vec::new(), 删除: Vec::new() };
+        let 存储 = crate::模型存储::打开(
+            std::env::temp_dir().join(format!("机制阈值测试-{}", crate::当前毫秒())),
+        );
+        let 报告 = 变更报告 {
+            新增: vec!["甲.rs".to_string()],
+            修改: Vec::new(),
+            删除: Vec::new(),
+        };
         let 图 = 依赖图::default();
         // 若误唤 LLM，空密钥必报错；返回 None 即证明未触发。
         let 结果 = 机制归纳(&存储, &假配置(), &图, std::path::Path::new("."), &报告).unwrap();
@@ -93,7 +109,9 @@ mod 测试 {
 
     #[test]
     fn 机制归纳_超阈值但素材为空不唤_llm() {
-        let 存储 = crate::模型存储::打开(std::env::temp_dir().join(format!("机制空素材测试-{}", crate::当前毫秒())));
+        let 存储 = crate::模型存储::打开(
+            std::env::temp_dir().join(format!("机制空素材测试-{}", crate::当前毫秒())),
+        );
         let 报告 = 变更报告 {
             新增: vec!["不存在的甲.rs".to_string(), "不存在的乙.rs".to_string()],
             修改: vec!["不存在的丙.rs".to_string()],
@@ -109,7 +127,15 @@ mod 测试 {
     #[test]
     fn 汇切片_有符号走定义体() {
         let 图 = 依赖图 {
-            档案们: vec![符号档案::新("项目", "模块", "甲.rs", "甲符号", "pub fn 甲() {}", "签名", "解释")],
+            档案们: vec![符号档案::新(
+                "项目",
+                "模块",
+                "甲.rs",
+                "甲符号",
+                "pub fn 甲() {}",
+                "签名",
+                "解释",
+            )],
             ..Default::default()
         };
         let 素材 = 汇切片(&图, std::path::Path::new("."), &["甲.rs".to_string()], &[]);

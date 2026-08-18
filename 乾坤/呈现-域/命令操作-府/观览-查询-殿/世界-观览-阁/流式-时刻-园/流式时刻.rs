@@ -10,11 +10,15 @@ const 北京偏移秒: u64 = 8 * 3600;
 const 平年月天: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 fn 是否闰年(年: u64) -> bool {
-    (年 % 4 == 0 && 年 % 100 != 0) || 年 % 400 == 0
+    (年.is_multiple_of(4) && !年.is_multiple_of(100)) || 年.is_multiple_of(400)
 }
 
 fn 当年天数(年: u64) -> u64 {
-    if 是否闰年(年) { 366 } else { 365 }
+    if 是否闰年(年) {
+        366
+    } else {
+        365
+    }
 }
 
 /// 取北京时间当前时刻，格式 YYYY-MM-DD HH:MM:SS
@@ -59,7 +63,14 @@ pub fn 呈现世界时刻() -> String {
 
     format!(
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02} {} {}",
-        年, 月, 日, 时, 分, 秒, 星期名(推算星期(总日)), 时辰名(时)
+        年,
+        月,
+        日,
+        时,
+        分,
+        秒,
+        星期名(推算星期(总日)),
+        时辰名(时)
     )
 }
 
@@ -71,7 +82,15 @@ pub fn 推算星期(总日: u64) -> u64 {
 
 /// 星期索引转中文名（星期日/一/二/.../六）。
 pub fn 星期名(索引: u64) -> &'static str {
-    const 名表: [&str; 7] = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+    const 名表: [&str; 7] = [
+        "星期日",
+        "星期一",
+        "星期二",
+        "星期三",
+        "星期四",
+        "星期五",
+        "星期六",
+    ];
     名表[索引 as usize % 7]
 }
 
@@ -80,10 +99,10 @@ pub fn 星期名(索引: u64) -> &'static str {
 /// 时辰索引 = `(时 + 1) / 2` 对 12 取模。
 pub fn 时辰名(时: u32) -> &'static str {
     const 时辰表: [&str; 12] = [
-        "子时", "丑时", "寅时", "卯时", "辰时", "巳时",
-        "午时", "未时", "申时", "酉时", "戌时", "亥时",
+        "子时", "丑时", "寅时", "卯时", "辰时", "巳时", "午时", "未时", "申时", "酉时", "戌时",
+        "亥时",
     ];
-    时辰表[((时 + 1) / 2) as usize % 12]
+    时辰表[时.div_ceil(2) as usize % 12]
 }
 
 #[cfg(test)]
@@ -108,30 +127,53 @@ mod tests {
     fn 验证完整零填充格式() {
         let 输出 = 呈现世界时刻();
         let 字符: Vec<char> = 输出.chars().collect();
-        assert_eq!(字符.len(), 26, "输出应为 26 字符，实际 {} 字符：{输出}", 字符.len());
+        assert_eq!(
+            字符.len(),
+            26,
+            "输出应为 26 字符，实际 {} 字符：{输出}",
+            字符.len()
+        );
 
         // 年份 [0..4]：4 位数字
-        assert!(字符[0..4].iter().all(|c| c.is_ascii_digit()), "年份段不全为数字：{输出}");
+        assert!(
+            字符[0..4].iter().all(|c| c.is_ascii_digit()),
+            "年份段不全为数字：{输出}"
+        );
         // 4: '-'
         assert_eq!(字符[4], '-', "位置 4 应为 '-'");
         // 月份 [5..7]：2 位数字
-        assert!(字符[5..7].iter().all(|c| c.is_ascii_digit()), "月份段不全为数字：{输出}");
+        assert!(
+            字符[5..7].iter().all(|c| c.is_ascii_digit()),
+            "月份段不全为数字：{输出}"
+        );
         // 7: '-'
         assert_eq!(字符[7], '-', "位置 7 应为 '-'");
         // 日期 [8..10]：2 位数字
-        assert!(字符[8..10].iter().all(|c| c.is_ascii_digit()), "日期段不全为数字：{输出}");
+        assert!(
+            字符[8..10].iter().all(|c| c.is_ascii_digit()),
+            "日期段不全为数字：{输出}"
+        );
         // 10: ' '
         assert_eq!(字符[10], ' ', "位置 10 应为 ' '");
         // 小时 [11..13]：2 位数字
-        assert!(字符[11..13].iter().all(|c| c.is_ascii_digit()), "小时段不全为数字：{输出}");
+        assert!(
+            字符[11..13].iter().all(|c| c.is_ascii_digit()),
+            "小时段不全为数字：{输出}"
+        );
         // 13: ':'
         assert_eq!(字符[13], ':', "位置 13 应为 ':'");
         // 分钟 [14..16]：2 位数字
-        assert!(字符[14..16].iter().all(|c| c.is_ascii_digit()), "分钟段不全为数字：{输出}");
+        assert!(
+            字符[14..16].iter().all(|c| c.is_ascii_digit()),
+            "分钟段不全为数字：{输出}"
+        );
         // 16: ':'
         assert_eq!(字符[16], ':', "位置 16 应为 ':'");
         // 秒 [17..19]：2 位数字
-        assert!(字符[17..19].iter().all(|c| c.is_ascii_digit()), "秒段不全为数字：{输出}");
+        assert!(
+            字符[17..19].iter().all(|c| c.is_ascii_digit()),
+            "秒段不全为数字：{输出}"
+        );
         // 19: ' '
         assert_eq!(字符[19], ' ', "位置 19 应为 ' '");
         // 星期 [20..22]："星期"
@@ -164,7 +206,10 @@ mod tests {
         let 字符: Vec<char> = 输出.chars().collect();
         let 年份段 = 取段(&字符, 0, 4);
         assert_eq!(年份段.len(), 4, "年份段应为 4 字符：{年份段}");
-        assert!(年份段.chars().all(|c| c.is_ascii_digit()), "年份段应全为数字：{年份段}");
+        assert!(
+            年份段.chars().all(|c| c.is_ascii_digit()),
+            "年份段应全为数字：{年份段}"
+        );
     }
 
     /// 月份段必须 2 位数字（1-9 月前导零），范围 1-12
@@ -174,7 +219,10 @@ mod tests {
         let 字符: Vec<char> = 输出.chars().collect();
         let 月份段 = 取段(&字符, 5, 2);
         assert_eq!(月份段.len(), 2, "月份段应为 2 字符：{月份段}");
-        assert!(月份段.chars().all(|c| c.is_ascii_digit()), "月份段应全为数字：{月份段}");
+        assert!(
+            月份段.chars().all(|c| c.is_ascii_digit()),
+            "月份段应全为数字：{月份段}"
+        );
         let 月: u32 = 月份段.parse().expect("月份应为数字");
         assert!((1..=12).contains(&月), "月份越界：{月}");
     }
@@ -186,7 +234,10 @@ mod tests {
         let 字符: Vec<char> = 输出.chars().collect();
         let 日期段 = 取段(&字符, 8, 2);
         assert_eq!(日期段.len(), 2, "日期段应为 2 字符：{日期段}");
-        assert!(日期段.chars().all(|c| c.is_ascii_digit()), "日期段应全为数字：{日期段}");
+        assert!(
+            日期段.chars().all(|c| c.is_ascii_digit()),
+            "日期段应全为数字：{日期段}"
+        );
         let 日: u32 = 日期段.parse().expect("日期应为数字");
         assert!((1..=31).contains(&日), "日期越界：{日}");
     }
@@ -198,7 +249,10 @@ mod tests {
         let 字符: Vec<char> = 输出.chars().collect();
         let 小时段 = 取段(&字符, 11, 2);
         assert_eq!(小时段.len(), 2, "小时段应为 2 字符：{小时段}");
-        assert!(小时段.chars().all(|c| c.is_ascii_digit()), "小时段应全为数字：{小时段}");
+        assert!(
+            小时段.chars().all(|c| c.is_ascii_digit()),
+            "小时段应全为数字：{小时段}"
+        );
         let 时: u32 = 小时段.parse().expect("小时应为数字");
         assert!(时 <= 23, "小时越界：{时}");
     }
@@ -210,7 +264,10 @@ mod tests {
         let 字符: Vec<char> = 输出.chars().collect();
         let 分钟段 = 取段(&字符, 14, 2);
         assert_eq!(分钟段.len(), 2, "分钟段应为 2 字符：{分钟段}");
-        assert!(分钟段.chars().all(|c| c.is_ascii_digit()), "分钟段应全为数字：{分钟段}");
+        assert!(
+            分钟段.chars().all(|c| c.is_ascii_digit()),
+            "分钟段应全为数字：{分钟段}"
+        );
         let 分: u32 = 分钟段.parse().expect("分钟应为数字");
         assert!(分 <= 59, "分钟越界：{分}");
     }
@@ -222,7 +279,10 @@ mod tests {
         let 字符: Vec<char> = 输出.chars().collect();
         let 秒段 = 取段(&字符, 17, 2);
         assert_eq!(秒段.len(), 2, "秒段应为 2 字符：{秒段}");
-        assert!(秒段.chars().all(|c| c.is_ascii_digit()), "秒段应全为数字：{秒段}");
+        assert!(
+            秒段.chars().all(|c| c.is_ascii_digit()),
+            "秒段应全为数字：{秒段}"
+        );
         let 秒: u32 = 秒段.parse().expect("秒应为数字");
         assert!(秒 <= 59, "秒越界：{秒}");
     }

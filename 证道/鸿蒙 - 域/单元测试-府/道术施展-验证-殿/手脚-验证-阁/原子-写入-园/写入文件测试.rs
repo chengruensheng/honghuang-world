@@ -39,7 +39,11 @@ mod 测试 {
         写文件(目标.to_str().unwrap(), "新内容").unwrap();
         assert_eq!(std::fs::read_to_string(&目标).unwrap(), "新内容");
         回滚垫::在工作区(&工作区::新(&根)).撤销("任务A").unwrap();
-        assert_eq!(std::fs::read_to_string(&目标).unwrap(), "旧内容", "撤销应恢复写前内容");
+        assert_eq!(
+            std::fs::read_to_string(&目标).unwrap(),
+            "旧内容",
+            "撤销应恢复写前内容"
+        );
         let _ = std::fs::remove_dir_all(&根);
         // _锁 在此处 drop 时本测试已全部结束，释放锁对其他测试安全
         drop(_锁);

@@ -7,12 +7,13 @@ use std::path::Path;
 impl 依赖图 {
     /// 保存在工作区（.上下文/依赖图.json）。
     pub fn 保存在工作区(&self, 工作区: &工作区) -> Result<(), String> {
-    self.保存(工作区.依赖图路径())
+        self.保存(工作区.依赖图路径())
     }
 
     /// 保存到指定路径。
     pub fn 保存(&self, 路径: impl AsRef<Path>) -> Result<(), String> {
-        let 文本 = serde_json::to_string_pretty(self).map_err(|错误| format!("序列化依赖图失败: {错误}"))?;
+        let 文本 = serde_json::to_string_pretty(self)
+            .map_err(|错误| format!("序列化依赖图失败: {错误}"))?;
         debug!(路径 = %路径.as_ref().display(), "依赖图已保存");
         std::fs::write(路径.as_ref(), 文本).map_err(|错误| format!("保存依赖图失败: {错误}"))
     }
@@ -28,7 +29,8 @@ impl 依赖图 {
         if !路径.exists() {
             return Ok(依赖图::default());
         }
-        let 文本 = std::fs::read_to_string(路径).map_err(|错误| format!("读取依赖图失败: {错误}"))?;
+        let 文本 =
+            std::fs::read_to_string(路径).map_err(|错误| format!("读取依赖图失败: {错误}"))?;
         serde_json::from_str(&文本).map_err(|错误| format!("解析依赖图失败: {错误}"))
     }
 }
@@ -48,26 +50,25 @@ mod 测试 {
         static 计数: AtomicU64 = AtomicU64::new(0);
         let n = 计数.fetch_add(1, Ordering::SeqCst);
         let pid = std::process::id();
-        let 路径 = std::env::temp_dir()
-            .join(format!("shihai_依赖边_{pid}_{n}_{标签}.json"));
+        let 路径 = std::env::temp_dir().join(format!("shihai_依赖边_{pid}_{n}_{标签}.json"));
         let _ = std::fs::remove_file(&路径);
         路径
     }
 
     /// 构造一份带档案与结构根节点的"非默认"依赖图。
     fn 样例图(符号名: &str) -> 依赖图 {
-        let mut 图 = 依赖图::default();
-        图.档案们 = vec![符号档案::新(
-            "示例项目",
-            "示例府",
-            "示例府/入口.rs",
-            符号名,
-            "pub fn 入口符号()",
-            "fn 入口符号",
-            "演示入口函数",
-        )];
-        图.结构树 = 结构节点::新("根结构");
-        图
+        依赖图 {
+            档案们: vec![符号档案::新(
+                "示例项目",
+                "示例府",
+                "示例府/入口.rs",
+                符号名,
+                "pub fn 入口符号()",
+                "fn 入口符号",
+                "演示入口函数",
+            )],
+            结构树: 结构节点::新("根结构"),
+        }
     }
 
     #[test]

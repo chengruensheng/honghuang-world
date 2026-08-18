@@ -16,5 +16,10 @@
 # 工具本地配置(CodeArts/智能体工具)
 .codeartsdoer/
 
+# 空目录(违反六层规范, 源码按 维度/域/府/殿/阁/园 分布, 不在根放 src/tests/scripts)
+/src/
+/tests/
+/scripts/
+
 __pycache__/
 *.pyc

@@ -1,9 +1,11 @@
 //! 循环 - 驱动 - 园：鸿钧主循环（想法 → 要求 → 设计 → 实现 → 验收 → 定档）。
 
-use crate::类型_定义_殿::{验收回执, 验收结论, 要求状态, 要求书, 想法, 想法状态, 任务线, 任务线状态};
+use crate::类型_定义_殿::{
+    任务线, 任务线状态, 想法, 想法状态, 要求书, 要求状态, 验收回执, 验收结论,
+};
 use crate::终裁回执;
-use daoshu_fu::{任务调度, 读文件, 执行状态};
-use jiance_fu::{进入观测, 观测角色};
+use daoshu_fu::{任务调度, 执行状态, 读文件};
+use jiance_fu::{观测角色, 进入观测};
 use moxing_fu::模型配置;
 use rizhi_fu::{error, info, warn};
 
@@ -20,7 +22,10 @@ fn 状态目录() -> std::path::PathBuf {
 fn 沉淀失败(要求id: &str, 阶段: &str, 原因: &str) -> Result<(), String> {
     let 目录 = 状态目录();
     let mut 状态 = crate::确保世界状态初始化(&目录)?;
-    let 已有 = 状态.失败模式.iter_mut().find(|条目| 条目.要求id == 要求id && 条目.阶段 == 阶段);
+    let 已有 = 状态
+        .失败模式
+        .iter_mut()
+        .find(|条目| 条目.要求id == 要求id && 条目.阶段 == 阶段);
     if let Some(条目) = 已有 {
         条目.次数 += 1;
         if !原因.is_empty() {
@@ -85,12 +90,15 @@ fn 追加要求(要求: &要求书) -> Result<(), String> {
     drop(锁);
     // 事件流：要求入池（append-only 事实源）。
     let 流 = shihai_fu::事件流::在工作区(&shihai_fu::工作区::定位());
-    let _ = 流.追加事件(shihai_fu::事件类型::要求入池, serde_json::json!({
-        "要求id": 要求.id,
-        "方向": 要求.方向,
-        "状态": format!("{:?}", 要求.状态),
-        "已存在": 已存在,
-    }));
+    let _ = 流.追加事件(
+        shihai_fu::事件类型::要求入池,
+        serde_json::json!({
+            "要求id": 要求.id,
+            "方向": 要求.方向,
+            "状态": format!("{:?}", 要求.状态),
+            "已存在": 已存在,
+        }),
+    );
     info!(要求id = %要求.id, 状态 = ?要求.状态, 已存在, "要求已入池");
     Ok(())
 }
@@ -108,26 +116,34 @@ fn 下一个要求序号() -> Result<u64, String> {
         // 兜底：读失败（目录不可达 / 文件不存在 / 权限不足）视为空目录，基准=0。
         // 测试场景下「空状态目录也能 fetch 序号」是契约之一；并发首屏多线程同时进入时，
         // 即使个别线程读失败回落 0，CAS 也保证只有一个线程赢，其余用 0 走 fetch_add 仍唯一。
-        let 全部 = match 队列.读全部() {
-            Ok(项们) => 项们,
-            Err(_) => Vec::new(),
-        };
+        let 全部 = 队列.读全部().unwrap_or_default();
         let 最大 = 全部
             .iter()
-            .filter_map(|要求| 要求.id.strip_prefix("要求-").and_then(|尾| 尾.parse::<u64>().ok()))
+            .filter_map(|要求| {
+                要求
+                    .id
+                    .strip_prefix("要求-")
+                    .and_then(|尾| 尾.parse::<u64>().ok())
+            })
             .max()
             .unwrap_or(0);
         // CAS 初始化基准为 max；并发首屏只有一线程赢, 其余用磁盘旧值(仍被 fetch_add 保证唯一)。
-        序号基准.compare_exchange(0, 最大, Ordering::SeqCst, Ordering::SeqCst).unwrap_or_default();
+        序号基准
+            .compare_exchange(0, 最大, Ordering::SeqCst, Ordering::SeqCst)
+            .unwrap_or_default();
     }
     Ok(序号基准.fetch_add(1, Ordering::Relaxed) + 1)
 }
 
 /// 持进程级排他锁读队列文件（复合「读→改→写」用：锁贯穿到调用方持久化后释放）。
 /// 返回 (全部项, 排他锁)；调用方改完项们后调 持久化XX们 再 drop 锁（勿在持锁期间调队列方法防重入死锁）。
-fn 读改写队列<T: serde::Serialize + serde::de::DeserializeOwned>(路径: &std::path::Path) -> Result<(Vec<T>, crate::排他锁), String> {
+fn 读改写队列<T: serde::Serialize + serde::de::DeserializeOwned>(
+    路径: &std::path::Path,
+) -> Result<(Vec<T>, crate::排他锁), String> {
     let 队列 = crate::落盘队列::<T>::打开(路径);
-    let 锁 = 队列.排他().map_err(|错误| format!("拿队列排他锁失败: {错误}"))?;
+    let 锁 = 队列
+        .排他()
+        .map_err(|错误| format!("拿队列排他锁失败: {错误}"))?;
     let 内容 = std::fs::read_to_string(路径).map_err(|错误| format!("读队列失败: {错误}"))?;
     let 项们 = 内容
         .lines()
@@ -162,10 +178,13 @@ fn 推进要求状态(要求id: &str, 目标: 要求状态) -> Result<(), String
     drop(锁);
     // 事件流：要求状态推进（append-only 事实源）。
     let 流 = shihai_fu::事件流::在工作区(&shihai_fu::工作区::定位());
-    let _ = 流.追加事件(shihai_fu::事件类型::要求状态推进, serde_json::json!({
-        "要求id": 要求id,
-        "状态": format!("{:?}", 目标),
-    }));
+    let _ = 流.追加事件(
+        shihai_fu::事件类型::要求状态推进,
+        serde_json::json!({
+            "要求id": 要求id,
+            "状态": format!("{:?}", 目标),
+        }),
+    );
     info!(要求id, 状态 = ?目标, "要求状态已推进");
     Ok(())
 }
@@ -177,7 +196,11 @@ fn 持久化要求们(队列路径: &std::path::Path, 项们: &[要求书]) -> R
         let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化要求失败: {错误}"))?;
         行们.push(行);
     }
-    let 内容 = if 行们.is_empty() { String::new() } else { format!("{}\n", 行们.join("\n")) };
+    let 内容 = if 行们.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", 行们.join("\n"))
+    };
     let 临时路径 = 队列路径.with_extension("jsonl.tmp");
     std::fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
     std::fs::rename(&临时路径, 队列路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
@@ -210,21 +233,34 @@ pub fn 主政一轮(
     // 白箱观测：主政编排（含需求拆分决策）进入鸿钧角色（想法级上下文；要求id在拆分/运行一轮内再细化）。
     let _观测守卫 = 进入观测(观测角色::鸿钧, Some(想法.id.clone()), None, None);
     let 起始序号 = 下一个要求序号()?;
-    let 背景 = shihai_fu::元数据层化(存储, "多宝", &shihai_fu::全部格位(), 3_000).unwrap_or_default();
+    let 背景 =
+        shihai_fu::元数据层化(存储, "多宝", &shihai_fu::全部格位(), 3_000).unwrap_or_default();
     // 事件流：想法投递（append-only 事实源，想法级一条）。
     let 流 = shihai_fu::事件流::在工作区(&shihai_fu::工作区::定位());
-    let _ = 流.追加事件(shihai_fu::事件类型::想法投递, serde_json::json!({
-        "想法id": 想法.id,
-        "内容": 想法.内容,
-    }));
+    let _ = 流.追加事件(
+        shihai_fu::事件类型::想法投递,
+        serde_json::json!({
+            "想法id": 想法.id,
+            "内容": 想法.内容,
+        }),
+    );
     let 决策 = crate::需求拆分决策(&想法.内容, &背景, 配置);
     match 决策 {
         crate::拆分决策::不拆 => {
             let 要求id = format!("要求-{起始序号}");
             let 回执 = 运行一轮(想法, &要求id, 配置, 存储, 调度)?;
-            let 定档数 = if 回执.验收.结论 == 验收结论::通过 { 1 } else { 0 };
+            let 定档数 = if 回执.验收.结论 == 验收结论::通过 {
+                1
+            } else {
+                0
+            };
             info!(要求id = %回执.验收.要求id, 结论 = ?回执.验收.结论, "主政一轮完成（单要求）");
-            Ok(主政回执 { 结论: 回执.验收.结论.clone(), 回执们: vec![回执], 子要求数: 1, 定档数 })
+            Ok(主政回执 {
+                结论: 回执.验收.结论.clone(),
+                回执们: vec![回执],
+                子要求数: 1,
+                定档数,
+            })
         }
         crate::拆分决策::拆分(子要求们) => {
             let 数 = 子要求们.len();
@@ -262,9 +298,18 @@ pub fn 主政一轮(
                     }
                 }
             }
-            let 结论 = if 定档数 == 数 { 验收结论::通过 } else { 验收结论::打回 };
+            let 结论 = if 定档数 == 数 {
+                验收结论::通过
+            } else {
+                验收结论::打回
+            };
             info!(子要求数 = 数, 定档数, 结论 = ?结论, "主政一轮完成（拆分）");
-            Ok(主政回执 { 结论, 回执们, 子要求数: 数, 定档数 })
+            Ok(主政回执 {
+                结论,
+                回执们,
+                子要求数: 数,
+                定档数,
+            })
         }
     }
 }
@@ -283,7 +328,8 @@ pub fn 运行一轮(
     // 元数据层化初始背景（设计稿 §4.2 规则3 第 1 件）：首屏只拼最前+最后档（首因+近因），
     // 按 3000 字符预算（与 Python 模拟最优参数一致）；中间档不直接喂，在首屏末尾注脚列出名字供模型按需调用 读格位 展开。
     // 较原 100k 字符全量拼装：节省约 97% 首屏 token，且让模型养成"按需展开"的习惯。
-    let 背景 = shihai_fu::元数据层化(存储, "多宝", &shihai_fu::全部格位(), 3_000).unwrap_or_default();
+    let 背景 =
+        shihai_fu::元数据层化(存储, "多宝", &shihai_fu::全部格位(), 3_000).unwrap_or_default();
     let 工作区 = shihai_fu::工作区::定位();
     let mut 图 = shihai_fu::依赖图::加载自工作区(&工作区).unwrap_or_default();
     // 人类格位临时代偿（设计稿 §4.2 规则5）：来源=人类的格位（初心/铁律/标准/架构/细则等）
@@ -337,14 +383,21 @@ pub fn 运行一轮(
     let 方案 = crate::分级设计(&要求, 配置);
     // 事件流：设计上呈（append-only 事实源）。
     let 流 = shihai_fu::事件流::在工作区(&工作区);
-    let _ = 流.追加事件(shihai_fu::事件类型::设计上呈, serde_json::json!({
-        "要求id": 要求.id,
-        "拆解数": 方案.拆解.len(),
-    }));
+    let _ = 流.追加事件(
+        shihai_fu::事件类型::设计上呈,
+        serde_json::json!({
+            "要求id": 要求.id,
+            "拆解数": 方案.拆解.len(),
+        }),
+    );
     // 节点汇报（生产化 1.1）：设计完成 → 鸿钧落一条对话记录（界主「对话 历史」可见）。
     crate::落对话记录(
         "鸿钧",
-        &format!("任务汇报：要求 {} 设计完成（圣人商讨已收敛，拆解 {} 项，即将开始实现）", 要求.id, 方案.拆解.len()),
+        &format!(
+            "任务汇报：要求 {} 设计完成（圣人商讨已收敛，拆解 {} 项，即将开始实现）",
+            要求.id,
+            方案.拆解.len()
+        ),
         &["界主".to_string(), "鸿钧".to_string()],
     );
 
@@ -376,7 +429,12 @@ pub fn 运行一轮(
     let 根 = 工作区.根路径();
     // P2：结构按需下探，把殿/阁/园层级补全喂给执行者；涉及路径匹配府，匹配不到兜底全府树。
     let 结构下探 = 图.下探(&要求.约束.涉及路径);
-    info!(涉及路径数 = 要求.约束.涉及路径.len(), 相关文件数 = 相关文件.len(), 结构下探长度 = 结构下探.len(), "现状已备");
+    info!(
+        涉及路径数 = 要求.约束.涉及路径.len(),
+        相关文件数 = 相关文件.len(),
+        结构下探长度 = 结构下探.len(),
+        "现状已备"
+    );
     info!(涉及路径 = ?要求.约束.涉及路径, 相关文件 = ?相关文件, "现状装配明细");
     let mut 现状 = String::new();
     let mut 已用字符 = 0usize;
@@ -395,7 +453,11 @@ pub fn 运行一轮(
                 || 文件.starts_with(&format!("{路径}/"))
                 || 文件.starts_with(&format!("{路径}\\"))
         });
-        let 禁止再读 = if 是涉及 { "（已在现状给出，禁止再用 读文件 读取）" } else { "" };
+        let 禁止再读 = if 是涉及 {
+            "（已在现状给出，禁止再用 读文件 读取）"
+        } else {
+            ""
+        };
         let 档案们 = 图.查文件(文件);
         let 摘要们: Vec<&str> = 档案们
             .iter()
@@ -412,7 +474,9 @@ pub fn 运行一轮(
             let 绝对 = 根.join(文件);
             match 读文件(绝对.to_str().unwrap_or("")) {
                 Ok(内容) => 现状.push_str(&format!("【文件：{文件}】{禁止再读}\n{内容}\n\n")),
-                Err(_) => 现状.push_str(&format!("【文件：{文件}】{禁止再读}\n（读取失败或不存在）\n\n")),
+                Err(_) => 现状.push_str(&format!(
+                    "【文件：{文件}】{禁止再读}\n（读取失败或不存在）\n\n"
+                )),
             }
             continue;
         }
@@ -421,7 +485,11 @@ pub fn 运行一轮(
         // 其余文件在总预算内给定义，超限只给签名清单 + 按需读提示。
         let 超限 = 已用字符 + 定义字符 > 现状_预算_字符;
         let 给定义 = 摘要们.len() <= 摘要阈值 && (是涉及 || !超限);
-        现状.push_str(&format!("【文件：{文件}】{禁止再读}符号清单（{} 个）：\n{}\n", 摘要们.len(), 摘要们.join("\n")));
+        现状.push_str(&format!(
+            "【文件：{文件}】{禁止再读}符号清单（{} 个）：\n{}\n",
+            摘要们.len(),
+            摘要们.join("\n")
+        ));
         已用字符 += 摘要们.join("\n").chars().count();
         if 给定义 {
             现状.push_str(&format!("目标符号完整定义：\n{}\n\n", 定义们.join("\n\n")));
@@ -439,7 +507,7 @@ pub fn 运行一轮(
             现状.push_str(&教训);
         }
     }
-    // 图谱契约投影（设计稿 §4.2 规则6）：库根导出签名（实现层知道 打开存储/状态目录 在哪）+ 
+    // 图谱契约投影（设计稿 §4.2 规则6）：库根导出签名（实现层知道 打开存储/状态目录 在哪）+
     // 核心类型契约（记录/版本记录 定义）+ 测试样例参照（照抄项目既有 #[cfg(test)] 惯例）。
     // 治愈「实现层凭记忆写签名/自造测试结构」的编译失败类（比对拼实测四类错误）。
     let 图谱契约 = 图.查库根导出(&要求.约束.涉及路径);
@@ -461,7 +529,10 @@ pub fn 运行一轮(
     loop {
         // 重投执行现状：上次打回意见注入现状末尾，供实现层模型对症修正。
         let 执行现状 = if 尝试 > 0 && !打回意见们.is_empty() {
-            format!("{现状}\n\n【上次打回意见（自动重投，第 {尝试} 次）】\n{}", 打回意见们.join("\n"))
+            format!(
+                "{现状}\n\n【上次打回意见（自动重投，第 {尝试} 次）】\n{}",
+                打回意见们.join("\n")
+            )
         } else {
             现状.clone()
         };
@@ -473,7 +544,11 @@ pub fn 运行一轮(
         // 节点汇报（生产化 1.1）：开始实现 → 鸿钧落一条对话记录。
         crate::落对话记录(
             "鸿钧",
-            &format!("任务汇报：要求 {} 开始实现（{} 个任务并发）", 要求.id, 任务们.len()),
+            &format!(
+                "任务汇报：要求 {} 开始实现（{} 个任务并发）",
+                要求.id,
+                任务们.len()
+            ),
             &["界主".to_string(), "鸿钧".to_string()],
         );
         let mut 产物们: Vec<crate::产物条目> = Vec::new();
@@ -482,9 +557,9 @@ pub fn 运行一轮(
         // 地道并行：LLM 生成期间只做增量变更检测（白嫖等待期）；机制归纳推迟到 join 后，
         // 任务期间记忆读取保持稳定（不读不写格位），任务完成后再统一归纳登记。
         let 根路径 = 工作区.根路径().to_path_buf();
-        let 地道结果 = std::sync::Arc::new(std::sync::Mutex::new(Ok::<shihai_fu::变更报告, String>(
-            shihai_fu::变更报告::default(),
-        )));
+        let 地道结果 = std::sync::Arc::new(std::sync::Mutex::new(
+            Ok::<shihai_fu::变更报告, String>(shihai_fu::变更报告::default()),
+        ));
         let 回执们 = std::thread::scope(|作用域| {
             let 地道结果 = std::sync::Arc::clone(&地道结果);
             let 根路径 = 根路径.clone();
@@ -517,20 +592,26 @@ pub fn 运行一轮(
                     作用域.spawn(move || {
                         // 白箱观测：任务线程进入执行角色，线程本地携带 任务线/要求，
                         // 下游 模型调用 与 工具交接 埋点经 当前观测() 自动关联。
-                        let _观测守卫 = 进入观测(观测角色::执行, Some(任务id观测), Some(要求id观测), None);
+                        let _观测守卫 =
+                            进入观测(观测角色::执行, Some(任务id观测), Some(要求id观测), None);
                         调度.派遣执行(&任务id, 任务, 背景, 现状, 涉及路径)
                     })
                 })
                 .collect();
             句柄们
                 .into_iter()
-                .map(|句柄| 句柄.join().unwrap_or_else(|_| Err("任务线程异常".to_string())))
+                .map(|句柄| {
+                    句柄
+                        .join()
+                        .unwrap_or_else(|_| Err("任务线程异常".to_string()))
+                })
                 .collect::<Vec<_>>()
         });
         // 地道收尾：任务全部完成后统一 机制归纳 → 登记变更（时序稳定：任务期间记忆读取不受归纳写入干扰）。
         match 地道结果.lock().unwrap().as_ref() {
             Ok(报告) if !报告.空() => {
-                if let Err(说明) = shihai_fu::机制归纳(存储, 配置, &图, &根路径, 报告) {
+                if let Err(说明) = shihai_fu::机制归纳(存储, 配置, &图, &根路径, 报告)
+                {
                     warn!(说明 = %说明, "机制归纳失败");
                 }
                 shihai_fu::登记变更(存储, 报告)?;
@@ -558,7 +639,15 @@ pub fn 运行一轮(
                 break;
             }
         }
-        info!(任务数 = 任务们.len(), 产物数 = 产物们.len(), 总轮数, 尝试, 提示词 = 总用量.提示词, 缓存命中 = 总用量.缓存命中, "一轮执行完毕");
+        info!(
+            任务数 = 任务们.len(),
+            产物数 = 产物们.len(),
+            总轮数,
+            尝试,
+            提示词 = 总用量.提示词,
+            缓存命中 = 总用量.缓存命中,
+            "一轮执行完毕"
+        );
         // 产物清单按路径去重：同一路径多次写入只保留终版（幂等排序输出），
         // 防多版本条目被六准圣误判「孤儿文件冲突」（设计稿 §11.2 规则 6）。
         {
@@ -580,14 +669,20 @@ pub fn 运行一轮(
         // 上下文投入量化：工具循环总轮数写入事件格位，供后续复盘（轮数跨重试累计，由 执行回执 汇聚）。
         let _ = 存储.写记录(&shihai_fu::记录::新(
             "事件",
-            &format!("执行总轮数 {总轮数} 轮（任务 {} 个，产物 {} 件，尝试 {}）", 任务们.len(), 产物们.len(), 尝试),
+            &format!(
+                "执行总轮数 {总轮数} 轮（任务 {} 个，产物 {} 件，尝试 {}）",
+                任务们.len(),
+                产物们.len(),
+                尝试
+            ),
             "运行一轮",
             "代码",
         ));
 
         // 失败归因 → 教训格位：为下轮执行注入经验（失败必归因，成功不花 token）。
         if let Some(说明) = &失败说明 {
-            if let Err(归因错误) = shihai_fu::归因教训(存储, 配置, &要求.方向, "失败", 说明) {
+            if let Err(归因错误) = shihai_fu::归因教训(存储, 配置, &要求.方向, "失败", 说明)
+            {
                 warn!(归因错误 = %归因错误, "教训归因失败");
             }
             // 失败沉淀 → 世界状态.失败模式：按 要求id+阶段 去重累加次数（供进化环归因）。
@@ -600,15 +695,25 @@ pub fn 运行一轮(
         // 三段流程终裁：机械前置门槛 → 六准圣分维独立审验 → 鸿钧终裁。
         // 要求书 + LLM 配置齐备则启用完整 LLM 流程；任一缺失自动降级为规则兜底。
         // 回执保留完整终裁回执（含六准圣意见/终裁依据/用量），供验收.jsonl 落盘明细可追溯。
-        let 回执 = crate::终裁裁决(&要求, &产物们, 0.0, &相关文件, 失败说明.as_deref(), Some(配置));
+        let 回执 = crate::终裁裁决(
+            &要求,
+            &产物们,
+            0.0,
+            &相关文件,
+            失败说明.as_deref(),
+            Some(配置),
+        );
         // 事件流：验收结论（append-only 事实源，通过/打回都记录）。
         let 流 = shihai_fu::事件流::在工作区(&工作区);
-        let _ = 流.追加事件(shihai_fu::事件类型::验收结论, serde_json::json!({
-            "要求id": 要求.id,
-            "结论": format!("{:?}", 回执.验收.结论),
-            "终裁依据": 回执.终裁依据,
-            "尝试": 尝试,
-        }));
+        let _ = 流.追加事件(
+            shihai_fu::事件类型::验收结论,
+            serde_json::json!({
+                "要求id": 要求.id,
+                "结论": format!("{:?}", 回执.验收.结论),
+                "终裁依据": 回执.终裁依据,
+                "尝试": 尝试,
+            }),
+        );
         // 状态机推进：实现中 → 已验收（验收回执已落定）。
         if let Err(错误) = 推进要求状态(&要求.id, 要求状态::已验收) {
             warn!(要求id = %要求.id, 错误 = %错误, "推进「已验收」失败");
@@ -616,10 +721,13 @@ pub fn 运行一轮(
         if 回执.验收.结论 == 验收结论::通过 {
             crate::定档(存储, &回执.验收, &产物们, &总用量)?;
             // 事件流：版本存档（append-only 事实源）。
-            let _ = 流.追加事件(shihai_fu::事件类型::版本存档, serde_json::json!({
-                "要求id": 要求.id,
-                "产物数": 产物们.len(),
-            }));
+            let _ = 流.追加事件(
+                shihai_fu::事件类型::版本存档,
+                serde_json::json!({
+                    "要求id": 要求.id,
+                    "产物数": 产物们.len(),
+                }),
+            );
             // 定档成功：清理回滚垫全部存档（产物已入库，不再需要回滚）。
             let 垫 = shihai_fu::回滚垫::在工作区(&工作区);
             if let Err(清理错误) = 垫.清理全部() {
@@ -638,15 +746,22 @@ pub fn 运行一轮(
         // 实测：第二次投递打回后 流式历法.rs 4781 残留盘面，第三次模型在半成品上续写致 5663 半成品——
         // 不可信产物残留会污染下次实现与版本快照。
         match 打回撤销产物(&要求.id, &产物们, &工作区) {
-            Ok(撤销数) => info!(要求id = %要求.id, 撤销数, 产物数 = 产物们.len(), 尝试, "打回已撤销本轮产物（回最近定档版本）"),
-            Err(错误) => warn!(要求id = %要求.id, 错误 = %错误, "打回撤销产物失败（产物可能残留盘面）"),
+            Ok(撤销数) => {
+                info!(要求id = %要求.id, 撤销数, 产物数 = 产物们.len(), 尝试, "打回已撤销本轮产物（回最近定档版本）")
+            }
+            Err(错误) => {
+                warn!(要求id = %要求.id, 错误 = %错误, "打回撤销产物失败（产物可能残留盘面）")
+            }
         }
         // 事件流：失败沉淀（append-only 事实源，打回撤销留痕）。
-        let _ = 流.追加事件(shihai_fu::事件类型::失败沉淀, serde_json::json!({
-            "要求id": 要求.id,
-            "尝试": 尝试,
-            "终裁依据": 回执.终裁依据,
-        }));
+        let _ = 流.追加事件(
+            shihai_fu::事件类型::失败沉淀,
+            serde_json::json!({
+                "要求id": 要求.id,
+                "尝试": 尝试,
+                "终裁依据": 回执.终裁依据,
+            }),
+        );
         // 打回意见汇入重投清单，供下一次尝试注入执行现状。
         打回意见们.push(汇总打回意见(&回执));
         if 尝试 < 最大重试次数 {
@@ -680,9 +795,15 @@ fn 汇总打回意见(回执: &终裁回执) -> String {
     for 准圣 in &回执.准圣意见们 {
         let 改进 = 准圣.改进建议.join("；");
         if 改进.is_empty() {
-            行.push(format!("{:?}（{} 分）：{}", 准圣.维度, 准圣.评分, 准圣.关键问题));
+            行.push(format!(
+                "{:?}（{} 分）：{}",
+                准圣.维度, 准圣.评分, 准圣.关键问题
+            ));
         } else {
-            行.push(format!("{:?}（{} 分）：{} 建议：{}", 准圣.维度, 准圣.评分, 准圣.关键问题, 改进));
+            行.push(format!(
+                "{:?}（{} 分）：{} 建议：{}",
+                准圣.维度, 准圣.评分, 准圣.关键问题, 改进
+            ));
         }
     }
     行.join("\n")
@@ -693,7 +814,11 @@ fn 汇总打回意见(回执: &终裁回执) -> String {
 /// 取最近一份含该文件的快照覆盖回盘面；全部版本都不含 → 该文件是本轮新增 → 删除。
 /// 「打回 = 产物不可信」——产物残留盘面会污染下次实现与版本快照（2026-08-16 实测第二次打回残留）。
 /// 返回撤销的文件数；版本库缺失/无版本时视为无事发生（打回仅回状态，不删盘面）。
-fn 打回撤销产物(要求id: &str, 产物们: &[crate::产物条目], 工作区: &shihai_fu::工作区) -> Result<usize, String> {
+fn 打回撤销产物(
+    要求id: &str,
+    产物们: &[crate::产物条目],
+    工作区: &shihai_fu::工作区,
+) -> Result<usize, String> {
     // 优先回滚垫：恢复世界写前状态（含未存档的界主/助手改动），比版本快照精确——
     // 版本快照不含未存档改动，按快照恢复会覆盖它们。
     // 只撤销本任务前缀组（要求id 及其 -子N/-重试N），不碰其他任务/界主的组——
@@ -719,23 +844,33 @@ fn 打回撤销产物(要求id: &str, 产物们: &[crate::产物条目], 工作�
     let 版本库 = 工作区.上下文目录().join("版本库");
     // 版本目录（版本-vN → 源码-快照），N 数字降序（最新在前）。
     let mut 快照们: Vec<(u32, std::path::PathBuf)> = Vec::new();
-    let Ok(条目们) = std::fs::read_dir(&版本库) else { return Ok(0) };
+    let Ok(条目们) = std::fs::read_dir(&版本库) else {
+        return Ok(0);
+    };
     for 条目 in 条目们.flatten() {
         let 名 = 条目.file_name().to_string_lossy().to_string();
-        let Some(数字) = 名.strip_prefix("版本-v").and_then(|末| 末.parse::<u32>().ok()) else { continue };
+        let Some(数字) = 名
+            .strip_prefix("版本-v")
+            .and_then(|末| 末.parse::<u32>().ok())
+        else {
+            continue;
+        };
         let 快照 = 条目.path().join("源码-快照");
         if 快照.is_dir() {
             快照们.push((数字, 快照));
         }
     }
-    快照们.sort_by(|甲, 乙| 乙.0.cmp(&甲.0));
+    快照们.sort_by_key(|条目| std::cmp::Reverse(条目.0));
     let 根 = 工作区.根路径();
     let mut 撤销数 = 0usize;
     for 产物 in 产物们 {
         let 相对 = std::path::Path::new(&产物.路径);
         let 目标 = 根.join(相对);
         // 回溯最近含该文件的快照；全部不含则按「本轮新增」删除。
-        let 恢复自 = 快照们.iter().map(|(_, 快照)| 快照.join(相对)).find(|候选| 候选.is_file());
+        let 恢复自 = 快照们
+            .iter()
+            .map(|(_, 快照)| 快照.join(相对))
+            .find(|候选| 候选.is_file());
         match 恢复自 {
             Some(源) => {
                 if let Some(父) = 目标.parent() {
@@ -784,7 +919,11 @@ pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> Result<(),
         let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化想法失败: {错误}"))?;
         行们.push(行);
     }
-    let 内容 = if 行们.is_empty() { String::new() } else { format!("{}\n", 行们.join("\n")) };
+    let 内容 = if 行们.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", 行们.join("\n"))
+    };
     std::fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
     std::fs::rename(&临时路径, &想法路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
     drop(锁);
@@ -810,7 +949,11 @@ pub fn 落对话记录(发送者: &str, 文本: &str, 可见: &[String]) {
     let 路径 = 状态目录().join("对话.jsonl");
     if let Ok(行) = serde_json::to_string(&记录) {
         use std::io::Write;
-        if let Ok(mut 文件) = std::fs::OpenOptions::new().create(true).append(true).open(&路径) {
+        if let Ok(mut 文件) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&路径)
+        {
             let _ = writeln!(文件, "{行}");
         }
     }
@@ -821,7 +964,11 @@ pub fn 落对话记录(发送者: &str, 文本: &str, 可见: &[String]) {
 pub(crate) fn 唯一id(前缀: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static 序号: AtomicU64 = AtomicU64::new(0);
-    format!("{前缀}-{}-{}", shihai_fu::当前毫秒(), 序号.fetch_add(1, Ordering::Relaxed) + 1)
+    format!(
+        "{前缀}-{}-{}",
+        shihai_fu::当前毫秒(),
+        序号.fetch_add(1, Ordering::Relaxed) + 1
+    )
 }
 
 /// 登记任务线：一次对话发布的任务单元入盘（待执行）。
@@ -860,11 +1007,14 @@ pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
         Err(_) => return Ok(None), // 他人持有锁，本轮不抢（超时视为被占用）
     };
     let 结果 = (|| -> Result<Option<任务线>, String> {
-        let 内容 = std::fs::read_to_string(&路径).map_err(|错误| format!("读任务线队列失败: {错误}"))?;
+        let 内容 =
+            std::fs::read_to_string(&路径).map_err(|错误| format!("读任务线队列失败: {错误}"))?;
         let mut 项们 = 内容
             .lines()
             .filter(|行| !行.trim().is_empty())
-            .map(|行| serde_json::from_str::<任务线>(行).map_err(|错误| format!("解析任务线失败: {错误}")))
+            .map(|行| {
+                serde_json::from_str::<任务线>(行).map_err(|错误| format!("解析任务线失败: {错误}"))
+            })
             .collect::<Result<Vec<任务线>, String>>()?;
         let 现在 = shihai_fu::当前毫秒();
         let 位置 = 项们.iter().position(|线| 线.状态 == 任务线状态::待执行).or_else(|| {
@@ -940,12 +1090,18 @@ fn 任务线状态(任务线id: &str) -> 任务线状态 {
 /// （实测历史遗留：要求-4/5 入池后中断，状态长期卡待领/实现中，事项列表呈现失真）。
 fn 归位要求状态(想法id: &str) {
     let 路径 = 状态目录().join("要求.jsonl");
-    let Ok((mut 项们, 锁)) = 读改写队列::<要求书>(&路径) else { return };
+    let Ok((mut 项们, 锁)) = 读改写队列::<要求书>(&路径) else {
+        return;
+    };
     let mut 改 = false;
     for 项 in 项们.iter_mut() {
         if 项.想法id.as_deref() == Some(想法id) {
             match 项.状态 {
-                要求状态::设计中 | 要求状态::待确认 | 要求状态::已确认 | 要求状态::实现中 | 要求状态::已验收 => {
+                要求状态::设计中
+                | 要求状态::待确认
+                | 要求状态::已确认
+                | 要求状态::实现中
+                | 要求状态::已验收 => {
                     warn!(要求id = %项.id, 原状态 = ?项.状态, "要求卡在中间态，归位待实现");
                     项.状态 = 要求状态::待实现;
                     改 = true;
@@ -970,7 +1126,11 @@ fn 持久化任务线们(路径: &std::path::Path, 项们: &[任务线]) -> Resu
         let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化任务线失败: {错误}"))?;
         行们.push(行);
     }
-    let 内容 = if 行们.is_empty() { String::new() } else { format!("{}\n", 行们.join("\n")) };
+    let 内容 = if 行们.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", 行们.join("\n"))
+    };
     std::fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
     std::fs::rename(&临时路径, 路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
     Ok(())
@@ -978,7 +1138,12 @@ fn 持久化任务线们(路径: &std::path::Path, 项们: &[任务线]) -> Resu
 
 /// 回填任务线结果：要求id / 结论 / 汇报 → 状态 已完成。
 /// 持排他锁贯穿读改写（2026-08-17 轮8 体检：与登记/中止/领取同锁互斥）。
-pub fn 回填任务线结果(任务线id: &str, 要求id: &str, 结论: &str, 汇报: &str) -> Result<(), String> {
+pub fn 回填任务线结果(
+    任务线id: &str,
+    要求id: &str,
+    结论: &str,
+    汇报: &str,
+) -> Result<(), String> {
     let 路径 = 状态目录().join("任务线.jsonl");
     let (mut 项们, 锁) = 读改写队列::<任务线>(&路径)?;
     let mut 命中 = false;
@@ -1028,10 +1193,12 @@ pub fn 执行一条待执行任务线(
     let 工作区根 = std::env::var("WORLD_WORKSPACE_ROOT")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-    let mut 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根.clone());
-    let (汇报, 结论, 失败原因, 主线要求id) = match crate::主政一轮(&想法, 配置, 存储, &mut 调度) {
+    let 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根.clone());
+    let (汇报, 结论, 失败原因, 主线要求id) = match crate::主政一轮(&想法, 配置, 存储, &调度)
+    {
         Ok(回执) => {
-            let 验收 = crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"));
+            let 验收 =
+                crate::落盘队列::<crate::终裁回执>::打开(状态目录().join("验收.jsonl"));
             for 回执 in &回执.回执们 {
                 let _ = 验收.入队(回执);
             }
@@ -1053,7 +1220,11 @@ pub fn 执行一条待执行任务线(
             };
             let _ = 推进想法状态(&想法.id, 新状态);
             // 回填任务线（取首个回执的要求id 作为主线 id）。
-            let 要求id = 回执.回执们.first().map(|回执| 回执.验收.要求id.clone()).unwrap_or_else(|| 任务线.id.clone());
+            let 要求id = 回执
+                .回执们
+                .first()
+                .map(|回执| 回执.验收.要求id.clone())
+                .unwrap_or_else(|| 任务线.id.clone());
             let _ = 回填任务线结果(&任务线.id, &要求id, 结论, &汇报);
             (汇报, 结论.to_string(), String::new(), 要求id)
         }
@@ -1075,7 +1246,14 @@ pub fn 执行一条待执行任务线(
             Err(说明) => warn!(说明 = %说明, "中止任务线撤销产物失败"),
         }
         let _ = 垫.清理全部();
-        记指标(&任务线.id, &任务线.id, "已中止", shihai_fu::当前毫秒() - 开始毫秒, 0, "界主中止");
+        记指标(
+            &任务线.id,
+            &任务线.id,
+            "已中止",
+            shihai_fu::当前毫秒() - 开始毫秒,
+            0,
+            "界主中止",
+        );
         return Ok(None);
     }
     // 指标落盘（生产化 3.3）：结论/耗时/token/失败原因 → .上下文/状态/指标.jsonl。
@@ -1093,12 +1271,24 @@ pub fn 执行一条待执行任务线(
     } else {
         0
     };
-    记指标(&任务线.id, &主线要求id, &结论, shihai_fu::当前毫秒() - 开始毫秒, 用总token, &失败原因);
+    记指标(
+        &任务线.id,
+        &主线要求id,
+        &结论,
+        shihai_fu::当前毫秒() - 开始毫秒,
+        用总token,
+        &失败原因,
+    );
     // 失败告警（生产化 3.4）：连续失败 → 鸿钧对话汇报。
     失败告警(&结论);
     // 汇报写对话记录（鸿钧 → 界主），界主追问可见；事件格位同步留痕。
-    let _ = crate::落对话记录("鸿钧", &汇报, &["界主".to_string(), "鸿钧".to_string()]);
-    let _ = 存储.写记录(&shihai_fu::记录::新("事件", &format!("任务线汇报：{汇报}"), "鸿钧", "代码"));
+    crate::落对话记录("鸿钧", &汇报, &["界主".to_string(), "鸿钧".to_string()]);
+    let _ = 存储.写记录(&shihai_fu::记录::新(
+        "事件",
+        &format!("任务线汇报：{汇报}"),
+        "鸿钧",
+        "代码",
+    ));
     info!(任务线id = %任务线.id, 结论 = %结论, "任务线执行完成");
     Ok(Some(汇报))
 }
@@ -1116,7 +1306,9 @@ struct 指标 {
 }
 
 /// 记一条任务线指标。
-fn 记指标(任务线id: &str, 要求id: &str, 结论: &str, 耗时毫秒: u64, token: u64, 失败原因: &str) {
+fn 记指标(
+    任务线id: &str, 要求id: &str, 结论: &str, 耗时毫秒: u64, token: u64, 失败原因: &str
+) {
     let 指标 = 指标 {
         时间: shihai_fu::当前毫秒(),
         任务线id: 任务线id.to_string(),
@@ -1129,7 +1321,11 @@ fn 记指标(任务线id: &str, 要求id: &str, 结论: &str, 耗时毫秒: u64,
     let 路径 = 状态目录().join("指标.jsonl");
     if let Ok(行) = serde_json::to_string(&指标) {
         use std::io::Write;
-        if let Ok(mut 文件) = std::fs::OpenOptions::new().create(true).append(true).open(&路径) {
+        if let Ok(mut 文件) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&路径)
+        {
             let _ = writeln!(文件, "{行}");
         }
     }
@@ -1138,7 +1334,9 @@ fn 记指标(任务线id: &str, 要求id: &str, 结论: &str, 耗时毫秒: u64,
 /// 读全部指标（按时间正序）。
 fn 读指标们() -> Vec<指标> {
     let 路径 = 状态目录().join("指标.jsonl");
-    let Ok(内容) = std::fs::read_to_string(&路径) else { return Vec::new() };
+    let Ok(内容) = std::fs::read_to_string(&路径) else {
+        return Vec::new();
+    };
     内容
         .lines()
         .filter(|行| !行.trim().is_empty())
@@ -1153,7 +1351,11 @@ fn 失败告警(结论: &str) {
     }
     let 指标们 = 读指标们();
     let 尾部: Vec<&指标> = 指标们.iter().rev().take(3).collect();
-    if 尾部.len() >= 3 && 尾部.iter().all(|指标| 指标.结论 == "打回" || 指标.结论 == "已中止") {
+    if 尾部.len() >= 3
+        && 尾部
+            .iter()
+            .all(|指标| 指标.结论 == "打回" || 指标.结论 == "已中止")
+    {
         let 最近失败 = 尾部
             .iter()
             .find(|指标| !指标.失败原因.is_empty())
@@ -1180,14 +1382,27 @@ mod 测试 {
 
     #[test]
     fn 落点护栏_空路径且非审验类拒绝() {
-        assert!(落点护栏("新增一个世界 昼夜 命令", &[]).is_err(), "实现类任务空路径应拒绝");
-        assert!(落点护栏("新增一个世界 昼夜 命令", &["乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁".to_string()]).is_ok());
+        assert!(
+            落点护栏("新增一个世界 昼夜 命令", &[]).is_err(),
+            "实现类任务空路径应拒绝"
+        );
+        assert!(落点护栏(
+            "新增一个世界 昼夜 命令",
+            &["乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁".to_string()]
+        )
+        .is_ok());
     }
 
     #[test]
     fn 落点护栏_审验类免路径() {
-        assert!(落点护栏("审验 流式历法 是否满足验收标准", &[]).is_ok(), "审验类空路径应放行");
-        assert!(落点护栏("核对 各园是否补了测试", &[]).is_ok(), "核对类空路径应放行");
+        assert!(
+            落点护栏("审验 流式历法 是否满足验收标准", &[]).is_ok(),
+            "审验类空路径应放行"
+        );
+        assert!(
+            落点护栏("核对 各园是否补了测试", &[]).is_ok(),
+            "核对类空路径应放行"
+        );
         assert!(落点护栏("实现缓存机制", &[]).is_err(), "实现类空路径仍拒绝");
     }
 
@@ -1205,7 +1420,17 @@ mod 测试 {
         // 版本-v3 快照目录存在但无 甲.rs（增量未变不存）。
         std::fs::create_dir_all(根.join(".上下文/版本库/版本-v3/源码-快照")).unwrap();
 
-        let 撤销数 = 打回撤销产物("要求-测试", &[产物条目 { 路径: "乾坤/甲.rs".to_string(), 类别: "代码".to_string(), 字节数: 0, 变化类型: "修改".to_string() }], &shihai_fu::工作区::新(&根)).unwrap();
+        let 撤销数 = 打回撤销产物(
+            "要求-测试",
+            &[产物条目 {
+                路径: "乾坤/甲.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 0,
+                变化类型: "修改".to_string(),
+            }],
+            &shihai_fu::工作区::新(&根),
+        )
+        .unwrap();
         assert_eq!(撤销数, 1);
         assert_eq!(std::fs::read_to_string(&工作区文件).unwrap(), "定档内容X");
         let _ = std::fs::remove_dir_all(&根);
@@ -1221,7 +1446,17 @@ mod 测试 {
         // 版本-v1 快照存在但不含 乙.rs。
         std::fs::create_dir_all(根.join(".上下文/版本库/版本-v1/源码-快照")).unwrap();
 
-        let 撤销数 = 打回撤销产物("要求-测试", &[产物条目 { 路径: "乾坤/乙.rs".to_string(), 类别: "代码".to_string(), 字节数: 0, 变化类型: "新增".to_string() }], &shihai_fu::工作区::新(&根)).unwrap();
+        let 撤销数 = 打回撤销产物(
+            "要求-测试",
+            &[产物条目 {
+                路径: "乾坤/乙.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 0,
+                变化类型: "新增".to_string(),
+            }],
+            &shihai_fu::工作区::新(&根),
+        )
+        .unwrap();
         assert_eq!(撤销数, 1);
         assert!(!工作区文件.exists());
         let _ = std::fs::remove_dir_all(&根);
@@ -1241,7 +1476,17 @@ mod 测试 {
         std::fs::create_dir_all(工作区文件.parent().unwrap()).unwrap();
         std::fs::write(&工作区文件, "本轮改动").unwrap();
 
-        let 撤销数 = 打回撤销产物("要求-测试", &[产物条目 { 路径: "乾坤/丙.rs".to_string(), 类别: "代码".to_string(), 字节数: 0, 变化类型: "修改".to_string() }], &shihai_fu::工作区::新(&根)).unwrap();
+        let 撤销数 = 打回撤销产物(
+            "要求-测试",
+            &[产物条目 {
+                路径: "乾坤/丙.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 0,
+                变化类型: "修改".to_string(),
+            }],
+            &shihai_fu::工作区::新(&根),
+        )
+        .unwrap();
         assert_eq!(撤销数, 1);
         assert_eq!(std::fs::read_to_string(&工作区文件).unwrap(), "v9内容");
         let _ = std::fs::remove_dir_all(&根);
@@ -1339,7 +1584,11 @@ mod 测试 {
             全部
         });
         let 去重后: HashSet<u64> = 结果.iter().copied().collect();
-        assert_eq!(结果.len(), 去重后.len(), "并发取序号应全部唯一（撞了 {} 个）", 结果.len() - 去重后.len());
+        assert_eq!(
+            结果.len(),
+            去重后.len(),
+            "并发取序号应全部唯一（撞了 {} 个）",
+            结果.len() - 去重后.len()
+        );
     }
 }
-

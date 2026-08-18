@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod 测试 {
-    use tianting_fu::{归因, 失败条目, 调整级别, 缺陷层};
+    use tianting_fu::{失败条目, 归因, 缺陷层, 调整级别};
 
     #[test]
     fn 设计层归因调流程() {

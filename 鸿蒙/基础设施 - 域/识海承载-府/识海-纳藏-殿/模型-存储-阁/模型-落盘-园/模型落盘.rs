@@ -1,7 +1,7 @@
 //! 模型 - 落盘 - 园：工作区定位 + 心智模型聚合 + 格位/记录落盘读写。
 
+use crate::{会话记录, 全部格位, 工具清单, 记录};
 use rizhi_fu::{debug, error, info, warn};
-use crate::{记录, 全部格位, 工具清单, 会话记录};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,7 +18,9 @@ pub struct 工作区 {
 impl 工作区 {
     /// 构造工作区（不创建目录）。
     pub fn 新(根路径: impl AsRef<Path>) -> 工作区 {
-        工作区 { 根路径: 根路径.as_ref().to_path_buf() }
+        工作区 {
+            根路径: 根路径.as_ref().to_path_buf(),
+        }
     }
 
     /// 定位工作区根：环境变量 → 向上探测锚点 → 当前目录。
@@ -88,7 +90,10 @@ pub fn 构建产物目录(根: &Path) -> Option<String> {
                 continue;
             }
             let 值 = 值.trim_start_matches('=').trim().trim_matches('"');
-            if let Some(首段) = 值.split(|字符: char| 字符 == '/' || 字符 == '\\').find(|段| !段.is_empty()) {
+            if let Some(首段) = 值
+                .split(|字符: char| ['/', '\\'].contains(&字符))
+                .find(|段| !段.is_empty())
+            {
                 return Some(首段.to_string());
             }
         }
@@ -187,7 +192,9 @@ impl 模型存储 {
         let 记录们 = 内容
             .lines()
             .filter(|行| !行.trim().is_empty())
-            .map(|行| serde_json::from_str::<记录>(行).map_err(|错误| format!("解析记录失败: {错误}")))
+            .map(|行| {
+                serde_json::from_str::<记录>(行).map_err(|错误| format!("解析记录失败: {错误}"))
+            })
             .collect::<Result<Vec<_>, _>>()?;
         info!(格位 = %格位名, 条数 = 记录们.len(), "格位已读出");
         Ok(记录们)
@@ -205,7 +212,11 @@ impl 模型存储 {
         let mut 链头 = Vec::new();
         let mut 已见 = HashSet::new();
         for 记录 in 全部.into_iter().rev() {
-            let 键 = if 记录.实体键.is_empty() { 记录.内容.clone() } else { 记录.实体键.clone() };
+            let 键 = if 记录.实体键.is_empty() {
+                记录.内容.clone()
+            } else {
+                记录.实体键.clone()
+            };
             if 已见.insert(键) {
                 链头.push(记录);
             }
@@ -229,4 +240,3 @@ pub fn 标记证据失效(记录们: &mut [记录], 变更路径: &str) -> usize
     }
     计数
 }
-

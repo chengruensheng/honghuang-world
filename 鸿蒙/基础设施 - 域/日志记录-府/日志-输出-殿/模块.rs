@@ -5,5 +5,5 @@ pub mod 格式_渲染_阁;
 #[path = "双写-落地-阁/模块.rs"]
 pub mod 双写_落地_阁;
 
-pub use 格式_渲染_阁::*;
 pub use 双写_落地_阁::*;
+pub use 格式_渲染_阁::*;

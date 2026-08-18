@@ -32,9 +32,17 @@ mod 测试 {
         fs::create_dir_all(快照.join("鸿蒙")).unwrap();
         fs::create_dir_all(快照.join(".cargo")).unwrap();
         fs::create_dir_all(快照.join("道果树").join("构建物-域")).unwrap();
-        fs::write(快照.join(".cargo").join("config.toml"), "[build]\ntarget-dir = \"道果树/构建物-域\"\n").unwrap();
+        fs::write(
+            快照.join(".cargo").join("config.toml"),
+            "[build]\ntarget-dir = \"道果树/构建物-域\"\n",
+        )
+        .unwrap();
         fs::write(快照.join("鸿蒙").join("甲.rs"), "v2 源码").unwrap();
-        fs::write(快照.join("道果树").join("构建物-域").join("旧.exe"), "旧产物").unwrap();
+        fs::write(
+            快照.join("道果树").join("构建物-域").join("旧.exe"),
+            "旧产物",
+        )
+        .unwrap();
         // 目标：旧版源码 + 残留构建物。
         fs::create_dir_all(目标.join("鸿蒙")).unwrap();
         fs::create_dir_all(目标.join("道果树")).unwrap();
@@ -42,11 +50,28 @@ mod 测试 {
         fs::write(目标.join("道果树").join("残留.txt"), "残留").unwrap();
 
         let 数 = 回退版本(&快照, &目标).unwrap();
-        assert_eq!(数, 2, "复制 .cargo/config.toml + 鸿蒙/甲.rs（道果树构建物被排除）");
-        assert_eq!(fs::read_to_string(目标.join("鸿蒙").join("甲.rs")).unwrap(), "v2 源码", "快照内容应覆盖目标");
-        assert_eq!(fs::read_to_string(目标.join(".cargo").join("config.toml")).unwrap(), "[build]\ntarget-dir = \"道果树/构建物-域\"\n", ".cargo 配置随快照回退");
-        assert!(!目标.join("道果树").join("残留.txt").exists(), "目标旧残留应被清空");
-        assert!(!目标.join("道果树").join("构建物-域").exists(), "快照构建物不回退");
+        assert_eq!(
+            数, 2,
+            "复制 .cargo/config.toml + 鸿蒙/甲.rs（道果树构建物被排除）"
+        );
+        assert_eq!(
+            fs::read_to_string(目标.join("鸿蒙").join("甲.rs")).unwrap(),
+            "v2 源码",
+            "快照内容应覆盖目标"
+        );
+        assert_eq!(
+            fs::read_to_string(目标.join(".cargo").join("config.toml")).unwrap(),
+            "[build]\ntarget-dir = \"道果树/构建物-域\"\n",
+            ".cargo 配置随快照回退"
+        );
+        assert!(
+            !目标.join("道果树").join("残留.txt").exists(),
+            "目标旧残留应被清空"
+        );
+        assert!(
+            !目标.join("道果树").join("构建物-域").exists(),
+            "快照构建物不回退"
+        );
         let _ = fs::remove_dir_all(&根);
     }
 }

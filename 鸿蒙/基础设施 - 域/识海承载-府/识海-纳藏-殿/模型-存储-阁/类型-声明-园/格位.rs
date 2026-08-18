@@ -4,23 +4,44 @@ use serde::{Deserialize, Serialize};
 
 /// 六范畴。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 范畴 { 目标, 规则, 自我, 程序, 世界, 经历 }
+pub enum 范畴 {
+    目标,
+    规则,
+    自我,
+    程序,
+    世界,
+    经历,
+}
 
 /// 固化度：经=不可改，权=可迭代。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 固化度 { 经, 权 }
+pub enum 固化度 {
+    经,
+    权,
+}
 
 /// 共享度：共享=复用，私有=隔离。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 共享度 { 共享, 私有 }
+pub enum 共享度 {
+    共享,
+    私有,
+}
 
 /// 顺序档位：最前 / 中间 / 最后。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum 顺序档位 { 最前, 中间, 最后 }
+pub enum 顺序档位 {
+    最前,
+    中间,
+    最后,
+}
 
 /// 来源（可信度排序：代码 > 人类 > LLM）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum 来源 { 代码, LLM, 人类 }
+pub enum 来源 {
+    代码,
+    LLM,
+    人类,
+}
 
 /// 格位：心智模型的基本单元。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -104,14 +125,24 @@ pub struct 工具清单 {
 
 /// 全量工具名（与 道术施展-府·手脚-施展-殿 一一对应）。
 pub const 全部工具名: [&str; 10] = [
-    "写文件", "读文件", "改文件", "删文件", "列举目录", "寻找文件", "搜索内容", "运行命令",
-    "读格位", "查格位历史",
+    "写文件",
+    "读文件",
+    "改文件",
+    "删文件",
+    "列举目录",
+    "寻找文件",
+    "搜索内容",
+    "运行命令",
+    "读格位",
+    "查格位历史",
 ];
 
 impl 工具清单 {
     /// 全量工具（硬编码配置，随道术施展-府 手脚-施展-殿 同步）。
     pub fn 全部() -> 工具清单 {
-        工具清单 { 工具们: 全部工具名.iter().map(|名| 名.to_string()).collect() }
+        工具清单 {
+            工具们: 全部工具名.iter().map(|名| 名.to_string()).collect(),
+        }
     }
 }
 

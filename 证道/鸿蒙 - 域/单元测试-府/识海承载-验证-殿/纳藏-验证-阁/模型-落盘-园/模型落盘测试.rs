@@ -6,7 +6,7 @@
 
 #[cfg(test)]
 mod 测试 {
-    use shihai_fu::{模型存储, 记录, 工作区};
+    use shihai_fu::{工作区, 模型存储, 记录};
     use std::fs;
 
     /// 本 crate 测试进程级 env 互斥锁：并行测试下 `write_record` 不互相覆盖残留。

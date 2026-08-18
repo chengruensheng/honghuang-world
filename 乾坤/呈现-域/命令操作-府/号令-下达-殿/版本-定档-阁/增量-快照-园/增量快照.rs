@@ -6,8 +6,8 @@
 //! 2) 生成版本记录（版本号/时间/阶段/改了什么/源码快照路径/验收结论/对比上一版）→ 追加到 `.上下文/状态/版本.jsonl`（原子写）
 //! 3) 追加世界状态版本历史并原子写回（v1已存档 保持 true 不回退）
 
-use crate::状态目录;
 use crate::工作区根;
+use crate::状态目录;
 use rizhi_fu::{error, info, warn};
 use std::path::{Path, PathBuf};
 
@@ -58,10 +58,7 @@ fn 递进版本号(上一版: Option<&str>) -> String {
     let Some(末) = 上一版 else {
         return "v1".to_string();
     };
-    let 数字 = 末
-        .trim_start_matches("v")
-        .parse::<u32>()
-        .unwrap_or(0);
+    let 数字 = 末.trim_start_matches("v").parse::<u32>().unwrap_or(0);
     format!("v{}", 数字 + 1)
 }
 
@@ -129,7 +126,8 @@ pub fn 存档版本() -> String {
     let 基目录 = 找最近完整基线(&版本库路径);
 
     // 3) 增量源码快照（无上一版退化为全量，即 v1 场景）。
-    let (文件数, 变更清单) = match tianting_fu::增量快照(&根, 基目录.as_deref(), &快照目标) {
+    let (文件数, 变更清单) = match tianting_fu::增量快照(&根, 基目录.as_deref(), &快照目标)
+    {
         Ok(结果) => 结果,
         Err(错误) => {
             error!("增量快照失败：{错误}");
@@ -162,7 +160,11 @@ pub fn 存档版本() -> String {
         .ok()
         .flatten()
         .unwrap_or(初始状态);
-    let 阶段 = if 状态当前.v1已存档 { tianting_fu::阶段::乙 } else { tianting_fu::阶段::甲 };
+    let 阶段 = if 状态当前.v1已存档 {
+        tianting_fu::阶段::乙
+    } else {
+        tianting_fu::阶段::甲
+    };
 
     // 6) 版本记录落盘 + 追加世界状态版本历史（原子写回，v1已存档 保持）。
     let 记录 = tianting_fu::生成版本记录(
@@ -209,7 +211,10 @@ pub fn 回退版本(版本号: &str) -> String {
     match tianting_fu::回退版本(&快照, &回退目标) {
         Ok(数) => {
             info!(版本号, 数, "版本回退完成");
-            format!("版本已回退到回退区\n恢复文件：{数} 件\n目标：{}", 回退目标.display())
+            format!(
+                "版本已回退到回退区\n恢复文件：{数} 件\n目标：{}",
+                回退目标.display()
+            )
         }
         Err(错误) => {
             error!(版本号, "版本回退失败：{错误}");

@@ -15,11 +15,14 @@ use super::终裁::终裁裁决_无名;
 /// 防「设计校验未过」一句抽象结论让模型与界主盲改（2026-08-17 世界 昼夜 设计打回实测）。
 pub fn 确认设计(方案: &设计方案) -> 验收结论 {
     let 拆解合法 = !方案.拆解.is_empty()
-        && 方案.拆解.iter().all(|项| !项.目标.is_empty() && 合法工作流(&项.工作流));
+        && 方案
+            .拆解
+            .iter()
+            .all(|项| !项.目标.is_empty() && 合法工作流(&项.工作流));
     // 失败明细：四类原因按优先级点名第一个违规项（拆解空 > 目标空 > 工作流非法 > 自评空）。
     let 明细: Option<String> = if 方案.拆解.is_empty() {
         Some("拆解为空（未产出子任务）".to_string())
-    } else if let Some(_) = 方案.拆解.iter().find(|项| 项.目标.is_empty()) {
+    } else if 方案.拆解.iter().find(|项| 项.目标.is_empty()).is_some() {
         Some("拆解项存在空目标".to_string())
     } else if let Some(项) = 方案.拆解.iter().find(|项| !合法工作流(&项.工作流)) {
         Some(format!("拆解项工作流非法：{}", 项.工作流))

@@ -4,7 +4,7 @@
 //! 世界状态是单一对象，写入 `.上下文/状态/世界状态.jsonl`（原子覆盖：临时文件 + rename）。
 //! 「版本 存档」完成后标记 `v1已存档=true`（甲→乙阶段唯一切换点）。
 
-use crate::类型_定义_殿::{阶段, 世界状态, 版本记录, 要求书};
+use crate::类型_定义_殿::{世界状态, 版本记录, 要求书, 阶段};
 use rizhi_fu::{debug, error, info, warn};
 use std::fs;
 use std::io::Write;
@@ -73,7 +73,7 @@ fn 复制变更目录(
                 .len();
             let 需复制 = match fs::metadata(&基路径) {
                 Ok(元) => 元.len() != 源码大小, // 同名同字节跳过外，其余视为修改
-                Err(_) => true,                  // 基目录无此文件 → 新增
+                Err(_) => true,                 // 基目录无此文件 → 新增
             };
             if 需复制 {
                 fs::copy(&源路径, &目标路径).map_err(|错误| format!("复制文件失败: {错误}"))?;
@@ -85,7 +85,9 @@ fn 复制变更目录(
     Ok(())
 }
 
-fn 复制目录(源: &Path, 目标: &Path, 排除项: &[String], 计数: &mut usize) -> Result<(), String> {
+fn 复制目录(
+    源: &Path, 目标: &Path, 排除项: &[String], 计数: &mut usize
+) -> Result<(), String> {
     fs::create_dir_all(目标).map_err(|错误| format!("建目录失败: {错误}"))?;
     for 条目 in fs::read_dir(源).map_err(|错误| format!("读目录失败: {错误}"))? {
         let 条目 = 条目.map_err(|错误| format!("读条目失败: {错误}"))?;
@@ -106,6 +108,9 @@ fn 复制目录(源: &Path, 目标: &Path, 排除项: &[String], 计数: &mut us
 }
 
 /// 生成一条版本记录。
+/// clippy too_many_arguments：版本记录各字段直传，拆分参数结构体需连带 号令 版本 存档 改造，
+/// 收益低于成本，故允许。
+#[allow(clippy::too_many_arguments)]
 pub fn 生成版本记录(
     版本号: &str,
     时间: u64,
@@ -164,7 +169,9 @@ pub fn 落盘版本记录(状态目录: &Path, 记录: &版本记录) -> Result<
             .write_all(新内容.as_bytes())
             .map_err(|错误| format!("写临时文件失败: {错误}"))?;
         句柄.flush().map_err(|错误| format!("刷盘失败: {错误}"))?;
-        句柄.sync_all().map_err(|错误| format!("fsync 失败: {错误}"))?;
+        句柄
+            .sync_all()
+            .map_err(|错误| format!("fsync 失败: {错误}"))?;
     }
     fs::rename(&临时, &文件).map_err(|错误| format!("rename 失败: {错误}"))?;
     debug!(版本号 = %记录.版本号, "版本记录已落盘");
@@ -180,7 +187,8 @@ pub fn 读版本历史(状态目录: &Path) -> Result<Vec<版本记录>, String>
     let 内容 = fs::read_to_string(&文件).map_err(|错误| format!("读版本历史失败: {错误}"))?;
     let mut 项们 = Vec::new();
     for 行 in 内容.lines().filter(|行| !行.trim().is_empty()) {
-        let 项 = serde_json::from_str::<版本记录>(行).map_err(|错误| format!("解析版本记录失败: {错误}"))?;
+        let 项 = serde_json::from_str::<版本记录>(行)
+            .map_err(|错误| format!("解析版本记录失败: {错误}"))?;
         项们.push(项);
     }
     Ok(项们)
@@ -200,14 +208,16 @@ pub fn 读世界状态(状态目录: &Path) -> Result<Option<世界状态>, Stri
     let 内容 = fs::read_to_string(&文件).map_err(|错误| format!("读世界状态失败: {错误}"))?;
     let 末行 = 内容
         .lines()
-        .filter(|行| !行.trim().is_empty())
-        .next_back()
+        .rfind(|行| !行.trim().is_empty())
         .ok_or_else(|| "世界状态文件无有效行".to_string())?;
-    let mut 状态 = serde_json::from_str::<世界状态>(末行).map_err(|错误| format!("解析世界状态失败: {错误}"))?;
+    let mut 状态 = serde_json::from_str::<世界状态>(末行)
+        .map_err(|错误| format!("解析世界状态失败: {错误}"))?;
     // 读时聚合：想法池 / 在途要求（含全状态） / 验收历史 从各自 jsonl 重读覆盖。
-    状态.界主想法池 = crate::落盘队列::<crate::类型_定义_殿::想法>::打开(状态目录.join("想法.jsonl"))
-        .读全部()
-        .unwrap_or_default();
+    状态.界主想法池 = crate::落盘队列::<crate::类型_定义_殿::想法>::打开(
+        状态目录.join("想法.jsonl"),
+    )
+    .读全部()
+    .unwrap_or_default();
     状态.在途要求 = crate::落盘队列::<要求书>::打开(状态目录.join("要求.jsonl"))
         .读全部()
         .unwrap_or_default();
@@ -230,10 +240,16 @@ pub fn 写世界状态(状态目录: &Path, 状态: &世界状态) -> Result<(),
     let 临时 = 文件.with_extension("jsonl.tmp");
     {
         let mut 句柄 = fs::File::create(&临时).map_err(|错误| format!("建临时文件失败: {错误}"))?;
-        句柄.write_all(行.as_bytes()).map_err(|错误| format!("写临时文件失败: {错误}"))?;
-        句柄.write_all(b"\n").map_err(|错误| format!("写换行失败: {错误}"))?;
+        句柄
+            .write_all(行.as_bytes())
+            .map_err(|错误| format!("写临时文件失败: {错误}"))?;
+        句柄
+            .write_all(b"\n")
+            .map_err(|错误| format!("写换行失败: {错误}"))?;
         句柄.flush().map_err(|错误| format!("刷盘失败: {错误}"))?;
-        句柄.sync_all().map_err(|错误| format!("fsync 失败: {错误}"))?;
+        句柄
+            .sync_all()
+            .map_err(|错误| format!("fsync 失败: {错误}"))?;
     }
     fs::rename(&临时, &文件).map_err(|错误| format!("rename 失败: {错误}"))?;
     info!(阶段 = ?状态.阶段, v1已存档 = 状态.v1已存档, "世界状态已原子写入");
@@ -268,7 +284,9 @@ pub fn 确保世界状态初始化(状态目录: &Path) -> Result<世界状态, 
 
 /// 标记 v1 已存档：读世界状态 → 改 v1已存档=true → 原子写回；同时把版本记录追加到世界状态内嵌字段。
 /// 步骤：先落盘版本记录，再升级世界状态。任一步失败则版本记录保持已写但世界状态未升级，便于人工排查。
-pub fn 标记v1已存档(状态目录: &Path, 记录: 版本记录) -> Result<世界状态, String> {
+pub fn 标记v1已存档(
+    状态目录: &Path, 记录: 版本记录
+) -> Result<世界状态, String> {
     落盘版本记录(状态目录, &记录)?;
     let mut 状态 = 读世界状态(状态目录)?
         .ok_or_else(|| "世界状态未初始化，请先调用 确保世界状态初始化".to_string())?;
@@ -277,6 +295,11 @@ pub fn 标记v1已存档(状态目录: &Path, 记录: 版本记录) -> Result<�
     写世界状态(状态目录, &状态)?;
     info!("v1 已存档：阶段切换点已落盘");
     Ok(状态)
+}
+
+/// 版本库根目录：`.上下文/版本库/`（用于源码快照）。
+pub fn 版本库目录(工作区根: &Path) -> PathBuf {
+    工作区根.join(".上下文").join("版本库")
 }
 
 #[cfg(test)]
@@ -297,9 +320,4 @@ mod 测试 {
         assert_eq!(历史[1].版本号, "v2");
         let _ = std::fs::remove_dir_all(&状态目录);
     }
-}
-
-/// 版本库根目录：`.上下文/版本库/`（用于源码快照）。
-pub fn 版本库目录(工作区根: &Path) -> PathBuf {
-    工作区根.join(".上下文").join("版本库")
 }

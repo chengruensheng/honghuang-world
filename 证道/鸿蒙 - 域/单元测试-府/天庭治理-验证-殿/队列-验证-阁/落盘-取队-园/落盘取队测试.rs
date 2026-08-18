@@ -8,10 +8,12 @@
 mod 测试 {
     use serde::{Deserialize, Serialize};
     use std::fs;
-    use tianting_fu::{要求状态, 落盘队列, 状态推进};
+    use tianting_fu::{状态推进, 落盘队列, 要求状态};
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
-    struct 测试项 { 名: String }
+    struct 测试项 {
+        名: String,
+    }
 
     /// 本 crate 测试进程级互斥锁：并行测试下 临时路径 不互相残留。
     static 测试环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -34,8 +36,16 @@ mod 测试 {
         let _锁 = 测试环境锁.lock().unwrap();
         let 路径 = 建临时路径("水位");
         let 队列 = 落盘队列::<测试项>::打开(&路径);
-        队列.入队(&测试项 { 名: "一".to_string() }).unwrap();
-        队列.入队(&测试项 { 名: "二".to_string() }).unwrap();
+        队列
+            .入队(&测试项 {
+                名: "一".to_string(),
+            })
+            .unwrap();
+        队列
+            .入队(&测试项 {
+                名: "二".to_string(),
+            })
+            .unwrap();
         assert_eq!(队列.水位().unwrap(), 2);
         let 取 = 队列.取队().unwrap().unwrap();
         assert_eq!(取.名, "一");

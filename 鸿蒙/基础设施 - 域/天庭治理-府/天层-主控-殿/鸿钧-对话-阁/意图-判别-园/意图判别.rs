@@ -1,7 +1,7 @@
 //! 意图判别-园：界主消息 → LLM 判意图 + 提取关键字段。
 //! 兜底纪律：调用失败/解析失败一律回退「闲聊」，不阻塞对话（与需求拆分同款机械兜底）。
 
-use moxing_fu::{调用模型, 对话消息, 模型配置, 精简上限};
+use moxing_fu::{对话消息, 模型配置, 精简上限, 调用模型};
 use rizhi_fu::{info, warn};
 use serde::{Deserialize, Serialize};
 
@@ -79,8 +79,16 @@ fn 解析(回复: String) -> Result<判别结果, String> {
     let 意图 = 映射意图(意图文本);
     Ok(判别结果 {
         意图,
-        方向: 对象.get("方向").and_then(|值| 值.as_str()).unwrap_or("").to_string(),
-        验收标准: 对象.get("验收标准").and_then(|值| 值.as_str()).unwrap_or("").to_string(),
+        方向: 对象
+            .get("方向")
+            .and_then(|值| 值.as_str())
+            .unwrap_or("")
+            .to_string(),
+        验收标准: 对象
+            .get("验收标准")
+            .and_then(|值| 值.as_str())
+            .unwrap_or("")
+            .to_string(),
         涉及路径: 对象
             .get("涉及路径")
             .and_then(|值| 值.as_array())
@@ -91,16 +99,28 @@ fn 解析(回复: String) -> Result<判别结果, String> {
                     .collect()
             })
             .unwrap_or_default(),
-        点名角色: 对象.get("点名角色").and_then(|值| 值.as_str()).map(|文本| 文本.to_string()),
+        点名角色: 对象
+            .get("点名角色")
+            .and_then(|值| 值.as_str())
+            .map(|文本| 文本.to_string()),
     })
 }
 
 /// 意图文本 → 枚举（容错：模型可能输出别名或夹杂解释）。
 /// 顺序：先判更具体的（干预/追问/点名），再判任务，最后闲聊——「停止任务」不能被误判为发布。
 fn 映射意图(文本: &str) -> 对话意图 {
-    if 文本.contains("干预") || 文本.contains("停止") || 文本.contains("中止") || 文本.contains("加急") || 文本.contains("打回") {
+    if 文本.contains("干预")
+        || 文本.contains("停止")
+        || 文本.contains("中止")
+        || 文本.contains("加急")
+        || 文本.contains("打回")
+    {
         对话意图::中途干预
-    } else if 文本.contains("追问") || 文本.contains("进度") || 文本.contains("进展") || 文本.contains("状态") {
+    } else if 文本.contains("追问")
+        || 文本.contains("进度")
+        || 文本.contains("进展")
+        || 文本.contains("状态")
+    {
         对话意图::追问进度
     } else if 文本.contains("点名") || 文本.contains('@') {
         对话意图::点名角色
@@ -171,7 +191,11 @@ mod 测试 {
 
     #[test]
     fn 解析_点名角色() {
-        let 结果 = 解析(r#"{"意图":"点名角色","方向":"","验收标准":"","涉及路径":[],"点名角色":"女娲"}"#.to_string()).unwrap();
+        let 结果 = 解析(
+            r#"{"意图":"点名角色","方向":"","验收标准":"","涉及路径":[],"点名角色":"女娲"}"#
+                .to_string(),
+        )
+        .unwrap();
         assert_eq!(结果.意图, 对话意图::点名角色);
         assert_eq!(结果.点名角色.as_deref(), Some("女娲"));
     }

@@ -17,8 +17,8 @@
 //! 保证现有 `验收裁决(要求id, 产物们, 耗时秒, 涉及文件, 失败说明)` 签名测试继续通过。
 
 use crate::类型_定义_殿::*;
-use jiance_fu::{进入观测, 观测角色};
-use moxing_fu::{对话消息, 模型配置, 提取对象, 用量, 常规上限};
+use jiance_fu::{观测角色, 进入观测};
+use moxing_fu::{对话消息, 常规上限, 提取对象, 模型配置, 用量};
 use rizhi_fu::{error, info, warn};
 use serde::{Deserialize, Serialize};
 
@@ -204,7 +204,7 @@ fn 机械前置门槛(
             return true;
         }
         // 上跳段：.. 逃逸工作区。
-        段们.iter().any(|段| *段 == "..")
+        段们.contains(&"..")
     });
     if 有越界 {
         warn!(要求 = 要求id, "终裁打回：产物路径越界");
@@ -212,7 +212,9 @@ fn 机械前置门槛(
             验收: 验收回执 {
                 要求id: 要求id.to_string(),
                 结论: 验收结论::打回,
-                验收意见: Some("实现层：产物路径越界（含 .. 或绝对路径，逃逸工作区）".to_string()),
+                验收意见: Some(
+                    "实现层：产物路径越界（含 .. 或绝对路径，逃逸工作区）".to_string(),
+                ),
                 产物: vec![],
                 耗时秒,
             },
@@ -225,7 +227,9 @@ fn 机械前置门槛(
     // 4. 空洞产物：产物必须真实存在且非空（防空文件静默破坏）。
     let 有空洞 = 产物们.iter().any(|产物| {
         let 绝对 = 根.根路径().join(&产物.路径);
-        std::fs::metadata(&绝对).map(|元| 元.len() == 0).unwrap_or(true)
+        std::fs::metadata(&绝对)
+            .map(|元| 元.len() == 0)
+            .unwrap_or(true)
     });
     if 有空洞 {
         warn!(要求 = 要求id, "终裁打回：空洞产物");
@@ -392,7 +396,13 @@ fn 产物内容摘要(产物们: &[产物条目]) -> String {
             if 行.starts_with("#[test]") {
                 // 下一行取 fn 名
                 if let Some(下一行) = 行们.get(索引 + 1) {
-                    let 名 = 下一行.trim().trim_start_matches("fn ").split('(').next().unwrap_or("").to_string();
+                    let 名 = 下一行
+                        .trim()
+                        .trim_start_matches("fn ")
+                        .split('(')
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
                     if !名.is_empty() {
                         测试们.push(名);
                     }
@@ -414,11 +424,24 @@ fn 产物内容摘要(产物们: &[产物条目]) -> String {
             索引 += 1;
         }
         if 符号们.is_empty() && 测试们.is_empty() {
-            摘要们.push(format!("- {}（{}行，无 pub 符号与测试）", 产物.路径, 总行数));
+            摘要们.push(format!(
+                "- {}（{}行，无 pub 符号与测试）",
+                产物.路径, 总行数
+            ));
             continue;
         }
-        let 符号段 = 符号们.iter().take(单文件符号上限).cloned().collect::<Vec<_>>().join("；");
-        let 测试段 = 测试们.iter().take(单文件符号上限).cloned().collect::<Vec<_>>().join("、");
+        let 符号段 = 符号们
+            .iter()
+            .take(单文件符号上限)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("；");
+        let 测试段 = 测试们
+            .iter()
+            .take(单文件符号上限)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("、");
         let mut 条目 = format!("- {}（{}行）\n    符号：{}", 产物.路径, 总行数, 符号段);
         if !测试段.is_empty() {
             条目.push_str(&format!("\n    测试：{}", 测试段));
@@ -445,7 +468,12 @@ fn 单准圣审验(
 ) -> Result<(准圣意见, 用量), String> {
     let 产物清单 = 产物们
         .iter()
-        .map(|p| format!("- {} ({}字节, {}, 变化类型={})", p.路径, p.字节数, p.类别, p.变化类型))
+        .map(|p| {
+            format!(
+                "- {} ({}字节, {}, 变化类型={})",
+                p.路径, p.字节数, p.类别, p.变化类型
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
     let 涉及 = if 要求书.约束.涉及路径.is_empty() {
@@ -566,16 +594,21 @@ fn 鸿钧终裁(
 ) -> Result<(验收结论, String, 用量), String> {
     // 白箱观测：终裁是鸿钧动作（栈顶覆盖验收档；无争议时无 LLM 调用，仅机械结论）。
     let _观测守卫 = 进入观测(观测角色::鸿钧, None, Some(要求书.id.clone()), None);
-    let 通过数 = 意见们
-        .iter()
-        .filter(|o| o.结论 == 验收结论::通过)
-        .count();
+    let 通过数 = 意见们.iter().filter(|o| o.结论 == 验收结论::通过).count();
     let 总数 = 意见们.len();
     if 通过数 == 总数 && 总数 > 0 {
-        return Ok((验收结论::通过, "六准圣一致通过".to_string(), 用量::default()));
+        return Ok((
+            验收结论::通过,
+            "六准圣一致通过".to_string(),
+            用量::default(),
+        ));
     }
     if 通过数 == 0 && 总数 > 0 {
-        return Ok((验收结论::打回, "六准圣一致打回".to_string(), 用量::default()));
+        return Ok((
+            验收结论::打回,
+            "六准圣一致打回".to_string(),
+            用量::default(),
+        ));
     }
 
     // 争议：调用鸿钧综合判断
@@ -626,14 +659,13 @@ fn 鸿钧终裁(
 // ── 综合意见 ──
 
 /// 综合六准圣打回意见为一句话验收意见（仅打回时返回）。
-fn 综合意见文本(意见们: &[准圣意见], 结论: &验收结论, 依据: &str) -> Option<String> {
+fn 综合意见文本(
+    意见们: &[准圣意见], 结论: &验收结论, 依据: &str
+) -> Option<String> {
     if *结论 == 验收结论::通过 {
         return None;
     }
-    let 打回项们: Vec<&准圣意见> = 意见们
-        .iter()
-        .filter(|o| o.结论 == 验收结论::打回)
-        .collect();
+    let 打回项们: Vec<&准圣意见> = 意见们.iter().filter(|o| o.结论 == 验收结论::打回).collect();
     if 打回项们.is_empty() {
         return Some(依据.to_string());
     }
@@ -808,27 +840,56 @@ mod 测试 {
 
     #[test]
     fn 机械门槛_上跳路径越界打回() {
-        let 产物们 = vec![产物条目 { 路径: "../越界.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() }];
+        let 产物们 = vec![产物条目 {
+            路径: "../越界.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "新增".to_string(),
+        }];
         let 回执 = 机械前置门槛("r1", &产物们, 0.0, None).expect("上跳路径应直接打回");
         assert_eq!(回执.验收.结论, 验收结论::打回);
-        assert!(回执.验收.验收意见.as_deref().unwrap_or("").contains("路径越界"));
+        assert!(回执
+            .验收
+            .验收意见
+            .as_deref()
+            .unwrap_or("")
+            .contains("路径越界"));
     }
 
     #[test]
     fn 机械门槛_绝对路径越界打回() {
-        let 产物们 = vec![产物条目 { 路径: "C:/temp/越界.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() }];
+        let 产物们 = vec![产物条目 {
+            路径: "C:/temp/越界.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "新增".to_string(),
+        }];
         let 回执 = 机械前置门槛("r1", &产物们, 0.0, None).expect("绝对路径应直接打回");
         assert_eq!(回执.验收.结论, 验收结论::打回);
-        assert!(回执.验收.验收意见.as_deref().unwrap_or("").contains("路径越界"));
+        assert!(回执
+            .验收
+            .验收意见
+            .as_deref()
+            .unwrap_or("")
+            .contains("路径越界"));
     }
 
     #[test]
     fn 机械门槛_正常相对路径放行() {
-        let 产物们 = vec![产物条目 { 路径: "鸿蒙/基础设施 - 域/入口.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() }];
+        let 产物们 = vec![产物条目 {
+            路径: "鸿蒙/基础设施 - 域/入口.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "新增".to_string(),
+        }];
         let 回执 = 机械前置门槛("r1", &产物们, 0.0, None);
-        match 回执 {
-            Some(终裁) => assert!(!终裁.验收.验收意见.as_deref().unwrap_or("").contains("路径越界")),
-            None => {}
+        if let Some(终裁) = 回执 {
+            assert!(!终裁
+                .验收
+                .验收意见
+                .as_deref()
+                .unwrap_or("")
+                .contains("路径越界"))
         }
     }
 
@@ -836,15 +897,30 @@ mod 测试 {
     fn 路径相符_统一分隔符与大小写() {
         let 涉及 = vec!["鸿蒙/基础设施 - 域/天庭治理-府/入口.rs".to_string()];
         let 产物们 = vec![
-            产物条目 { 路径: "鸿蒙\\基础设施 - 域\\天庭治理-府\\入口.rs".to_string(), 类别: "代码".to_string(), 字节数: 100, 变化类型: "修改".to_string() },
-            产物条目 { 路径: "其他文件.rs".to_string(), 类别: "代码".to_string(), 字节数: 100, 变化类型: "新增".to_string() },
+            产物条目 {
+                路径: "鸿蒙\\基础设施 - 域\\天庭治理-府\\入口.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 100,
+                变化类型: "修改".to_string(),
+            },
+            产物条目 {
+                路径: "其他文件.rs".to_string(),
+                类别: "代码".to_string(),
+                字节数: 100,
+                变化类型: "新增".to_string(),
+            },
         ];
         assert!(路径相符(&涉及, &产物们), "反斜杠应等价为正斜杠");
     }
 
     #[test]
     fn 路径相符_涉及为空时通过() {
-        let 产物们 = vec![产物条目 { 路径: "任意路径.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "修改".to_string() }];
+        let 产物们 = vec![产物条目 {
+            路径: "任意路径.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "修改".to_string(),
+        }];
         assert!(路径相符(&[], &产物们));
     }
 
@@ -858,17 +934,27 @@ mod 测试 {
         let 锁 = 测试环境锁.lock().unwrap_or_else(|e| e.into_inner());
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
-        let 现状 = 涉及路径现状(&["存在的.rs".to_string(), "空的.rs".to_string(), "缺失的.rs".to_string()]);
+        let 现状 = 涉及路径现状(&[
+            "存在的.rs".to_string(),
+            "空的.rs".to_string(),
+            "缺失的.rs".to_string(),
+        ]);
         match 旧根 {
             Some(值) => std::env::set_var("WORLD_WORKSPACE_ROOT", 值),
             None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
         }
         drop(锁);
         let _ = std::fs::remove_dir_all(&根);
-        assert!(现状.contains("存在的.rs（当前22字节"), "应有真实字节数：{现状}");
+        assert!(
+            现状.contains("存在的.rs（当前22字节"),
+            "应有真实字节数：{现状}"
+        );
         assert!(现状.contains("空的.rs（当前空文件"), "空文件应标注：{现状}");
         assert!(现状.contains("缺失的.rs（当前不存在"), "缺失应标注：{现状}");
-        assert!(现状.contains("无执行前基线记录"), "无执行基线时应明示：{现状}");
+        assert!(
+            现状.contains("无执行前基线记录"),
+            "无执行基线时应明示：{现状}"
+        );
     }
 
     #[test]
@@ -876,17 +962,25 @@ mod 测试 {
         // 执行前基线落盘后，审验材料应给出「改前 → 改后」增量证据，防准圣误判未变。
         let 根 = std::env::temp_dir().join(format!("涉及现状基线测试-{}", shihai_fu::当前毫秒()));
         std::fs::create_dir_all(根.join(".上下文").join("状态")).unwrap();
-        std::fs::write(根.join("流式历法.rs"), "pub fn 呈现世界历法() {} // 改动后\n").unwrap();
+        std::fs::write(
+            根.join("流式历法.rs"),
+            "pub fn 呈现世界历法() {} // 改动后\n",
+        )
+        .unwrap();
         let 基线 = shihai_fu::文件索引 {
             指纹们: {
                 let mut 图 = std::collections::BTreeMap::new();
                 图.insert(
                     "流式历法.rs".to_string(),
-                    shihai_fu::文件指纹 { 大小: 100, 修改: 1 },
+                    shihai_fu::文件指纹 {
+                        大小: 100, 修改: 1
+                    },
                 );
                 图.insert(
                     "新增园.rs".to_string(),
-                    shihai_fu::文件指纹 { 大小: 50, 修改: 2 },
+                    shihai_fu::文件指纹 {
+                        大小: 50, 修改: 2
+                    },
                 );
                 图
             },
@@ -895,7 +989,11 @@ mod 测试 {
         let 锁 = 测试环境锁.lock().unwrap_or_else(|e| e.into_inner());
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
-        let 现状 = 涉及路径现状(&["流式历法.rs".to_string(), "新增园.rs".to_string(), "缺失园.rs".to_string()]);
+        let 现状 = 涉及路径现状(&[
+            "流式历法.rs".to_string(),
+            "新增园.rs".to_string(),
+            "缺失园.rs".to_string(),
+        ]);
         match 旧根 {
             Some(值) => std::env::set_var("WORLD_WORKSPACE_ROOT", 值),
             None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
@@ -903,9 +1001,18 @@ mod 测试 {
         drop(锁);
         let _ = std::fs::remove_dir_all(&根);
         assert!(现状.contains("流式历法.rs（当前"), "应有当前字节数：{现状}");
-        assert!(现状.contains("执行前基线 100字节"), "修改文件应展示改前基线：{现状}");
-        assert!(现状.contains("新增园.rs（当前不存在；执行前基线 50字节"), "基线存在但当前缺失应明示：{现状}");
-        assert!(现状.contains("缺失园.rs（当前不存在；执行前基线无此文件（本轮新增）"), "基线无此文件应标注本轮新增：{现状}");
+        assert!(
+            现状.contains("执行前基线 100字节"),
+            "修改文件应展示改前基线：{现状}"
+        );
+        assert!(
+            现状.contains("新增园.rs（当前不存在；执行前基线 50字节"),
+            "基线存在但当前缺失应明示：{现状}"
+        );
+        assert!(
+            现状.contains("缺失园.rs（当前不存在；执行前基线无此文件（本轮新增）"),
+            "基线无此文件应标注本轮新增：{现状}"
+        );
     }
 
     #[test]
@@ -951,7 +1058,12 @@ mod 测试 {
                 要求id: "r1".to_string(),
                 结论: 验收结论::通过,
                 验收意见: None,
-                产物: vec![产物条目 { 路径: "入口.rs".to_string(), 类别: "代码".to_string(), 字节数: 10, 变化类型: "修改".to_string() }],
+                产物: vec![产物条目 {
+                    路径: "入口.rs".to_string(),
+                    类别: "代码".to_string(),
+                    字节数: 10,
+                    变化类型: "修改".to_string(),
+                }],
                 耗时秒: 0.0,
             },
             准圣意见们: vec![准圣意见 {
@@ -1001,12 +1113,21 @@ mod 测试 {
             "#[path = \"流式读取.rs\"]\npub mod 流式读取;\npub use 流式读取::*;\n",
         )
         .unwrap();
-        std::fs::write(园.join("流式读取.rs"), "pub fn 呈现世界时间() -> String {\"时间\".to_string()}\n").unwrap();
+        std::fs::write(
+            园.join("流式读取.rs"),
+            "pub fn 呈现世界时间() -> String {\"时间\".to_string()}\n",
+        )
+        .unwrap();
 
         let 锁 = 测试环境锁.lock().unwrap_or_else(|e| e.into_inner());
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
-        let 产物们 = vec![产物条目 { 路径: "观览-查询-殿/世界-观览-阁/流式-读取-园/流式读取.rs".to_string(), 类别: "代码".to_string(), 字节数: 1, 变化类型: "新增".to_string() }];
+        let 产物们 = vec![产物条目 {
+            路径: "观览-查询-殿/世界-观览-阁/流式-读取-园/流式读取.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "新增".to_string(),
+        }];
         let 终裁 = 终裁裁决_无名("r1", None, &产物们, 0.0, &[], None, None);
         match 旧根 {
             Some(值) => std::env::set_var("WORLD_WORKSPACE_ROOT", 值),
@@ -1015,7 +1136,12 @@ mod 测试 {
         drop(锁);
         let _ = std::fs::remove_dir_all(&根);
 
-        assert_eq!(终裁.验收.结论, 验收结论::通过, "降级路径应走规则兜底，模块树已接入应通过：{:?}", 终裁.验收.验收意见);
+        assert_eq!(
+            终裁.验收.结论,
+            验收结论::通过,
+            "降级路径应走规则兜底，模块树已接入应通过：{:?}",
+            终裁.验收.验收意见
+        );
         assert!(终裁.终裁依据.contains("规则兜底"));
         assert!(终裁.准圣意见们.is_empty(), "降级路径不应触发 LLM 准圣");
     }

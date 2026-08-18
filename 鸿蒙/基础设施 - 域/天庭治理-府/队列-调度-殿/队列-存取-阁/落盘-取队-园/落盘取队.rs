@@ -32,8 +32,16 @@ impl Drop for 排他锁 {
 fn 抢排他锁(锁路径: &Path) -> Result<排他锁, String> {
     let 开始 = std::time::Instant::now();
     loop {
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(锁路径) {
-            Ok(_) => return Ok(排他锁 { 锁路径: 锁路径.to_path_buf() }),
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(锁路径)
+        {
+            Ok(_) => {
+                return Ok(排他锁 {
+                    锁路径: 锁路径.to_path_buf(),
+                })
+            }
             Err(_) => {
                 if let Ok(元) = std::fs::metadata(锁路径) {
                     if let Ok(修改) = 元.modified() {
@@ -65,7 +73,10 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
         if !路径.exists() {
             let _ = fs::write(&路径, "");
         }
-        落盘队列 { 路径, _标记: PhantomData }
+        落盘队列 {
+            路径,
+            _标记: PhantomData,
+        }
     }
 
     /// 拿进程级排他锁：复合「读→改→写」操作须持锁贯穿（调用方持锁期间直接 fs 读写，勿调队列方法）。
@@ -108,12 +119,17 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
         }
         let 首行 = 行们.remove(0);
         let 剩余 = 行们.join("\n");
-        let 剩余 = if 剩余.is_empty() { String::new() } else { format!("{剩余}\n") };
+        let 剩余 = if 剩余.is_empty() {
+            String::new()
+        } else {
+            format!("{剩余}\n")
+        };
         fs::write(&self.路径, 剩余).map_err(|错误| {
             error!(路径 = %self.路径.display(), "写队列失败：{错误}");
             format!("写队列失败: {错误}")
         })?;
-        let 项 = serde_json::from_str::<T>(首行).map_err(|错误| format!("解析队列项失败: {错误}"))?;
+        let 项 =
+            serde_json::from_str::<T>(首行).map_err(|错误| format!("解析队列项失败: {错误}"))?;
         drop(锁);
         debug!(路径 = %self.路径.display(), "队列取出一项");
         Ok(Some(项))
@@ -130,7 +146,8 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
         let 内容 = fs::read_to_string(&self.路径).map_err(|错误| format!("读队列失败: {错误}"))?;
         let mut 项们 = Vec::new();
         for 行 in 内容.lines().filter(|行| !行.trim().is_empty()) {
-            let 项 = serde_json::from_str::<T>(行).map_err(|错误| format!("解析队列项失败: {错误}"))?;
+            let 项 =
+                serde_json::from_str::<T>(行).map_err(|错误| format!("解析队列项失败: {错误}"))?;
             项们.push(项);
         }
         Ok(项们)
