@@ -302,43 +302,195 @@ def _read_jsonl_lines(raw_text):
     return out
 
 
-def 读事件流增量(自字节):
-    """从字节偏移起读新行；返回 (新行列表, 新字节偏移)。"""
-    try:
-        if not EVENT_FOLLOW_PATH.exists():
-            return [], 0
-        size = EVENT_FOLLOW_PATH.stat().st_size
-        if size <= 自字节:
-            return [], size
-        with open(EVENT_FOLLOW_PATH, "rb") as f:
-            f.seek(自字节)
-            raw = f.read().decode("utf-8", errors="replace")
-        rows = _read_jsonl_lines(raw)
-        return rows, size
-    except Exception:
-        return [], 自字节
-
-
-def 读事件流最近(limit):
-    """读最近 limit 条事件（按时间正序；调用方负责倒序）。"""
-    try:
-        if not EVENT_FOLLOW_PATH.exists():
-            return [], 0
-        size = EVENT_FOLLOW_PATH.stat().st_size
-        with open(EVENT_FOLLOW_PATH, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
-        rows = _read_jsonl_lines(text)
-        if limit and len(rows) > limit:
-            rows = rows[-limit:]
-        return rows, size
-    except Exception:
-        return [], 0
-
-# ===== 事件流 jsonl 单源 工具 =====
-EVENT_FOLLOW_PATH = STATE_DIR / "事件流.jsonl"
-EVENT_FOLLOW_LOCK = threading.Lock()
-EVENT_FOLLOW_LAST_SIZE = 0
+# ===== 三源白箱 (v3.1) =====
+# 共同事实：白箱契约六字段(ts / 源 / 动作 / 影响[] / token / 耗时ms / 证据)。
+# 三源：(1) .上下文/事件流.jsonl  (2) 临时文件夹/模型流水-观测.log  (3) .上下文/记录.jsonl
 EVENT_FOLLOW_RECENT_LIMIT = 200
+
+def _follow_target(path, last_size):
+    """从 last_size 起读新字节，返回 (新行 raw list, 新 size)。"""
+    try:
+        if not path.exists():
+            return [], 0
+        size = path.stat().st_size
+        if size <= last_size:
+            return [], size
+        with open(path, "rb") as f:
+            f.seek(last_size)
+            raw = f.read().decode("utf-8", errors="replace")
+        rows = [ln for ln in raw.split("\n") if ln.strip()]
+        return rows, size
+    except Exception:
+        return [], last_size
+
+def _装配白箱(source, raw):
+    """把 source(原始行/jsonl dict/log block)统一装配成六字段+_source 白箱对象。"""
+    try:
+        if source == "event":
+            d = json.loads(raw) if isinstance(raw, str) else raw
+            return {
+                "_source": "event",
+                "ts": int(d.get("时间戳") or 0),
+                "源": "天庭/事件流",
+                "动作": d.get("类型", "?"),
+                "影响": [{"载荷": d.get("载荷", {})}],
+                "token": {"提示词": 0, "输出": 0, "缓存": 0, "总计": 0},
+                "耗时ms": 0,
+                "证据": "",
+                "_raw": d,
+            }
+        if source == "shihai":
+            d = json.loads(raw) if isinstance(raw, str) else raw
+            grid = d.get("格位名", "?")
+            ev = d.get("内容", "") or ""
+            return {
+                "_source": "shihai",
+                "ts": int(d.get("时间戳") or 0),
+                "源": f"识海/格位:{grid}",
+                "动作": f"铭记·写入格位 «{grid}»",
+                "影响": [{"类型": "格位", "名": grid, "字节": len(str(ev))}],
+                "token": {"提示词": 0, "输出": 0, "缓存": 0, "总计": 0},
+                "耗时ms": 0,
+                "证据": str(d.get("证据", ""))[:200],
+                "_raw": d,
+            }
+        if source == "model":
+            # 模型观测是块字段切分；raw 是 dict: {time, prompt, response, usage, cost, ts}
+            usage = raw.get("usage") or {}
+            return {
+                "_source": "model",
+                "ts": int(raw.get("ts") or 0),
+                "源": "模型连接-府/LLM调用",
+                "动作": raw.get("动作") or f"模型 {raw.get('model', '?')} 调用",
+                "影响": [{"类型": "LLM调用", "提示_tokens": usage.get("提示词", 0),
+                          "输出_tokens": usage.get("输出", 0)}],
+                "token": {
+                    "提示词": int(usage.get("提示词") or 0),
+                    "输出": int(usage.get("输出") or 0),
+                    "缓存": int(usage.get("缓存") or 0),
+                    "总计": int(usage.get("总计") or 0),
+                },
+                "耗时ms": int((raw.get("耗时ms") or 0)),
+                "证据": str(raw.get("用法") or raw.get("用法摘要") or "")[:200],
+                "_raw": raw,
+            }
+    except Exception:
+        return None
+    return None
+
+# 模型观测日志解析：按 `========== 模型调用 @ 毫秒 ==========` 块拆分，每块含【用量】/【用户】/【回复】
+def _parse_model_log(raw_text):
+    """从 模型流水-观测.log 一段原始字节解析出 [{ts, prompt, response, usage, cost}] 数组。"""
+    blocks = []
+    for chunk in raw_text.split("========== 模型调用 @ ")[1:]:
+        head = chunk.split(" ===========", 1)[0].strip()
+        try:
+            ts_ms = int(head)
+        except Exception:
+            continue
+        body = chunk.split(" ===========", 1)[1] if " ===========" in chunk else ""
+        usage = {}
+        prompt = ""
+        response = ""
+        cost_txt = ""
+        for seg in body.split("【"):
+            seg = seg.strip()
+            if not seg:
+                continue
+            if seg.startswith("用量】"):
+                kv_txt = seg[len("用量】"):].strip()
+                for item in kv_txt.split(","):
+                    if "=" in item:
+                        k, v = item.split("=", 1)
+                        usage[k.strip()] = int(v.strip()) if v.strip().isdigit() else v.strip()
+            elif seg.startswith("用户】"):
+                prompt = seg[len("用户】"):].strip()
+            elif seg.startswith("回复】"):
+                response = seg[len("回复】"):].strip()
+            elif seg.startswith("成本】"):
+                cost_txt = seg[len("成本】"):].strip()
+        blocks.append({
+            "ts": ts_ms,
+            "model": usage.get("model") or "?",
+            "prompt": prompt,
+            "response": response,
+            "usage": usage,
+            "cost": cost_txt,
+            "耗时ms": 0,
+        })
+    return blocks
+
+# 三源注册：每个 source 单独追踪 last_size
+FOLLOW_SOURCES = [
+    {"source": "event", "path": STATE_DIR / "事件流.jsonl", "last_size": 0, "transformer": None, "extra": None},
+    {"source": "model", "path": PROJECT_ROOT / "临时文件夹" / "模型流水-观测.log", "last_size": 0, "transformer": None, "extra": None},
+    {"source": "shihai", "path": STATE_DIR / "记录.jsonl", "last_size": 0, "transformer": None, "extra": None},
+]
+FOLLOW_LOCK = threading.Lock()
+
+def follow_target_recent(source_key, limit):
+    """读某 source 的最近 limit 条事件按 ts desc。"""
+    src = next((s for s in FOLLOW_SOURCES if s["source"] == source_key), None)
+    if src is None or not src["path"].exists():
+        return []
+    try:
+        with open(src["path"], "r", encoding="utf-8", errors="replace") as f:
+            raw_text = f.read()
+    except Exception:
+        return []
+    out = []
+    if source_key == "model":
+        blocks = _parse_model_log(raw_text)
+        for b in blocks[-limit:]:
+            ev = _装配白箱("model", b)
+            if ev:
+                out.append(ev)
+    else:
+        rows = _read_jsonl_lines(raw_text)
+        for ln in rows[-limit:]:
+            ev = _装配白箱(source_key, ln)
+            if ev:
+                out.append(ev)
+    out.sort(key=lambda e: e.get("ts", 0), reverse=True)
+    return out
+
+def follow_target_inc(source_key, last):
+    """(新事件数组, 新 size)。"""
+    src = next((s for s in FOLLOW_SOURCES if s["source"] == source_key), None)
+    if src is None:
+        return [], last
+    new_lines, new_size = _follow_target(src["path"], last)
+    out = []
+    if source_key == "model":
+        # 把末尾 _parse_model_log 拆块；但本实现直接重新解析 new_lines 是错位。改：存 last_size，按字节重读整段拆块并按 ts 去重。
+        pass
+    else:
+        for ln in new_lines:
+            ev = _装配白箱(source_key, ln)
+            if ev:
+                out.append(ev)
+    return out, new_size
+
+# 模型观测源增量的折中实现：单独维护一个 last_size，按字节增量重读再 _parse_model_log 整段 diff
+def follow_model_inc(last_size):
+    src = next(s for s in FOLLOW_SOURCES if s["source"] == "model")
+    new_lines, new_size = _follow_target(src["path"], last_size)
+    if not new_lines:
+        return [], new_size
+    # 把增量字节 decode 后跟 _parse_model_log 用：直接对增量段重解析
+    try:
+        with open(src["path"], "rb") as f:
+            f.seek(last_size)
+            raw = f.read().decode("utf-8", errors="replace")
+    except Exception:
+        return [], new_size
+    blocks = _parse_model_log(raw)
+    out = []
+    for b in blocks:
+        ev = _装配白箱("model", b)
+        if ev:
+            out.append(ev)
+    return out, new_size
 
 # ===== 会话索引（§13.5）=====
 TASKS_RAW = []      # 要求.jsonl 全部行（按 id 倒序）
@@ -619,9 +771,13 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
                     limit = 1
                 if limit > 1000:
                     limit = 1000
-                rows, size = 读事件流最近(limit)
-                rows = list(reversed(rows))
-                self._send_json({"events": rows, "size": size, "limit": limit, "ts": int(time.time()*1000)})
+                # 三源各取 limit/3 然后合并去重按 ts desc
+                per = max(1, limit // 3)
+                merged = []
+                for src in ("event", "model", "shihai"):
+                    merged.extend(follow_target_recent(src, per))
+                merged.sort(key=lambda e: e.get("ts", 0), reverse=True)
+                self._send_json({"events": merged[:limit], "limit": limit, "ts": int(time.time()*1000)})
             except Exception as e:
                 try:
                     self._send_json({"error": str(e), "events": [], "size": 0}, 500)
@@ -719,8 +875,7 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
             return
 
     def _send_events_sse(self):
-        """步骤直播 v3：单源订阅 .上下文/事件流.jsonl 字节增量；payload 固定 {type:'event', ev:<row>}。"""
-        global EVENT_FOLLOW_LAST_SIZE
+        """步骤直播 v3.1：三源订阅；payload 固定 {source:'event|model|shihai', ts, ev:<六字段>}。"""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
@@ -740,8 +895,8 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
             return True
         def _w_comment(text):
             return _w((': ' + text + '\r\n').encode())
-        with EVENT_FOLLOW_LOCK:
-            last = EVENT_FOLLOW_LAST_SIZE
+        with FOLLOW_LOCK:
+            sizes = {s["source"]: s["last_size"] for s in FOLLOW_SOURCES}
         try:
             _w_comment("stream-open")
         except Exception:
@@ -749,15 +904,22 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
         beat = 0
         try:
             while True:
-                new_rows, new_last = 读事件流增量(last)
-                if new_rows:
-                    for ev in new_rows:
-                        payload = {"type": "event", "ev": ev}
+                # 三源扫描各取增量
+                for src_name in ("event", "model", "shihai"):
+                    last = sizes[src_name]
+                    if src_name == "model":
+                        new_evs, new_last = follow_model_inc(last)
+                    else:
+                        new_evs, new_last = follow_target_inc(src_name, last)
+                    if not new_evs:
+                        sizes[src_name] = new_last
+                        continue
+                    for ev in new_evs:
+                        payload = {"source": src_name, "ts": ev.get("ts", 0), "ev": ev}
                         line = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
                         if not _w(line):
                             return
-                    EVENT_FOLLOW_LAST_SIZE = new_last
-                    last = new_last
+                    sizes[src_name] = new_last
                 beat += 1
                 if beat % 5 == 0:
                     if not _w_comment("ping"):
