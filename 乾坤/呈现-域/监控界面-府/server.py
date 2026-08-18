@@ -139,13 +139,9 @@ def _tx_obs_dispatch(line):
         域 = d.get("域", "") or ""
         ts = int(d.get("时间戳", int(time.time()*1000)))
         if 域 in {"提示词", "回复思考"} or "模型连接-府" in iface or "调用模型" in iface:
-            r = _llm_event(d, ts, tid, iface, 域, line)
-            sys.stderr.write(f"[dispatch] LLM _parsed={isinstance(r.get('_parsed'), dict)}\n")
-            return r
+            return _llm_event(d, ts, tid, iface, 域, line)
         if 域 in {"工具调用", "工具返回"} or "道术施展-府" in iface or "工具循环" in iface:
-            r = _tool_event(d, ts, tid, iface, 域, line)
-            sys.stderr.write(f"[dispatch] Tool _parsed={isinstance(r.get('_parsed'), dict)}\n")
-            return r
+            return _tool_event(d, ts, tid, iface, 域, line)
     except Exception:
         pass
     return None
@@ -260,7 +256,6 @@ def build_sources():
             p = state_dir / fname
             if p.exists():
                 SOURCES.append({"path": p, "transformer": tf, "last_size": 0, "name": "状态/" + fname})
-    sys.stderr.write(f"[build_sources] SOURCES={len(SOURCES)}: {[s['name'] for s in SOURCES]}\n")
 
 def read_incremental(src):
     try:
@@ -277,11 +272,7 @@ def read_incremental(src):
             if ev:
                 append_event(ev)
                 added += 1
-                if added == 1 and '_role_kind' in ev:
-                    sys.stderr.write(f"[read_incremental] {src['name']} first add: _parsed={isinstance(ev.get('_parsed'), dict)}\n")
         src["last_size"] = cur
-        if added > 0:
-            sys.stderr.write(f"[read_incremental] {src['name']} added={added} total=EVENT_BUS{len(EVENT_BUS)}\n")
         return added
     except FileNotFoundError:
         return 0
@@ -342,7 +333,11 @@ def get_tasks_list():
     return out
 
 def classify_action(ev):
-    """把 ev 分类为 入队/设计/实现/验收/结果/定档/其他。"""
+    """把 ev 分类为 入队/设计/实现/验收/结果/定档/其他。
+    优先用 ev 自带的 类型 字段（_llm_event/_tool_event 已设）；fallback 按源匹配。"""
+    t = ev.get("类型")
+    if t and t not in ("其他", ""):
+        return t
     src = ev.get("源", "")
     action = ev.get("动作", "")
     if "要求.jsonl" in src and "→ 状态" in action:
