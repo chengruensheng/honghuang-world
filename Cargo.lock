@@ -50,6 +50,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shihai_fu",
+ "shijian_fu",
  "thiserror",
 ]
 
@@ -546,6 +547,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "shijian_fu"
+version = "0.1.0"
+dependencies = [
+ "rizhi_fu",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

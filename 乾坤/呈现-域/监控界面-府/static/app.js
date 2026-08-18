@@ -36,8 +36,8 @@ function escapeHtml(s) {
 }
 
 function formatLLMContent(raw) {
-    """把 LLM 载荷里嵌套的 messages 数组转成可读
-   多轮 + system prompt 展示。"""
+    // 把 LLM 载荷里嵌套的 messages 数组转成可读
+    // 多轮 + system prompt 展示
     try {
         const m = JSON.parse(raw);
         const msgs = m.messages || [];
@@ -63,7 +63,7 @@ function formatLLMContent(raw) {
 }
 
 function prettyJson(raw) {
-    """尝试把 raw 解析为 JSON 后漂亮输出，失败则原样输出（mask 过长）。"""
+    // 尝试把 raw 解析为 JSON 后漂亮输出，失败则原样输出（mask 过长）
     if (!raw) return "(空)";
     try {
         const o = JSON.parse(raw);
@@ -148,7 +148,7 @@ async function loadSession(id) {
 }
 
 function buildActionNode(a, idx) {
-    """单个 L2/L3/L4 动作的 <details> 节点。点 summary 直接展开。"""
+    // 单个 L2/L3/L4 动作的 <details> 节点。点 summary 直接展开
     const detail = document.createElement("details");
     detail.className = "action action-" + (a.层 || "l2") + " type-" + (a.类型 || "其他");
     detail.dataset.idx = String(idx);

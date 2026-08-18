@@ -1,10 +1,12 @@
 //! 工具 - 执行：执行单个工具调用 + 落盘护栏 + 参数摘要。
+//! 工具流水线四段（对齐 dsh tool-execution-pipeline）：预执行(护栏) → 守卫(涉及路径) → 执行(映射) → 后执行。
 
 use crate::{
     写文件, 列举目录, 删文件, 寻找文件, 搜索内容, 改文件, 校验命令护栏, 沙箱视图, 读文件
 };
 use moxing_fu::工具调用;
 use shihai_fu::{工作区, 模型存储};
+use shijian_fu::{守卫, 工具流水线, 工具结果, 工具请求, 裁决};
 use std::path::{Path, PathBuf};
 
 /// 单文件落盘内容上限（字节）：超限拒写，防一次性灌爆盘面。
@@ -197,38 +199,46 @@ pub(crate) fn 工具护栏(
     }
 }
 
-/// 执行单个工具调用，映射到 手脚-施展-殿 的真实函数。
-/// 涉及路径护栏（2026-08-17 直播实锤修复）：写/改/删文件的目标路径必须落在要求书
-/// 涉及路径内（目标 == 涉及路径，或位于涉及路径目录树下）——防模型越界改无关文件
-/// （实测：模型改 证道/Cargo.toml 致 cargo 连锁污染根 Cargo.lock）。涉及路径为空（审验类）
-/// 时放行（纪律靠执行提示）。
-pub(crate) fn 执行工具(
-    调用: &工具调用,
-    根: &Path,
-    写入文件们: &mut Vec<(String, u64)>,
-    涉及路径: &[String],
-) -> Result<String, String> {
-    let 参数: serde_json::Value = serde_json::from_str(&调用.参数)
-        .map_err(|错误| format!("参数解析失败: {错误}；原文：{}", 调用.参数))?;
+/// 涉及路径守卫（guards 段，单调 deny-or-abstain）：
+/// 写/改/删文件的目标路径必须落在要求书涉及路径内（目标 == 涉及路径，或位于涉及路径目录树下）。
+/// 防模型越界改无关文件（2026-08-17 实测：模型改 证道/Cargo.toml 致 cargo 连锁污染根 Cargo.lock）。
+/// 涉及路径为空（审验类）时弃权放行（纪律靠执行提示）。identity = 路径，只裁决落盘类工具。
+struct 涉及路径守卫;
 
-    // guard 阶段：统一护栏（与 execute 解耦）。
-    工具护栏(根, &调用.名字, &参数)?;
-
-    // 落盘类工具（写/改/删）涉及路径护栏：目标必须落在涉及路径内。
-    if matches!(调用.名字.as_str(), "写文件" | "改文件" | "删文件") {
-        if let Some(路径) = 参数["路径"].as_str() {
-            校验涉及路径(路径, 涉及路径)?;
+impl 守卫 for 涉及路径守卫 {
+    fn 裁决(&self, 请求: &工具请求) -> 裁决 {
+        if !matches!(请求.调用名.as_str(), "写文件" | "改文件" | "删文件") {
+            return 裁决::弃权;
         }
-        if let Some(路径们) = 参数["路径们"].as_array() {
-            for 值 in 路径们 {
-                if let Some(路径) = 值.as_str() {
-                    校验涉及路径(路径, 涉及路径)?;
+        let 路径们: Vec<String> = {
+            let mut 全部 = Vec::new();
+            if let Some(路径) = 请求.参数["路径"].as_str() {
+                全部.push(路径.to_string());
+            }
+            if let Some(数组) = 请求.参数["路径们"].as_array() {
+                for 值 in 数组 {
+                    if let Some(路径) = 值.as_str() {
+                        全部.push(路径.to_string());
+                    }
                 }
             }
+            全部
+        };
+        for 路径 in &路径们 {
+            if let Err(说明) = 校验涉及路径(路径, &请求.涉及路径) {
+                return 裁决::拒绝(说明);
+            }
         }
+        裁决::弃权
     }
+}
 
-    match 调用.名字.as_str() {
+/// 执行器（execute 段）：映射 手脚-施展-殿 的真实函数，产出 工具结果（文本 + 写入文件）。
+fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
+    let 根 = &请求.工作区根;
+    let 参数 = &请求.参数;
+    let mut 写入文件们: Vec<(String, u64)> = Vec::new();
+    let 文本 = match 请求.调用名.as_str() {
         "写文件" => {
             let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
             let 内容 = 参数["内容"].as_str().ok_or("缺参数 内容")?;
@@ -299,7 +309,7 @@ pub(crate) fn 执行工具(
             let 绝对 = 根.join(根参);
             let 文件们 = 寻找文件(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 模式)?;
             if 文件们.is_empty() {
-                return Ok("（未找到匹配文件）".to_string());
+                return Ok(工具结果::新("（未找到匹配文件）"));
             }
             Ok(文件们
                 .iter()
@@ -314,7 +324,7 @@ pub(crate) fn 执行工具(
             let 绝对 = 根.join(根参);
             let 命中们 = 搜索内容(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 字面串)?;
             if 命中们.is_empty() {
-                return Ok("（未检索到命中）".to_string());
+                return Ok(工具结果::新("（未检索到命中）"));
             }
             let mut 行 = String::new();
             for 命中 in 命中们.iter().take(60) {
@@ -392,10 +402,10 @@ pub(crate) fn 执行工具(
             let 全部 = 存储.读格位(格位名)?;
             let 终 = (起始 + 上限).min(全部.len());
             if 起始 >= 全部.len() {
-                return Ok(format!(
+                return Ok(工具结果::新(format!(
                     "【格位：{格位名}】共 {} 条，偏移 {起始} 越界",
                     全部.len()
-                ));
+                )));
             }
             let 窗口 = &全部[起始..终];
             let mut 输出 = format!(
@@ -421,8 +431,51 @@ pub(crate) fn 执行工具(
             }
             Ok(输出)
         }
-        _ => Err(format!("未知工具：{}", 调用.名字)),
-    }
+        _ => Err(format!("未知工具：{}", 请求.调用名)),
+    }?;
+    Ok(工具结果 {
+        文本, 写入文件们
+    })
+}
+
+/// 工具流水线实例：预执行(护栏) → 守卫(涉及路径) → 执行(映射) → 后执行（当前留空，后续挂观测留痕）。
+/// OnceLock 静态构造一次，注册项全局唯一（对齐 dsh 工具注册表单一实例）。
+static 工具流水线实例: std::sync::OnceLock<工具流水线> = std::sync::OnceLock::new();
+
+/// 预执行监听（pre-execute）：统一护栏——落盘非空/非超长/路径不越界，命令不越权。
+/// 本质：任何项目的通用安全护栏（对齐 dsh guard 阶段，与 execute 解耦）。
+fn 工具护栏监听(请求: &mut 工具请求) -> Result<(), String> {
+    工具护栏(&请求.工作区根, &请求.调用名, &请求.参数)
+}
+
+/// 取全局工具流水线（首次构造并注册护栏/守卫；后执行段由后续阶段挂观测留痕）。
+/// 注册的注销句柄用 Box::leak 永久持有——静态流水线生命周期与进程一致，句柄不得 drop（drop 即注销监听）。
+pub(crate) fn 流水线() -> &'static 工具流水线 {
+    工具流水线实例.get_or_init(|| {
+        let mut 流水线 = 工具流水线::新(执行器);
+        // pre-execute：统一护栏（落盘校验/命令护栏）。句柄永久持有，防注册即注销。
+        let 护栏句柄 = 流水线.预执行注册(工具护栏监听);
+        let _永久持有 = Box::leak(Box::new(护栏句柄));
+        // guards：涉及路径守卫（单调 deny-or-abstain）。
+        流水线.加守卫(std::sync::Arc::new(涉及路径守卫));
+        流水线
+    })
+}
+
+/// 执行单个工具调用（对外签名不变，内部走工具流水线四段）。
+/// 涉及路径护栏、落盘护栏均由流水线 预执行/守卫 段承载（对齐 dsh tool-execution-pipeline）。
+pub(crate) fn 执行工具(
+    调用: &工具调用,
+    根: &Path,
+    写入文件们: &mut Vec<(String, u64)>,
+    涉及路径: &[String],
+) -> Result<String, String> {
+    let 参数: serde_json::Value = serde_json::from_str(&调用.参数)
+        .map_err(|错误| format!("参数解析失败: {错误}；原文：{}", 调用.参数))?;
+    let 请求 = 工具请求::新(调用.名字.clone(), 参数, 根.to_path_buf(), 涉及路径.to_vec());
+    let 结果 = 流水线().执行(&请求)?;
+    写入文件们.extend(结果.写入文件们);
+    Ok(结果.文本)
 }
 
 /// 工具参数摘要：只取轻量字段（路径/命令等），不打印大内容，供日志定位是哪一步卡住。

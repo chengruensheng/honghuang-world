@@ -353,6 +353,7 @@ def get_session(task_id):
             "影响": e.get("影响", []),
             "证据": e.get("证据", ""),
             "全量": e.get("_raw", ""),
+            "层": e.get("层", "l2"),
         })
     summary = {
         "id": task_id,
