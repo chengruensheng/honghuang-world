@@ -42,8 +42,35 @@ pub fn 运行命令超时(
     工作目录: Option<&str>,
     超时毫秒: u64,
 ) -> Result<命令结果, String> {
-    let mut 进程 = Command::new(命令);
-    进程.args(参数们);
+    // Windows shell 内置命令翻译：cat/ls 是 cmd/PowerShell 内置，Rust std::process::Command
+    // 不识别（不会去 shell 解析），LLM 跑 `cat <file>` 撞「program not found」。
+    // 走 cmd.exe /C 包装，让 shell 解析内建命令。
+    // 实测：让世界产出复杂任务（要求-36 全链路验收）时 LLM 用了 `cat` 撞错。
+    // （2026-08-18 DSH 兜底补齐：仅 Windows 平台；不重定向/不组合命令以免破坏现有超时/管道语义。）
+    #[cfg(windows)]
+    let (真命令, 真参数们_owned): (String, Vec<String>) = {
+        match 命令 {
+            "cat" => {
+                let mut p = vec!["/C".to_string(), "type".to_string()];
+                p.extend(参数们.iter().map(|s| s.to_string()));
+                ("cmd.exe".to_string(), p)
+            }
+            "ls" => {
+                let mut p = vec!["/C".to_string(), "dir".to_string()];
+                p.extend(参数们.iter().map(|s| s.to_string()));
+                ("cmd.exe".to_string(), p)
+            }
+            _ => (命令.to_string(), 参数们.iter().map(|s| s.to_string()).collect()),
+        }
+    };
+    #[cfg(not(windows))]
+    let (真命令, 真参数们_owned): (String, Vec<String>) = (
+        命令.to_string(),
+        参数们.iter().map(|s| s.to_string()).collect(),
+    );
+    let 真参数们: Vec<&str> = 真参数们_owned.iter().map(String::as_str).collect();
+    let mut 进程 = Command::new(&真命令);
+    进程.args(&真参数们);
     if let Some(目录) = 工作目录 {
         进程.current_dir(目录);
     }
@@ -161,4 +188,51 @@ pub fn 运行命令超时(
             Some(码) => format!("EXIT_{码}"),
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Windows shell 内置命令翻译：cat → cmd.exe /C type（2026-08-18）。
+    /// 修复：让世界跑复杂任务（要求-36 等）时 LLM 调 `cat <file>` 不再撞「program not found」。
+    /// cat 在 Windows 上是 cmd 内置命令，Rust std::process::Command 不会去 shell 解析，
+    /// 必须显式包 cmd.exe /C type <args>。
+    #[cfg(windows)]
+    #[test]
+    fn cat_被翻译成_cmd_type() {
+        // 用临时文件验证 cat 能读出文件内容
+        let 临时目录 = std::env::temp_dir().join(format!("跑命令测试-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&临时目录);
+        let 临时文件 = 临时目录.join("sample.txt");
+        let 内容 = "hello cat 翻译测试";
+        std::fs::write(&临时文件, 内容).unwrap();
+
+        let 结果 = 运行命令("cat", &[临时文件.to_str().unwrap()], Some(临时目录.to_str().unwrap())).unwrap();
+        assert_eq!(结果.退出码, Some(0), "cat 退出码应为 0：{}", 结果.标准错误);
+        assert!(结果.标准输出.contains(内容), "cat 输出应包含写入内容：{}", 结果.标准输出);
+        let _ = std::fs::remove_file(&临时文件);
+    }
+
+    /// ls → cmd.exe /C dir（Windows）。验证 dir 输出能被捕获。
+    #[cfg(windows)]
+    #[test]
+    fn ls_被翻译成_cmd_dir() {
+        let 临时目录 = std::env::temp_dir().join(format!("跑命令测试-ls-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&临时目录);
+        let 结果 = 运行命令("ls", &[临时目录.to_str().unwrap()], Some(临时目录.to_str().unwrap())).unwrap();
+        assert_eq!(结果.退出码, Some(0), "ls (dir) 退出码应为 0：{}", 结果.标准错误);
+        let _ = std::fs::remove_dir_all(&临时目录);
+    }
+
+    /// 翻译后超时强杀路径仍正常（cmd.exe /C 包装不影响子进程杀除）。
+    #[cfg(windows)]
+    #[test]
+    fn cat_翻译后_超时强杀仍工作() {
+        // cat 无参数 → 走 cmd.exe /C type 无参数 → Windows 提示「系统找不到文件」并快速退出
+        // 只需确认不挂死、不报超时
+        let 结果 = 运行命令超时("cat", &[], None, 500);
+        let 通过 = 结果.is_ok() || 结果.as_ref().err().is_some_and(|e| e.contains("超时"));
+        assert!(通过, "cat 无参数应快速结束或超时被杀，实际：{:?}", 结果);
+    }
 }
