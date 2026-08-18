@@ -9,8 +9,8 @@ use std::path::Path;
 
 /// 把内容按目标文件行尾风格归一（原文件 CRLF → 内容 LF 转 CRLF；原 LF/新建 → 保持 LF）。
 fn 按行尾归一(原文: Option<&str>, 内容: &str) -> String {
-    let 原用CRLF = 原文.is_some_and(|原文| 原文.contains("\r\n"));
-    if 原用CRLF && !内容.contains("\r\n") {
+    let 原文为crlf = 原文.is_some_and(|原文| 原文.contains("\r\n"));
+    if 原文为crlf && !内容.contains("\r\n") {
         // 只转纯 LF（避免把已含 CRLF 的内容双重加 \r）。
         内容.replace('\n', "\r\n")
     } else {
