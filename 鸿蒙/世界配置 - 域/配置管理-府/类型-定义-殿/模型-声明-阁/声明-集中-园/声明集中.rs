@@ -45,6 +45,21 @@ pub struct 装配配置 {
     pub 模型提供者: String,
     /// 角色册 json 路径（阶段 3 全局角色册 装载源）。
     pub 角色册路径: String,
+    /// 合法产物文件扩展名（§14.15 配置化：涉及路径净化/兜底提取 认这些扩展名；
+    /// 数据驱动——新增文件类型改配置不改代码；旧装配.json 无此字段时 serde default 兜底）。
+    #[serde(default = "默认扩展名")]
+    pub 合法产物扩展名: Vec<String>,
+}
+
+/// 默认产物扩展名（13 种）：代码(.rs)/文档(.md)/配置(.json/.toml/.yaml/.yml)/脚本(.py/.sh/.ps1/.bat)/静态(.html/.css/.js)/文本(.txt)。
+pub fn 默认扩展名() -> Vec<String> {
+    [
+        ".rs", ".md", ".json", ".toml", ".yaml", ".yml", ".txt", ".py", ".sh", ".ps1", ".bat",
+        ".html", ".css", ".js",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 impl Default for 装配配置 {
@@ -56,6 +71,7 @@ impl Default for 装配配置 {
             角色册路径:
                 "鸿蒙/基础设施 - 域/道术施展-府/角色-卡册-殿/角色-登记-阁/登记-落册-园/角色册.json"
                     .to_string(),
+            合法产物扩展名: 默认扩展名(),
         }
     }
 }

@@ -793,37 +793,6 @@ pub struct 验收事件 {
     pub 准圣总数: usize,
 }
 
-// ── 产物分发辅助 ──
-
-/// 产物文件种类分发：基于扩展名（小写）识别可机械抽取的种类；None → 主流程 continue 静默跳过。
-/// 当前仅 .rs 走「源码」分支；.md/.json/.toml/.yaml/.yml/.txt/二进制(.png/.jpg/.zip/...)一律 None，
-/// 不破坏现有 `产物内容摘要_非rs与空文件不崩` 测试断言（这些类型仍走"无非 rs 产物"兜底文本）。
-/// 扩展点：未来需支持 .md/.json 等时，按枚举新增 match 分支 + 配套骨架提取函数，本函数一处扩展全流程生效。
-fn detect_kind(路径: &str) -> Option<&'static str> {
-    // 仅取最后一个 . 后的小写片段作为扩展名；空扩展名 / 无点号 → None（静默跳过）。
-    let 后缀 = 路径
-        .rsplit_once('.')
-        .map(|(_, 后)| 后.to_ascii_lowercase())
-        .unwrap_or_default();
-    match 后缀.as_str() {
-        "rs" => Some("源码"),
-        // 可扩展点：未来需支持 .md/.json/.toml/.yaml/.yml/.txt 等时按此处新增 match 分支，
-        // 配套 `抽单文件骨架_<种类>` 函数，并在主流程分发 match 中补齐调用。
-        _ => None,
-    }
-}
-
-/// 字符级截断：超过上限则截到上限并附尾部 `…(截断)`。防单条目过长撑爆后续 prompt。
-/// 留 8 字符余量给「…(截断)」尾标，跨边界按字符（而非字节）计。
-fn 截到长度上限(内容: &str, 上限: usize) -> String {
-    if 内容.chars().count() <= 上限 {
-        return 内容.to_string();
-    }
-    let 留 = 上限.saturating_sub(8).max(1);
-    let 截: String = 内容.chars().take(留).collect();
-    format!("{截}\n…(截断)")
-}
-
 // ── 测试 ──
 
 #[cfg(test)]

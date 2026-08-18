@@ -658,6 +658,7 @@ dependencies = [
  "daoshu_fu",
  "jiance_fu",
  "moxing_fu",
+ "peizhi_fu",
  "rizhi_fu",
  "serde",
  "serde_json",

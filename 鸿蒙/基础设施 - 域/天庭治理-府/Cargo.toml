@@ -16,5 +16,6 @@ daoshu_fu = { path = "../道术施展-府" }
 shihai_fu = { path = "../识海承载-府" }
 shijian_fu = { path = "../事件总线-府" }
 moxing_fu = { path = "../模型连接-府" }
+peizhi_fu = { path = "../../世界配置 - 域/配置管理-府" }
 rizhi_fu = { path = "../日志记录-府" }
 jiance_fu = { path = "../../观测探针-府" }
