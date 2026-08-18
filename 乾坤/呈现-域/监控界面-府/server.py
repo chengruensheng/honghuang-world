@@ -23,7 +23,9 @@ DEFAULT_PORT = 8080
 SCAN_INTERVAL_SEC = 0.2
 EVENT_BUS_MAX = 10000
 TASK_ID_RE = re.compile(r"要求-(\d+)")
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_here = Path(__file__).resolve()
+_candidates = [_here.parents[3] if len(_here.parents) > 3 else None, _here.parents[0]]
+PROJECT_ROOT = next((p for p in _candidates if p and (p / ".上下文").exists()), _here.parents[0])
 STATE_DIR = PROJECT_ROOT / ".上下文"
 ROOMS_FILE = Path(__file__).parent / "monitor.rooms.json"
 
