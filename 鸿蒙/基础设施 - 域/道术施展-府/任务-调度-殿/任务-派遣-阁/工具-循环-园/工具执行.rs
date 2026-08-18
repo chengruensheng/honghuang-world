@@ -238,11 +238,13 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
     let 根 = &请求.工作区根;
     let 参数 = &请求.参数;
     let mut 写入文件们: Vec<(String, u64)> = Vec::new();
+    let mut 尝试写入们: Vec<String> = Vec::new();
     let 文本 = match 请求.调用名.as_str() {
         "写文件" => {
             let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
             let 内容 = 参数["内容"].as_str().ok_or("缺参数 内容")?;
             let 绝对 = 根.join(路径);
+            尝试写入们.push(路径.to_string());
             let 已写入 = 写文件(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 内容)?;
             if 已写入 {
                 写入文件们.push((路径.to_string(), 内容.len() as u64));
@@ -265,6 +267,7 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             let 旧文 = 参数["旧文"].as_str().ok_or("缺参数 旧文")?;
             let 新文 = 参数["新文"].as_str().ok_or("缺参数 新文")?;
             let 绝对 = 根.join(路径);
+            尝试写入们.push(路径.to_string());
             let 已改写 = 改文件(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 旧文, 新文)?;
             if 已改写 {
                 写入文件们.push((路径.to_string(), 新文.len() as u64));
@@ -448,7 +451,9 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
         _ => Err(format!("未知工具：{}", 请求.调用名)),
     }?;
     Ok(工具结果 {
-        文本, 写入文件们
+        文本,
+        写入文件们,
+        尝试写入们,
     })
 }
 
