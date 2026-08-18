@@ -141,6 +141,7 @@ impl 心智模型 {
 }
 
 /// 模型存储：格位目录下的格位文件落盘读写。
+#[derive(Clone)]
 pub struct 模型存储 {
     格位目录: PathBuf,
 }
