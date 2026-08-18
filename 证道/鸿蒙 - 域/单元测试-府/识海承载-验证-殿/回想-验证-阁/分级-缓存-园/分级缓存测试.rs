@@ -7,6 +7,12 @@ mod 测试 {
         顺序档位,
     };
 
+    /// 本 crate 测试进程级互斥锁：串行化同 crate 内并行测试下临时目录读写（防假阴）。
+    /// 100 次 cargo test 验证：未加锁时"识海测试-缓存"固定路径多次跑写追加导致 JSON 多行 trailing characters 假阴。
+    /// 加锁后用 process::id + 纳秒命名临时目录，每次跑独立。
+    /// （2026-08-18 DSH 兜底：照 `缓存读取.rs` / `模型落盘测试.rs` / `落盘取队测试.rs` 同模式。）
+    static 测试环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn 造格位(名字: &str, 固化: 固化度, 档位: 顺序档位) -> 格位 {
         格位::新(名字, 范畴::世界, "种子", "代码", 固化, 共享度::共享, 档位)
     }
@@ -33,7 +39,15 @@ mod 测试 {
 
     #[test]
     fn 永久缓存命中与失效() {
-        let 目录 = std::env::temp_dir().join("识海测试-缓存");
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 目录 = std::env::temp_dir().join(format!(
+            "识海测试-缓存-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
         let 存储 = 模型存储::打开(&目录);
         存储
             .写记录(&记录::新("铁律", "约束一", "人", "人类"))
