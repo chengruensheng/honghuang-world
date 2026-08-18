@@ -24,7 +24,9 @@ struct 临时天道守卫 {
 
 impl 临时天道守卫 {
     /// 想法内容含【任务规则】段 → 写入临时天道并返回守卫；否则 None。
-    fn 尝试注入(存储: &shihai_fu::模型存储, 想法id: &str, 想法内容: &str) -> Option<Self> {
+    fn 尝试注入(
+        存储: &shihai_fu::模型存储, 想法id: &str, 想法内容: &str
+    ) -> Option<Self> {
         let 开始 = 想法内容.find("【任务规则】")?;
         let 段 = &想法内容[开始 + "【任务规则】".len()..];
         let 规则文本 = 段.split("【").next().unwrap_or("").trim();
