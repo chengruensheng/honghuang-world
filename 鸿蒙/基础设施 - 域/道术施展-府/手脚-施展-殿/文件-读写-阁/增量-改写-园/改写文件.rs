@@ -24,7 +24,12 @@ pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<bool, Strin
             原文.len(), 旧文.len(), 旧文预览, 原文预览
         ));
     }
-    let 改后 = 原文.replacen(旧文, 新文, 1);
+    let 改后 = if 原文.contains("\r\n") && !新文.contains("\r\n") {
+        // 行尾保持（观察点 7）：原文 CRLF 时，替换片段的新文 LF→CRLF 归一，防混合行尾。
+        原文.replacen(旧文, &新文.replace('\n', "\r\n"), 1)
+    } else {
+        原文.replacen(旧文, 新文, 1)
+    };
     // 空操作检测：替换结果与原文相同（旧文==新文）→ 跳过，不备份不重写。
     if 改后 == 原文 {
         info!(路径, "改文件跳过：替换结果与现状相同（空操作）");
@@ -116,6 +121,24 @@ mod tests {
             "内容包含目标词",
             "内容不应变化"
         );
+        let _ = std::fs::remove_file(&临时文件);
+    }
+
+    /// 行尾保持（观察点 7）：原文 CRLF、新文 LF → 替换片段转 CRLF，防混合行尾。
+    #[test]
+    fn 改文件_新文LF转CRLF防混合行尾() {
+        let 临时目录 = std::env::temp_dir().join(format!("改文件测试-行尾-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&临时目录);
+        let 临时文件 = 临时目录.join("sample.txt");
+        std::fs::write(&临时文件, "第1行\r\n目标词\r\n第3行\r\n").unwrap();
+        改文件(临时文件.to_str().unwrap(), "目标词", "新词甲\n新词乙\n").unwrap();
+        let 写后 = std::fs::read_to_string(&临时文件).unwrap();
+        assert!(
+            写后.contains("新词甲\r\n新词乙\r\n"),
+            "新文应转 CRLF：{:?}",
+            写后
+        );
+        assert!(!写后.contains("新词甲\n"), "不应出现裸 LF");
         let _ = std::fs::remove_file(&临时文件);
     }
 }

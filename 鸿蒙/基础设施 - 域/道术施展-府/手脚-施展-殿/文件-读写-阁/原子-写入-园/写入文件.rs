@@ -1,18 +1,33 @@
 //! 原子 - 写入 - 园：写文件全部内容，自动创建父目录。
 //! 写前经 回滚垫 备份旧内容：任务失败时可单文件撤销恢复。
+//! 行尾保持（观察点 7）：目标文件原为 CRLF 时，写入前把内容 LF→CRLF 转换——
+//! 防模型生成的 LF 文本把整文件行尾污染（git diff 纯行尾噪音）。
 
 use rizhi_fu::{debug, error, info};
 use shihai_fu::{回滚垫, 工作区, 当前任务};
 use std::path::Path;
 
+/// 把内容按目标文件行尾风格归一（原文件 CRLF → 内容 LF 转 CRLF；原 LF/新建 → 保持 LF）。
+fn 按行尾归一(原文: Option<&str>, 内容: &str) -> String {
+    let 原用CRLF = 原文.is_some_and(|原文| 原文.contains("\r\n"));
+    if 原用CRLF && !内容.contains("\r\n") {
+        // 只转纯 LF（避免把已含 CRLF 的内容双重加 \r）。
+        内容.replace('\n', "\r\n")
+    } else {
+        内容.to_string()
+    }
+}
+
 /// 写文件全部内容，父目录不存在时自动创建；写前先备份进回滚垫（失败只警告不阻断）。
 /// 返回是否真的写入（false = 内容与现状相同，空操作跳过，未写盘）。
-/// 空操作优化：目标已存在且内容与写入内容完全相同 → 直接返回 false（不备份不重写，
-/// 省轮次，且不产生回滚垫备份/产物记录噪音——执行层常"确认现状"式重写同内容）。
+/// 空操作优化：目标已存在且内容（按行尾归一后）与现状一致 → 直接返回 false。
+/// 行尾保持：原文件 CRLF 时写入内容先转 CRLF，防整文件行尾污染。
 pub fn 写文件(路径: &str, 内容: &str) -> Result<bool, String> {
-    // 内容相同检测：文件已存在且内容一致 → 空操作跳过。
-    if let Ok(原文) = std::fs::read_to_string(路径) {
-        if 原文 == 内容 {
+    // 内容相同检测：文件已存在且内容（行尾归一后）一致 → 空操作跳过。
+    let 原文 = std::fs::read_to_string(路径).ok();
+    let 写入内容 = 按行尾归一(原文.as_deref(), 内容);
+    if let Some(原文) = &原文 {
+        if 原文 == &写入内容 {
             info!(
                 路径,
                 字节数 = 内容.len(),
@@ -32,11 +47,11 @@ pub fn 写文件(路径: &str, 内容: &str) -> Result<bool, String> {
                 .map_err(|错误| format!("创建父目录失败：{}：{错误}", 父.display()))?;
         }
     }
-    std::fs::write(目标, 内容).map_err(|错误| {
+    std::fs::write(目标, &写入内容).map_err(|错误| {
         error!(路径, "写文件失败：{错误}");
         format!("写文件失败：{路径}：{错误}")
     })?;
-    debug!(路径, 字节数 = 内容.len(), "写文件完成");
+    debug!(路径, 字节数 = 写入内容.len(), "写文件完成");
     Ok(true)
 }
 
@@ -79,6 +94,39 @@ mod tests {
             "新内容",
             "内容不同应写入"
         );
+        let _ = std::fs::remove_dir_all(&临时目录);
+    }
+
+    /// 行尾保持（观察点 7）：原文件 CRLF → 写入 LF 内容自动转 CRLF，防整文件行尾污染。
+    #[test]
+    fn 写文件_保持原CRLF行尾() {
+        let 临时目录 = std::env::temp_dir().join(format!("写文件测试-行尾-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&临时目录);
+        let 临时文件 = 临时目录.join("sample.txt");
+        std::fs::write(&临时文件, "旧行1\r\n旧行2\r\n").unwrap();
+        // 模型生成 LF 内容，写入后应保持 CRLF（原文件风格）。
+        写文件(临时文件.to_str().unwrap(), "新行1\n新行2\n").unwrap();
+        let 写后 = std::fs::read_to_string(&临时文件).unwrap();
+        assert!(写后.contains("\r\n"), "原 CRLF 文件应保持 CRLF：{:?}", 写后);
+        assert!(
+            !写后.contains("\n") || 写后.contains("\r\n"),
+            "不应出现裸 LF"
+        );
+        assert_eq!(写后, "新行1\r\n新行2\r\n", "内容应归一为 CRLF");
+        let _ = std::fs::remove_dir_all(&临时目录);
+    }
+
+    /// 行尾保持：原文件 LF → 保持 LF（不转 CRLF）。
+    #[test]
+    fn 写文件_保持原LF行尾() {
+        let 临时目录 =
+            std::env::temp_dir().join(format!("写文件测试-行尾LF-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&临时目录);
+        let 临时文件 = 临时目录.join("sample.txt");
+        std::fs::write(&临时文件, "旧行1\n旧行2\n").unwrap();
+        写文件(临时文件.to_str().unwrap(), "新行1\n新行2\n").unwrap();
+        let 写后 = std::fs::read_to_string(&临时文件).unwrap();
+        assert_eq!(写后, "新行1\n新行2\n", "原 LF 文件应保持 LF");
         let _ = std::fs::remove_dir_all(&临时目录);
     }
 }
