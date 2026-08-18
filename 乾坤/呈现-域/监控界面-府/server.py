@@ -139,9 +139,13 @@ def _tx_obs_dispatch(line):
         域 = d.get("域", "") or ""
         ts = int(d.get("时间戳", int(time.time()*1000)))
         if 域 in {"提示词", "回复思考"} or "模型连接-府" in iface or "调用模型" in iface:
-            return _llm_event(d, ts, tid, iface, 域, line)
+            r = _llm_event(d, ts, tid, iface, 域, line)
+            sys.stderr.write(f"[dispatch] LLM _parsed={isinstance(r.get('_parsed'), dict)}\n")
+            return r
         if 域 in {"工具调用", "工具返回"} or "道术施展-府" in iface or "工具循环" in iface:
-            return _tool_event(d, ts, tid, iface, 域, line)
+            r = _tool_event(d, ts, tid, iface, 域, line)
+            sys.stderr.write(f"[dispatch] Tool _parsed={isinstance(r.get('_parsed'), dict)}\n")
+            return r
     except Exception:
         pass
     return None
@@ -273,7 +277,11 @@ def read_incremental(src):
             if ev:
                 append_event(ev)
                 added += 1
+                if added == 1 and '_role_kind' in ev:
+                    sys.stderr.write(f"[read_incremental] {src['name']} first add: _parsed={isinstance(ev.get('_parsed'), dict)}\n")
         src["last_size"] = cur
+        if added > 0:
+            sys.stderr.write(f"[read_incremental] {src['name']} added={added} total=EVENT_BUS{len(EVENT_BUS)}\n")
         return added
     except FileNotFoundError:
         return 0
