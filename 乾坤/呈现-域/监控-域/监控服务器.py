@@ -118,6 +118,58 @@ def assess():
         })
     return 评估
 
+def tasks():
+    """任务级聚合（监控页主视图）：一行一个任务线。
+    列：要求id / 方向 / 状态/结论 / 耗时 / token / 产物数 / 验收意见摘要。
+    附每任务的完整执行链(白箱记录按 阶段 分组)，供前端点行展开。
+    """
+    任务线们 = load_jsonl(os.path.join(STATUS, "任务线.jsonl"))
+    要求们 = load_jsonl(os.path.join(STATUS, "要求.jsonl"))
+    验收们 = load_jsonl(os.path.join(STATUS, "验收.jsonl"))
+    指标们 = load_jsonl(os.path.join(STATUS, "指标.jsonl"))
+    要求map = {r.get("id"): r for r in 要求们}
+    验收map = {}
+    for a in 验收们:
+        rid = a.get("验收", {}).get("要求id") or a.get("要求id")
+        if rid: 验收map.setdefault(rid, a)
+    指标map = {}
+    for m in 指标们:
+        rid = m.get("要求id")
+        if rid: 指标map.setdefault(rid, m)
+    # 观测记录按 要求id 归类（白箱执行链）：tasks 不内嵌全文链（会撑爆 payload），
+    # 只统计条数供前端提示；点行时前端再调 /api/chain?要求=xx 拉取(概要/全文)。
+    链map = {}
+    for r in load_jsonl(OBSREC):
+        关联 = r.get("关联") or {}
+        rid = 关联.get("要求")
+        if rid:
+            链map.setdefault(rid, []).append(r)
+    行们 = []
+    for t in 任务线们:
+        rid = t.get("要求id") or ""
+        验收 = 验收map.get(rid) or {}
+        指标 = 指标map.get(rid) or {}
+        # 产物/token 从最新验收回执取
+        用量 = (验收.get("用量") or {})
+        产物 = 验收.get("产物") or []
+        链 = 链map.get(rid) or []
+        行们.append({
+            "要求": rid,
+            "任务线": t.get("id", ""),
+            "方向": (要求map.get(rid, {}).get("方向", "") or t.get("想法内容") or "")[:90],
+            "状态": t.get("状态", ""),
+            "结论": t.get("结论", ""),
+            "耗时": fmt_hm(指标.get("耗时毫秒") or 0),
+            "token": (用量.get("总计") or 0),
+            "产物数": len(产物) if isinstance(产物, list) else 0,
+            "打回原因": (验收.get("终裁依据") or "")[:120],
+            "链数": len(链),
+            "时间": t.get("时间", 0),
+        })
+    行们.sort(key=lambda x: x.get("时间", 0))
+    return 行们
+
+
 def timeline(require_filter=True):
     events = load_events()
     行s = []
@@ -224,6 +276,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         q[up.unquote(k)] = up.unquote(v)
             if path == "/api/summary": self._json(task_summary())
             elif path == "/api/assess": self._json(assess())
+            elif path == "/api/tasks": self._json(tasks())
             elif path == "/api/timeline": self._json(timeline())
             elif path == "/api/obs": self._json(obs_blocks())
             elif path == "/api/records": self._json(records(q))
