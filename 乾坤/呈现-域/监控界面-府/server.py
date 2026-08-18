@@ -157,6 +157,20 @@ def _llm_event(d, ts, tid, iface, 域, line):
         if m.get("role") == "user":
             last_user = (m.get("content") or "")
             break
+    # 预解析嵌套：让前端不再是字符串化 JSON
+    parsed = {
+        "时间戳": d.get("时间戳"),
+        "域": 域,
+        "接口": iface,
+        "角色": d.get("角色"),
+        "载荷": {
+            "模型": msg.get("model"),
+            "max_tokens": msg.get("max_tokens"),
+            "messages": msgs,
+            "内容_raw": cont,
+        },
+        "关联": d.get("关联"),
+    }
     return {
         "ts": ts,
         "源": "模型连接-府/LLM调用",
@@ -167,6 +181,7 @@ def _llm_event(d, ts, tid, iface, 域, line):
         "证据": last_user[:80],
         "_task_id": tid,
         "_raw": line,
+        "_parsed": parsed,
         "_role_kind": "llm",
         "层": "llm",
         "类型": "LLM",
@@ -177,16 +192,36 @@ def _tool_event(d, ts, tid, iface, 域, line):
     payload = d.get("载荷", {}) or {}
     cont = payload.get("内容", "") or ""
     tool_name = iface.split("::")[-1] if "::" in iface else iface
+    # 预解析嵌套：载荷.内容 可能是 JSON 字符串
+    inner = None
+    if cont:
+        try:
+            inner = json.loads(cont)
+        except Exception:
+            inner = None
+    parsed = {
+        "时间戳": d.get("时间戳"),
+        "域": 域,
+        "接口": iface,
+        "角色": d.get("角色"),
+        "载荷": {
+            "parsed": inner if inner is not None else cont,
+            "内容_raw": cont,
+            "附加": payload.get("附加"),
+        },
+        "关联": d.get("关联"),
+    }
     return {
         "ts": ts,
         "源": "道术施展-府/工具调用",
         "动作": f"{域} · {tool_name}",
-        "影响": [{"类型":"工具调用","接口":iface,"角色":域}],
+        "影响": [{"类型":"工具调用","接口":iface,"工具": tool_name, "parsed": inner is not None}],
         "token": {"提示词":0,"输出":0,"缓存":0,"总计":0},
         "耗时ms": 0,
         "证据": (cont or "")[:120],
         "_task_id": tid,
         "_raw": line,
+        "_parsed": parsed,
         "_role_kind": "tool",
         "层": "tool",
         "类型": "工具",
@@ -221,6 +256,7 @@ def build_sources():
             p = state_dir / fname
             if p.exists():
                 SOURCES.append({"path": p, "transformer": tf, "last_size": 0, "name": "状态/" + fname})
+    sys.stderr.write(f"[build_sources] SOURCES={len(SOURCES)}: {[s['name'] for s in SOURCES]}\n")
 
 def read_incremental(src):
     try:
@@ -352,7 +388,7 @@ def get_session(task_id):
             "耗时ms": e.get("耗时ms", 0),
             "影响": e.get("影响", []),
             "证据": e.get("证据", ""),
-            "全量": e.get("_raw", ""),
+            "全量": e.get("_parsed", e.get("_raw", "")),
             "层": e.get("层", "l2"),
         })
     summary = {

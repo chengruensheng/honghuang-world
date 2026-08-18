@@ -35,42 +35,54 @@ function escapeHtml(s) {
         .replace(/"/g, "&quot;");
 }
 
-function formatLLMContent(raw) {
-    // 把 LLM 载荷里嵌套的 messages 数组转成可读
-    // 多轮 + system prompt 展示
-    try {
-        const m = JSON.parse(raw);
-        const msgs = m.messages || [];
-        let out = "模型: " + escapeHtml(m.model || "?") + "\n";
-        out += "max_tokens: " + escapeHtml(m.max_tokens || "?") + "\n";
-        out += "消息数: " + msgs.length + "\n\n";
-        msgs.forEach((mm, i) => {
-            out += "── " + (i + 1) + ". [" + escapeHtml(mm.role) + "] ──\n";
-            const c = mm.content || "";
-            if (typeof c === "string") {
-                out += escapeHtml(c.slice(0, 500));
-                if (c.length > 500) out += "\n... (共 " + c.length + " 字)";
-                out += "\n\n";
-            } else {
-                out += escapeHtml(JSON.stringify(c, null, 2));
-                out += "\n\n";
-            }
-        });
-        return out;
-    } catch (e) {
-        return escapeHtml(raw);
+function formatLLMContent(input) {
+    // input: 可能是 dict（_parsed 已解析）或 str（_raw 兜底）
+    let parsed = input;
+    if (typeof parsed === "string") {
+        try { parsed = JSON.parse(parsed); } catch (e) { return escapeHtml(parsed); }
     }
+    if (!parsed || typeof parsed !== "object") return "(空)";
+    // 优先 _parsed 形态（载荷.parsed.messages）+ 兜底 messages
+    const payload = parsed.载荷 && parsed.载荷.parsed ? parsed.载荷.parsed
+                  : parsed.载荷 && parsed.载荷.messages ? parsed.载荷
+                  : parsed;
+    const msgs = payload.messages || [];
+    const meta = parsed.载荷 || parsed;
+    let out = "模型: " + escapeHtml(meta.model || payload.model || "?") + "\n";
+    out += "max_tokens: " + escapeHtml(meta.max_tokens || payload.max_tokens || "?") + "\n";
+    out += "消息数: " + msgs.length + "\n";
+    if (parsed.接口) out += "接口: " + escapeHtml(parsed.接口) + "\n";
+    if (parsed.关联) out += "关联: " + escapeHtml(JSON.stringify(parsed.关联)) + "\n";
+    out += "\n";
+    msgs.forEach((mm, i) => {
+        out += "── " + (i + 1) + ". [" + escapeHtml(mm.role || "?") + "] ──\n";
+        const c = mm.content || "";
+        if (typeof c === "string") {
+            out += escapeHtml(c.slice(0, 800));
+            if (c.length > 800) out += "\n... (共 " + c.length + " 字)";
+            out += "\n\n";
+        } else {
+            out += escapeHtml(JSON.stringify(c, null, 2));
+            out += "\n\n";
+        }
+    });
+    return out;
 }
 
-function prettyJson(raw) {
-    // 尝试把 raw 解析为 JSON 后漂亮输出，失败则原样输出（mask 过长）
-    if (!raw) return "(空)";
-    try {
-        const o = JSON.parse(raw);
-        return JSON.stringify(o, null, 2);
-    } catch (e) {
-        return raw.length > 2000 ? raw.slice(0, 2000) + "\n... (截断)" : raw;
+function prettyJson(input) {
+    // input: dict（_parsed 已解析）或 str（_raw 兜底）
+    if (input == null || input === "") return "(空)";
+    if (typeof input === "string") {
+        try {
+            return JSON.stringify(JSON.parse(input), null, 2);
+        } catch (e) {
+            return input.length > 2000 ? input.slice(0, 2000) + "\n... (截断)" : input;
+        }
     }
+    if (typeof input === "object") {
+        return JSON.stringify(input, null, 2);
+    }
+    return String(input);
 }
 
 function pillClass(状态) {

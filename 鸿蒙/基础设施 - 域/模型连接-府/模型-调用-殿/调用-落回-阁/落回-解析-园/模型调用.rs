@@ -518,6 +518,64 @@ impl 模型提供者 for 模拟模型提供者 {
     }
 }
 
+/// 提供者句柄：Arc<dyn 模型提供者>（可 Clone，热替换语义）。
+pub type 提供者句柄 = std::sync::Arc<dyn 模型提供者 + Send + Sync>;
+
+/// 模型提供者注册表：按名注册/替换/注销/取用（阶段 3 · §14.10.3c 热替换，换模型不改主循环）。
+/// 对齐 dsh ctx.llm 服务：模型适配器注册为可替换提供方。
+#[derive(Default)]
+pub struct 模型提供者注册表 {
+    提供者们: std::collections::HashMap<String, 提供者句柄>,
+}
+
+impl 模型提供者注册表 {
+    /// 新建空注册表。
+    pub fn 新() -> Self {
+        Self::default()
+    }
+
+    /// 注册提供者：同名已存在则报错（防静默覆盖；替换用 替换）。
+    pub fn 注册(&mut self, 名: &str, 提供者: 提供者句柄) -> Result<(), String> {
+        if self.提供者们.contains_key(名) {
+            return Err(format!("模型提供者「{名}」已注册，用 替换 覆盖"));
+        }
+        self.提供者们.insert(名.to_string(), 提供者);
+        Ok(())
+    }
+
+    /// 替换提供者：覆盖同名，返回旧句柄（热替换主入口）。
+    pub fn 替换(&mut self, 名: &str, 提供者: 提供者句柄) -> Option<提供者句柄> {
+        self.提供者们.insert(名.to_string(), 提供者)
+    }
+
+    /// 注销提供者：返回被注销的句柄，未注册返回 None。
+    pub fn 注销(&mut self, 名: &str) -> Option<提供者句柄> {
+        self.提供者们.remove(名)
+    }
+
+    /// 取提供者。
+    pub fn 取(&self, 名: &str) -> Option<提供者句柄> {
+        self.提供者们.get(名).cloned()
+    }
+
+    /// 已注册的全部提供者名。
+    pub fn 全部名(&self) -> Vec<String> {
+        self.提供者们.keys().cloned().collect()
+    }
+}
+
+/// 全局提供者注册表：进程级单例（static OnceLock），供 派遣/验收 按名取模型提供者。
+/// 首次访问注册默认 "http" 提供者（HTTP模型提供者）。
+pub fn 全局提供者注册表() -> &'static std::sync::Mutex<模型提供者注册表> {
+    static 全局: std::sync::OnceLock<std::sync::Mutex<模型提供者注册表>> =
+        std::sync::OnceLock::new();
+    全局.get_or_init(|| {
+        let mut 表 = 模型提供者注册表::新();
+        let _ = 表.注册("http", std::sync::Arc::new(HTTP模型提供者));
+        std::sync::Mutex::new(表)
+    })
+}
+
 #[cfg(test)]
 mod 测试 {
     use super::{
@@ -643,5 +701,40 @@ Wait, let me output the real JSON.</think>
         // 带工具调用也返回固定文本。
         let (回复, _) = 模拟.调用带工具(&配置, &[], &[], 100).unwrap();
         assert!(matches!(回复, 模型回复::文本(内容) if 内容 == "固定回复"));
+    }
+
+    /// Provider 注册表：注册/重复注册报错/替换返回旧/注销取回（阶段 3 热替换）。
+    #[test]
+    fn 提供者注册表_注册替换注销() {
+        use super::{提供者句柄, 模型提供者注册表, 模拟模型提供者};
+        let mut 表 = 模型提供者注册表::新();
+        let 甲: 提供者句柄 = std::sync::Arc::new(模拟模型提供者 {
+            回复文本: "甲".to_string(),
+        });
+        let 乙: 提供者句柄 = std::sync::Arc::new(模拟模型提供者 {
+            回复文本: "乙".to_string(),
+        });
+
+        assert!(表.注册("模拟", 甲).is_ok(), "首次注册应成功");
+        assert!(表.注册("模拟", 乙.clone()).is_err(), "同名重复注册应报错");
+
+        // 替换返回旧句柄。
+        let 旧 = 表.替换("模拟", 乙.clone());
+        assert!(旧.is_some(), "替换应返回旧句柄");
+
+        // 取回新句柄。
+        let 取 = 表.取("模拟").expect("应取到");
+        let 配置 = peizhi_fu::模型配置 {
+            密钥: String::new(),
+            地址: String::new(),
+            模型: String::new(),
+        };
+        let (文本, _) = 取.调用(&配置, &[], 100).unwrap();
+        assert_eq!(文本, "乙", "替换后应取到新提供者");
+
+        // 注销取回。
+        assert!(表.注销("模拟").is_some());
+        assert!(表.取("模拟").is_none());
+        assert!(表.注销("不存在").is_none());
     }
 }

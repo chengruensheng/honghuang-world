@@ -25,6 +25,16 @@ pub struct 执行角色 {
     pub 契约: String,
 }
 
+/// 角色生命周期状态（对齐 Cordis 插件生命周期：登记→就绪→生效→卸载）。
+/// 阶段 3 角色插件化（融合蓝图 §14.10）：登记 = 入册未校验；就绪 = 依赖可用；生效 = 副作用已注册；卸载 = 卡已移除。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum 角色状态 {
+    已登记,
+    已就绪,
+    已生效,
+    已卸载,
+}
+
 /// 执行任务：道术施展-府接收的最小执行单元，不感知组织层。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct 执行任务 {
