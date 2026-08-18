@@ -2,6 +2,7 @@
 // 设计稿：监控界面-府/README.md §LOD 全程白箱契约
 // 三源订阅 `.上下文/事件流.jsonl` + `临时文件夹/模型流水-观测.log` + `.上下文/记录.jsonl`
 // SSE payload: {source:'event'|'model'|'shihai', ts, ev:<六字段+_raw>}
+// v3.1-r3: 浏览器强刷提示 + 限制 recent/live 上限 + renderTimeline slice(0,200)
 
 const $ = (s) => document.querySelector(s);
 
@@ -56,7 +57,10 @@ function fmtMs(ms) {
 
 function inferTaskId(ev) {
     if (!ev || typeof ev !== "object") return null;
-    const p = ev.载荷 || {};
+    // 兼容两种结构：(a) 白箱六字段 ev.影响[].载荷 (b) 原始 ev._raw.载荷
+    let p = (ev.影响 && ev.影响[0] && ev.影响[0].载荷) || {};
+    if (!p || Object.keys(p).length === 0) p = (ev._raw && ev._raw.载荷) || {};
+    if (!p || Object.keys(p).length === 0) p = ev.载荷 || {};
     if (typeof p.要求id === "string") return p.要求id;
     if (typeof p.id === "string" && TASK_ID_PREFIX_RE.test(p.id)) return p.id;
     if (typeof p.想法id === "string" && TASK_ID_PREFIX_RE.test(p.想法id)) return p.想法id;
@@ -241,12 +245,12 @@ function buildLodNode(source, ev) {
 // ===== 时间线渲染 =====
 function renderTimeline() {
     const wrap = $("#timeline-view");
-    if (state.recent.length === 0 && state.live.length === 0) {
+    wrap.innerHTML = "";
+    const all = [...state.live, ...state.recent];
+    if (all.length === 0) {
         wrap.innerHTML = '<div class="evt-empty">暂无事件（等待三源写入）</div>';
         return;
     }
-    wrap.innerHTML = "";
-    const all = [...state.live, ...state.recent];
     // 按 (source, ts) 去重，保留全白箱
     const seen = new Set();
     const dedup = [];
@@ -254,18 +258,33 @@ function renderTimeline() {
         const key = (it.source || "") + "|" + (it.ev && it.ev.ts);
         if (!seen.has(key)) { seen.add(key); dedup.push(it); }
     });
-    // 注意：recent/live 已是白箱对象(ev = {...} 六字段) — 因为 server.py 装配后下传
     dedup.sort((a, b) => (b.ev?.ts || 0) - (a.ev?.ts || 0));
-    for (const it of dedup) {
+    // 限制 DOM 节点数：最多 200，超过丢弃最旧的
+    const limited = dedup.slice(0, 200);
+    // 最新 3 条默认展开 L1（事件直播感更直接）；其余折叠
+    const autoOpen = new Set(limited.slice(0, 3).map(it => idOf(it.source, it.ev)));
+    state.openL1 = autoOpen;
+    // 用 DocumentFragment 批量插入避免多次回流
+    const frag = document.createDocumentFragment();
+    for (const it of limited) {
         if (!it.ev) continue;
-        wrap.appendChild(buildLodNode(it.source, it.ev));
+        const node = buildLodNode(it.source, it.ev);
+        const id = idOf(it.source, it.ev);
+        if (autoOpen.has(id)) {
+            const l1 = node.querySelector(".l1");
+            const btn = node.querySelector(".l0-l1-toggle");
+            if (l1) l1.style.display = "block";
+            if (btn) btn.textContent = "▾ 收起";
+        }
+        frag.appendChild(node);
     }
+    wrap.appendChild(frag);
     wrap.scrollTop = wrap.scrollHeight;
 }
 
 function pushLive(source, ev) {
     state.live.unshift({ source, ev });
-    if (state.live.length > 200) state.live.length = 200;
+    if (state.live.length > 80) state.live.length = 80;
     state.events++;
     $("#footer-events").textContent = state.events;
     $("#footer-events-foot").textContent = state.events;
@@ -277,8 +296,7 @@ function pushLive(source, ev) {
 
 // ===== 任务树 =====
 function pushToTree(source, ev) {
-    // model 源对任务贡献有限（除非有要求 id），只把 event/shihai 归类
-    if (source !== "event") return;
+    // event/shihai 都尝试聚合（按要求 id）。model 没载荷要求 id，跳过。
     const tid = inferTaskId(ev);
     if (!tid) return;
     if (!state.tree[tid]) {
@@ -423,13 +441,12 @@ function switchTab(name) {
 // ===== 启动 =====
 async function boot() {
     try {
-        const r = await fetch("/api/events/recent?limit=200");
+        const r = await fetch("/api/events/recent?limit=80");
         const o = await r.json();
         const arr = (o.events || []).map(ev => {
-            // recent 接口直接返 ev 数组(ev 已装配)；补 source 字段
             return { source: ev._source || "event", ev: ev };
         });
-        state.recent = arr;
+        state.recent = arr.slice(-80);
         for (const it of arr) pushToTree(it.source, it.ev);
     } catch (e) {
         console.error("recent", e);
