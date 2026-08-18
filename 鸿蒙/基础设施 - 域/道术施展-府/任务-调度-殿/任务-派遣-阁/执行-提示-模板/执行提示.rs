@@ -75,3 +75,16 @@ pub fn 渲染读现状提示(背景: &str, 目标: &str) -> String {
 pub fn 渲染续跑提示(报错: &str) -> String {
     续跑提示模板.replace("{报错}", 报错)
 }
+
+#[cfg(test)]
+mod 测试 {
+    use super::*;
+
+    #[test]
+    fn 续跑提示含报错与续跑纪律() {
+        let 报错 = "error[E0425]: cannot find value `foo` in this scope";
+        let 提示 = 渲染续跑提示(报错);
+        assert!(提示.contains(报错), "应包含传入的报错文本：{提示}");
+        assert!(提示.contains("续跑纪律"), "应包含「续跑纪律」字样：{提示}");
+    }
+}
