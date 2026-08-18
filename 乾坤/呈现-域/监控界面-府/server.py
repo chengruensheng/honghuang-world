@@ -536,6 +536,8 @@ def background_scan():
 # ===== HTTP 路由 =====
 
 class MonHandler(http.server.BaseHTTPRequestHandler):
+    # SSE 必须 HTTP/1.1 + chunked，否则一次写完即被关。
+    protocol_version = "HTTP/1.1"
     def log_message(self, fmt, *args):
         return
 
