@@ -85,10 +85,23 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
     }
 
     /// 入队（追加一行 JSON）。内部短锁防并发 append 行交错。
+    /// 防JSON粘连：文件非空且末尾非换*换行时先补换行（上次写入或外部修改可能丢末尾换行，
+    /// 2026-08-19 实测：手动修改任务线.jsonl后末尾换行丢失，新入队的JSON粘在旧JSON后面，
+    /// 逐行解析读不到新任务）。
     pub fn 入队(&self, 项: &T) -> Result<(), String> {
         let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化队列项失败: {错误}"))?;
         use std::io::Write;
         let 锁 = self.排他()?;
+        if let Ok(已有) = fs::read_to_string(&self.路径) {
+            if !已有.is_empty() && !已有.ends_with('\n') {
+                let mut 补 = fs::OpenOptions::new()
+                    .append(true)
+                    .open(&self.路径)
+                    .map_err(|错误| format!("打开补换行失败: {错误}"))?;
+                补.write_all(b"\n")
+                    .map_err(|错误| format!("补换行失败: {错误}"))?;
+            }
+        }
         let mut 文件 = fs::OpenOptions::new()
             .create(true)
             .append(true)
