@@ -35,10 +35,12 @@ pub fn 扫描世界(根目录: &Path) -> 巡世报告 {
 }
 
 /// ① 园无测试检测：园目录下 .rs 未含测试标记（跳过 证道/单元测试-府）→ 产候选，优先级=中。
+/// 园内全无测试时再查证道域（单元测试-府）是否有按园名关键词匹配的测试文件，有则跳过。
 fn 检园无测试(根目录: &Path) -> Vec<巡世候选> {
     let 排除项 = shihai_fu::扫描排除项(根目录);
     let mut 园们 = Vec::new();
     找园(根目录, &排除项, &mut 园们);
+    let 证道测试们 = 收集证道测试文件(根目录);
     let mut 候选 = Vec::new();
     for 园路径 in &园们 {
         // 跳过 证道/单元测试-府 测试域。
@@ -57,6 +59,10 @@ fn 检园无测试(根目录: &Path) -> Vec<巡世候选> {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
+            // 证道域已有对应测试 → 跳过（测试约定在证道域而非园内）。
+            if 证道已测(&园名, &证道测试们) {
+                continue;
+            }
             候选.push(巡世候选 {
                 目标: format!("为{园名}生产模块追加单元测试"),
                 依据: format!("园路径 {}", 园路径.display()),
@@ -108,6 +114,48 @@ fn 含测试标记(rs: &Path) -> bool {
         return false;
     };
     内容.contains("#[test]") || 内容.contains("#[cfg(test)]") || 内容.contains("mod 测试")
+}
+
+/// 收集证道域下所有 .rs 文件路径，用于按园名匹配已有测试。
+/// 测试约定落在 `证道/` 而非园内，预收集一次供各园复用。
+fn 收集证道测试文件(根目录: &Path) -> Vec<PathBuf> {
+    let 证道根 = 根目录.join("证道");
+    if !证道根.exists() {
+        return Vec::new();
+    }
+    let mut 结果 = Vec::new();
+    递归收集rs(&证道根, &mut 结果);
+    结果
+}
+
+/// 递归收集目录下所有 .rs 文件。
+fn 递归收集rs(目录: &Path, 结果: &mut Vec<PathBuf>) {
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return;
+    };
+    for 条目 in 条目们.flatten() {
+        let 路径 = 条目.path();
+        if 路径.is_dir() {
+            递归收集rs(&路径, 结果);
+        } else if 路径
+            .file_name()
+            .map(|n| n.to_string_lossy().ends_with(".rs"))
+            .unwrap_or(false)
+        {
+            结果.push(路径);
+        }
+    }
+}
+
+/// 证道域是否已有对应园名的测试：按园名关键词匹配证道测试文件路径。
+/// 园名 `即时-应答-园` → 基名 `即时-应答` 与去连字符 `即时应答`，证道路径含任一即认为已测。
+fn 证道已测(园名: &str, 证道测试们: &[PathBuf]) -> bool {
+    let 基名 = 园名.trim_end_matches('园').trim_end_matches('-');
+    let 去连字符 = 基名.replace('-', "");
+    证道测试们.iter().any(|路径| {
+        let 路径串 = 路径.to_string_lossy();
+        路径串.contains(基名) || 路径串.contains(&去连字符)
+    })
 }
 
 /// ② clippy 警告检测：跑 cargo clippy，有警告 → 产候选，优先级=中。
