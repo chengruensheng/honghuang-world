@@ -11,6 +11,11 @@ use rizhi_fu::info;
 /// 教训格位名（对齐格位清单·经历范畴）。
 pub const 教训格位: &str = "教训";
 
+/// 判定教训是否有效：未失效且非 `<think>` 块残留（thinking:off 前旧教训以英文 `<think>` 开头）。
+pub fn 是有效教训(记录: &记录) -> bool {
+    !记录.失效 && !记录.内容.starts_with("<think>")
+}
+
 /// 归因教训：一次执行结束 → 唤 LLM 复盘归因 → 写「教训」格位（来源 LLM，证据 = 结果说明）。
 /// 失败必归因（对症困难任务）；成功不归因（省 token，正样本价值低）。
 pub fn 归因教训(
@@ -44,7 +49,7 @@ pub fn 注入教训(存储: &模型存储, 条数: usize) -> Result<String, Stri
     let 近们: Vec<_> = 记录们
         .into_iter()
         .rev()
-        .filter(|记录| !记录.失效)
+        .filter(是有效教训)
         .take(条数)
         .collect();
     if 近们.is_empty() {
@@ -95,5 +100,17 @@ mod 测试 {
         // 注回 2 条应都含
         let 全量 = 注入教训(&存储, 2).unwrap();
         assert!(全量.contains("旧教训") && 全量.contains("新教训"));
+    }
+
+    #[test]
+    fn 是有效教训_正常教训返回真() {
+        let 记录 = 记录::新(教训格位, "先读后写再改", "测试", "LLM");
+        assert!(是有效教训(&记录));
+    }
+
+    #[test]
+    fn 是有效教训_think块残留返回假() {
+        let 记录 = 记录::新(教训格位, "<think>The user wants me to...", "测试", "LLM");
+        assert!(!是有效教训(&记录), "think块残留应判无效");
     }
 }

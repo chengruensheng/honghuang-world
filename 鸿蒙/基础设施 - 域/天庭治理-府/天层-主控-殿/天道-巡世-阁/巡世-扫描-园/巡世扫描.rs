@@ -161,7 +161,7 @@ fn 检教训重复(根目录: &Path) -> Vec<巡世候选> {
     };
     let mut 分组: HashMap<String, Vec<String>> = HashMap::new();
     for 记录 in &记录们 {
-        if 记录.失效 {
+        if !shihai_fu::是有效教训(记录) {
             continue;
         }
         let 前缀: String = 记录.内容.chars().take(40).collect();
