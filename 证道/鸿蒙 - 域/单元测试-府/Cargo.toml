@@ -14,6 +14,7 @@ tianting_fu = { path = "../../../鸿蒙/基础设施 - 域/天庭治理-府" }
 rizhi_fu = { path = "../../../鸿蒙/基础设施 - 域/日志记录-府" }
 moxing_fu = { path = "../../../鸿蒙/基础设施 - 域/模型连接-府" }
 peizhi_fu = { path = "../../../鸿蒙/世界配置 - 域/配置管理-府" }
+mingling_fu = { path = "../../../乾坤/呈现-域/命令操作-府" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

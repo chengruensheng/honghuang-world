@@ -1019,6 +1019,7 @@ name = "zhengdao_fu"
 version = "0.1.0"
 dependencies = [
  "daoshu_fu",
+ "mingling_fu",
  "moxing_fu",
  "peizhi_fu",
  "rizhi_fu",

@@ -3,6 +3,8 @@
 
 #![allow(non_snake_case)]
 
+#[path = "命令操作-验证-殿/模块.rs"]
+pub mod 命令操作_验证_殿;
 #[path = "天庭治理-验证-殿/模块.rs"]
 pub mod 天庭治理_验证_殿;
 #[path = "日志记录-验证-殿/模块.rs"]
