@@ -126,4 +126,18 @@ mod 测试 {
         assert!(!提示.contains("{预算}"), "占位符 {{预算}} 应被替换：{提示}");
         assert!(!提示.contains("{规则}"), "占位符 {{规则}} 应被替换：{提示}");
     }
+
+    #[test]
+    fn 读现状提示含读文件们JSON键() {
+        let 提示 = 渲染读现状提示("背景ABC", "目标XYZ");
+        assert!(
+            提示.contains("\"读文件们\""),
+            "应含「读文件们」JSON键：{提示}"
+        );
+        assert!(提示.contains("背景ABC"), "背景应被注入：{提示}");
+        assert!(提示.contains("目标XYZ"), "目标应被注入：{提示}");
+        assert!(!提示.contains("{背景}"), "占位符 {{背景}} 应被替换：{提示}");
+        assert!(!提示.contains("{目标}"), "占位符 {{目标}} 应被替换：{提示}");
+        assert!(!提示.contains("subtask goal"), "不应残留未替换标识：{提示}");
+    }
 }
