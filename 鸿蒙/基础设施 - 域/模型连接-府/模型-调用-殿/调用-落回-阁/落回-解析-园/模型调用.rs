@@ -249,6 +249,10 @@ pub fn 解析用量(文本: &str) -> 用量 {
 }
 
 /// 构造 OpenAI 兼容请求体（独立出便于测试）。
+/// 显式声明 thinking:off 与 temperature：纯文本结构化调用（想法解析/设计/评审/记忆归纳等）
+/// 走 thinking:off——JSON 直接输出、省 token、防 think 吃光配额致真内容截断
+/// （设计稿 §12 P2-9：MiniMax-M3 自适应 think 曾吃光 4096 配额、真 JSON 被截断回退模板）。
+/// temperature 对齐 构造工具请求体 的显式声明方式，固定可复现、可收敛。
 pub fn 构造请求体(
     配置: &模型配置, 消息们: &[对话消息], 输出上限: u32
 ) -> String {
@@ -259,6 +263,8 @@ pub fn 构造请求体(
             "content": 消息.内容,
         })).collect::<Vec<_>>(),
         "max_tokens": 输出上限,
+        "temperature": 0.2,
+        "thinking": {"type": "off"},
     })
     .to_string()
 }
