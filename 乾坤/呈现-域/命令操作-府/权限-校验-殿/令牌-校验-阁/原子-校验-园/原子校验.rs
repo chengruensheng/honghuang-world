@@ -22,6 +22,8 @@ pub fn 写命令清单() -> &'static [(&'static str, &'static str)] {
 }
 
 /// 校验调用：写命令须 AI 令牌（-t 或环境变量 WORLD_AI_TOKEN）
+/// 校验调用：读命令免令牌直接 Ok；写命令须有令牌否则 Err 描述缺令牌。
+/// Ok=通过 Err=缺令牌被拒
 pub fn 校验调用(调用: &调用, 环境令牌: Option<&str>) -> Result<(), String> {
     let 是否写 = 写命令清单()
         .iter()
