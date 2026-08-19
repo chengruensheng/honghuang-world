@@ -99,6 +99,7 @@ mod tests {
 
     /// 行尾保持（观察点 7）：原文件 CRLF → 写入 LF 内容自动转 CRLF，防整文件行尾污染。
     #[test]
+    #[allow(non_snake_case)]
     fn 写文件_保持原CRLF行尾() {
         let 临时目录 = std::env::temp_dir().join(format!("写文件测试-行尾-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);
@@ -118,6 +119,7 @@ mod tests {
 
     /// 行尾保持：原文件 LF → 保持 LF（不转 CRLF）。
     #[test]
+    #[allow(non_snake_case)]
     fn 写文件_保持原LF行尾() {
         let 临时目录 =
             std::env::temp_dir().join(format!("写文件测试-行尾LF-{}", std::process::id()));

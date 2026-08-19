@@ -242,7 +242,7 @@ function buildLodNode(source, ev) {
     return wrap;
 }
 
-// ===== 时间线渲染 =====
+// ===== 时间线渲染（首屏或切回时间线 tab 时调，SSE push 不再走这里）=====
 function renderTimeline() {
     const wrap = $("#timeline-view");
     wrap.innerHTML = "";
@@ -251,7 +251,7 @@ function renderTimeline() {
         wrap.innerHTML = '<div class="evt-empty">暂无事件（等待三源写入）</div>';
         return;
     }
-    // 按 (source, ts) 去重，保留全白箱
+    // 按 (source, ts) 去重
     const seen = new Set();
     const dedup = [];
     all.forEach((it) => {
@@ -259,24 +259,11 @@ function renderTimeline() {
         if (!seen.has(key)) { seen.add(key); dedup.push(it); }
     });
     dedup.sort((a, b) => (b.ev?.ts || 0) - (a.ev?.ts || 0));
-    // 限制 DOM 节点数：最多 200，超过丢弃最旧的
     const limited = dedup.slice(0, 200);
-    // 最新 3 条默认展开 L1（事件直播感更直接）；其余折叠
-    const autoOpen = new Set(limited.slice(0, 3).map(it => idOf(it.source, it.ev)));
-    state.openL1 = autoOpen;
-    // 用 DocumentFragment 批量插入避免多次回流
     const frag = document.createDocumentFragment();
     for (const it of limited) {
         if (!it.ev) continue;
-        const node = buildLodNode(it.source, it.ev);
-        const id = idOf(it.source, it.ev);
-        if (autoOpen.has(id)) {
-            const l1 = node.querySelector(".l1");
-            const btn = node.querySelector(".l0-l1-toggle");
-            if (l1) l1.style.display = "block";
-            if (btn) btn.textContent = "▾ 收起";
-        }
-        frag.appendChild(node);
+        frag.appendChild(buildLodNode(it.source, it.ev));
     }
     wrap.appendChild(frag);
     wrap.scrollTop = wrap.scrollHeight;
@@ -292,6 +279,51 @@ function pushLive(source, ev) {
     state.rateEvents.push(now);
     while (state.rateEvents.length > 0 && now - state.rateEvents[0] > 5000) state.rateEvents.shift();
     $("#footer-rate").textContent = (state.rateEvents.length / 5).toFixed(1);
+}
+
+// 单条 SSE 推送：只追加到 DOM 末尾，不全量重建。
+// 关键：保留 state.openL1 / openL2 用户展开状态。SSE 推送触发后 renderTimeline
+// 不能重新生成 DOM 树（否则用户刚点的 L1/L2 在 0.3s 后被清空 = "点不动"）。
+function appendLiveToDom(source, ev) {
+    const wrap = $("#timeline-view");
+    if (wrap.querySelector(".evt-empty")) {
+        wrap.innerHTML = "";
+    }
+    if (wrap.children.length >= 200) {
+        // 删除最旧一个非用户手动展开的卡片（保留用户已展开的）
+        let removed = false;
+        for (let i = 0; i < wrap.children.length; i++) {
+            const c = wrap.children[i];
+            const id = c.dataset.id;
+            if (id && !state.openL1.has(id) && !state.openL2.has(id)) {
+                c.remove();
+                removed = true;
+                break;
+            }
+        }
+        if (!removed && wrap.children.length >= 200) {
+            // 用户都展开了，只能删最旧一个
+            if (wrap.firstElementChild) wrap.firstElementChild.remove();
+        }
+    }
+    const node = buildLodNode(source, ev);
+    // 最新事件：自动展开 L1（直播感）
+    const id = idOf(source, ev);
+    if (!state.openL1.has(id) && !state.openL2.has(id)) {
+        // 默认折叠（除非用户主动展开）
+    }
+    // 默认让最新的 1 条自动展开 L0 之外不展开
+    if (wrap.children.length === 0) {
+        // 第一条默认展开 L1
+        const l1 = node.querySelector(".l1");
+        const btn = node.querySelector(".l0-l1-toggle");
+        if (l1) { l1.style.display = "block"; state.openL1.add(id); }
+        if (btn) btn.textContent = "▾ 收起";
+    }
+    wrap.appendChild(node);
+    // 贴底：仅在用户已经在底部时自动滚；否则不滚
+    const dist = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight;
+    if (dist < 100) wrap.scrollTop = wrap.scrollHeight;
 }
 
 // ===== 任务树 =====
@@ -416,9 +448,9 @@ function connectSSE() {
             const p = JSON.parse(msg.data);
             if (p.source && p.ev) {
                 pushLive(p.source, p.ev);
-                renderTimeline();
-                if (state.activeTab === "tree") renderTree();
+                appendLiveToDom(p.source, p.ev);
                 pushToTree(p.source, p.ev);
+                if (state.activeTab === "tree") renderTree();
                 // 不要在 SSE 回调里 fetch tasks，浏览器会因并发连接被 ERR_ABORTED
             }
         } catch (e) { console.error("sse", e); }

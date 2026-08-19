@@ -128,6 +128,7 @@ mod 测试 {
     }
 
     #[test]
+    #[allow(non_snake_case)]
     fn 读现状提示含读文件们JSON键() {
         let 提示 = 渲染读现状提示("背景ABC", "目标XYZ");
         assert!(

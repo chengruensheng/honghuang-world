@@ -126,6 +126,7 @@ mod tests {
 
     /// 行尾保持（观察点 7）：原文 CRLF、新文 LF → 替换片段转 CRLF，防混合行尾。
     #[test]
+    #[allow(non_snake_case)]
     fn 改文件_新文LF转CRLF防混合行尾() {
         let 临时目录 = std::env::temp_dir().join(format!("改文件测试-行尾-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);

@@ -674,6 +674,7 @@ mod 测试 {
     /// 而应回退到「取前 80 字符」的截断行为（崩溃安全 + 截断行为正确）。
     /// 对应 `pub(crate) fn 参数摘要` 中 `serde_json::from_str` 失败时的 `else` 分支。
     #[test]
+    #[allow(non_snake_case)]
     fn 参数摘要_非法JSON_不崩溃且截断到八十字符() {
         // 1) 非法 JSON + 长度未超 80 → 原样返回（不截断）。
         let 短乱码 = "hello world this is not json {{".to_string();
@@ -752,6 +753,7 @@ mod 测试 {
     /// 参数摘要 · 中文字符按 char 截断（不按字节）：防 UTF-8 切到字节中间产生乱码/panic。
     /// 100 个「字」= 300 字节 UTF-8，按 char 截断应得 80 个完整「字」。
     #[test]
+    #[allow(non_snake_case)]
     fn 参数摘要_非法JSON_中文字符按char截断() {
         let 中长: String = "字".repeat(100);
         let 字节长 = 中长.len();

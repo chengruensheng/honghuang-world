@@ -338,8 +338,11 @@ def _read_jsonl_lines(raw_text):
 
 # ===== 三源白箱 (v3.1) =====
 # 共同事实：白箱契约六字段(ts / 源 / 动作 / 影响[] / token / 耗时ms / 证据)。
-# 三源：(1) .上下文/事件流.jsonl  (2) .上下文/观测/记录.jsonl（jiance_fu 六域）  (3) .上下文/记录.jsonl
+# 三源：(1) .上下文/事件流.jsonl  (2) 临时文件夹/模型流水-观测.log  (3) .上下文/记录.jsonl
 EVENT_FOLLOW_RECENT_LIMIT = 200
+# 运行时裁剪——事件流 jsonl 最多保留 1万 行，超出丢最旧的，避免 follow 越来越慢
+EVENT_FOLLOW_MAX_LINES = 10000
+EVENT_FOLLOW_TRIM_INTERVAL = 30  # 秒
 
 def _follow_target(path, last_size):
     """从 last_size 起读新字节，返回 (新行 raw list, 新 size)。"""
@@ -389,8 +392,25 @@ def _装配白箱(source, raw):
                 "_raw": d,
             }
         if source == "model":
-            # 模型观测是块字段切分；raw 是 dict: {time, prompt, response, usage, cost, ts}
-            usage = raw.get("usage") or {}
+            # 模型观测 input 兼容两种格式：
+            # (a) 旧 _parse_model_log 块: {ts,model,prompt,response,usage,cost,耗时ms}
+            # (b) _tx_obs_dispatch 观测源格式: 已带 源/动作/影响/token/证据/_raw:{usage,messages,...} 但缺 _source
+            if isinstance(raw, dict) and raw.get("_source") is None:
+                # (b) 观测源 dict —— 在 _raw.usage 取真实 token；补齐 _source
+                inner_usage = (raw.get("_raw") or {}).get("usage") or {}
+                tok = raw.get("token") or {}
+                # 优先 _raw.usage（更真实），否则用顶层 token
+                提示词 = int(inner_usage.get("提示词") or tok.get("提示词") or 0)
+                输出 = int(inner_usage.get("输出") or tok.get("输出") or 0)
+                缓存 = int(inner_usage.get("缓存") or tok.get("缓存") or 0)
+                总计 = int(inner_usage.get("总计") or tok.get("总计") or (提示词 + 输出))
+                ev = dict(raw)
+                ev["_source"] = "model"
+                ev["token"] = {"提示词": 提示词, "输出": 输出, "缓存": 缓存, "总计": 总计}
+                ev["耗时ms"] = int(raw.get("耗时ms") or 0)
+                return ev
+            # (a) 块格式
+            usage = (raw.get("usage") if isinstance(raw, dict) else None) or {}
             return {
                 "_source": "model",
                 "ts": int(raw.get("ts") or 0),
@@ -421,6 +441,11 @@ FOLLOW_SOURCES = [
     {"source": "shihai", "path": STATE_DIR / "记录.jsonl", "last_size": 0, "transformer": None, "extra": None},
 ]
 FOLLOW_LOCK = threading.Lock()
+# 共享增量缓存（后台三源扫描线程把新事件推到这里；SSE 路径只读这里，不再每连接重扫）
+import collections
+LIVE_BUFFER = collections.deque(maxlen=500)
+LIVE_BUFFER_LOCK = threading.Lock()
+LIVE_PUSHED_LAST = {"event": 0, "model": 0, "shihai": 0}
 
 def follow_target_recent(source_key, limit):
     """读某 source 的最近 N 条事件按 ts desc。"""
@@ -436,10 +461,14 @@ def follow_target_recent(source_key, limit):
     if source_key == "model":
         # 观测/记录.jsonl 逐行装配：域=提示词/回复思考 → LLM；域=工具调用/工具返回 → Tool。
         # _tx_obs_dispatch 内部自行 json.loads，须传原始字符串行（勿预解析成 dict）。
+        # 装配后再走 _装配白箱("model", ev) 补齐 _source 字段 + 从 _raw.usage 提真实 token。
         for ln in raw_text.split("\n")[-limit * 10:]:
             if not ln.strip():
                 continue
-            ev = _tx_obs_dispatch(ln)
+            ev_raw = _tx_obs_dispatch(ln)
+            if not ev_raw:
+                continue
+            ev = _装配白箱("model", ev_raw)
             if ev:
                 out.append(ev)
     else:
@@ -485,7 +514,10 @@ def follow_model_inc(last_size):
     for ln in raw.split("\n"):
         if not ln.strip():
             continue
-        ev = _tx_obs_dispatch(ln)
+        ev_raw = _tx_obs_dispatch(ln)
+        if not ev_raw:
+            continue
+        ev = _装配白箱("model", ev_raw)
         if ev:
             out.append(ev)
     return out, new_size
@@ -684,6 +716,74 @@ def background_scan():
         except Exception:
             pass
         time.sleep(SCAN_INTERVAL_SEC)
+
+# ===== v3.1 后台扫描线程（共享缓存）=====
+def v31_scan_loop():
+    """单线程每 0.5s 扫三源增量；新事件 push 进 LIVE_BUFFER；SSE 路径只读 LIVE_BUFFER。
+    替代 SSE per-connection 扫文件——避免多客户端并发重复读 + 浏览器端 DOM 全量重建。"""
+    while True:
+        try:
+            with FOLLOW_LOCK:
+                sizes = {s["source"]: s["last_size"] for s in FOLLOW_SOURCES}
+            for src_name in ("event", "model", "shihai"):
+                last = sizes[src_name]
+                if src_name == "model":
+                    new_evs, new_last = follow_model_inc(last)
+                else:
+                    new_evs, new_last = follow_target_inc(src_name, last)
+                if new_evs:
+                    with LIVE_BUFFER_LOCK:
+                        for ev in new_evs:
+                            LIVE_BUFFER.append({"source": src_name, "ts": ev.get("ts", 0), "ev": ev})
+                        LIVE_PUSHED_LAST[src_name] = new_last
+                else:
+                    if new_last:
+                        LIVE_PUSHED_LAST[src_name] = new_last
+                with FOLLOW_LOCK:
+                    for s in FOLLOW_SOURCES:
+                        if s["source"] == src_name:
+                            s["last_size"] = new_last or s["last_size"]
+            # 三源每秒一行也不多；；0.5s 一次扫已经够实时
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+def v31_trim_loop():
+    """裁剪线程：每 30s 看 事件流.jsonl 行数 > 10000 就重写截到 10000 行；丢最旧的。
+    避免 follow_target_recent 每次读全文件越来越慢。"""
+    event_src = next((s for s in FOLLOW_SOURCES if s["source"] == "event"), None)
+    if event_src is None:
+        return
+    path = event_src["path"]
+    while True:
+        try:
+            if path.exists():
+                # 快速统计行数（小文件可一行 byte split）
+                with open(path, "rb") as f:
+                    raw = f.read()
+                lines = raw.split(b"\n")
+                # 末尾空行不计
+                while lines and not lines[-1].strip():
+                    lines.pop()
+                if len(lines) > EVENT_FOLLOW_MAX_LINES:
+                    keep = lines[-EVENT_FOLLOW_MAX_LINES:]
+                    new_raw = b"\n".join(keep) + b"\n"
+                    tmp = path.with_suffix(path.suffix + ".trim")
+                    with open(tmp, "wb") as f:
+                        f.write(new_raw)
+                    # 原子替换：os.replace
+                    try:
+                        os.replace(tmp, path)
+                    except Exception:
+                        os.remove(tmp)
+                    # 同步 last_size：让 follower 知道文件被重写，从末尾接着读
+                    with FOLLOW_LOCK:
+                        for s in FOLLOW_SOURCES:
+                            if s["source"] == "event":
+                                s["last_size"] = path.stat().st_size
+        except Exception:
+            pass
+        time.sleep(EVENT_FOLLOW_TRIM_INTERVAL)
 
 # ===== HTTP 路由 =====
 
@@ -894,8 +994,10 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
             return True
         def _w_comment(text):
             return _w((': ' + text + '\r\n').encode())
-        with FOLLOW_LOCK:
-            sizes = {s["source"]: s["last_size"] for s in FOLLOW_SOURCES}
+        # v3.1：SSE 路径只读 LIVE_BUFFER（v31_scan_loop 后台线程已经扫三源）
+        # 起步 cursor=当前长度；新事件按 source+ts 排序增量推
+        with LIVE_BUFFER_LOCK:
+            cursor = len(LIVE_BUFFER)
         try:
             _w_comment("stream-open")
         except Exception:
@@ -903,22 +1005,18 @@ class MonHandler(http.server.BaseHTTPRequestHandler):
         beat = 0
         try:
             while True:
-                # 三源扫描各取增量
-                for src_name in ("event", "model", "shihai"):
-                    last = sizes[src_name]
-                    if src_name == "model":
-                        new_evs, new_last = follow_model_inc(last)
+                with LIVE_BUFFER_LOCK:
+                    if len(LIVE_BUFFER) > cursor:
+                        # 取出 [cursor..len-1]，并前移 cursor
+                        new_items = list(LIVE_BUFFER)[cursor:]
+                        cursor = len(LIVE_BUFFER)
                     else:
-                        new_evs, new_last = follow_target_inc(src_name, last)
-                    if not new_evs:
-                        sizes[src_name] = new_last
-                        continue
-                    for ev in new_evs:
-                        payload = {"source": src_name, "ts": ev.get("ts", 0), "ev": ev}
-                        line = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
-                        if not _w(line):
-                            return
-                    sizes[src_name] = new_last
+                        new_items = []
+                for item in new_items:
+                    payload = {"source": item["source"], "ts": item["ts"], "ev": item["ev"]}
+                    line = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+                    if not _w(line):
+                        return
                 beat += 1
                 if beat % 5 == 0:
                     if not _w_comment("ping"):
@@ -975,6 +1073,11 @@ def main():
     SHARED["settings"]["port"] = port
     t = threading.Thread(target=background_scan, daemon=True)
     t.start()
+    # v3.1 后台扫描（共享缓存）+ 裁剪线程
+    t_scan = threading.Thread(target=v31_scan_loop, daemon=True, name="v31_scan")
+    t_scan.start()
+    t_trim = threading.Thread(target=v31_trim_loop, daemon=True, name="v31_trim")
+    t_trim.start()
     server = ThreadingHTTPServer(("0.0.0.0", port), MonHandler)
     print(f"[监控界面 v2 任务为中心] 启动 http://127.0.0.1:{port}")
     print(f"[监控界面 v2] 任务数={len(TASKS_RAW)} 事件总线={len(EVENT_BUS)}")

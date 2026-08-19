@@ -506,7 +506,7 @@ impl Drop for 沙箱守卫 {
 
 #[cfg(test)]
 mod 测试_渲染提示 {
-    use super::*;
+
     use crate::渲染落盘提示;
 
     #[test]
