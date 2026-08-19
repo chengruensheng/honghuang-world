@@ -190,3 +190,117 @@ pub fn 状态推进(当前: &要求状态, 目标: &要求状态) -> Result<要�
         Err(format!("非法状态推进：从 {:?} 到 {:?}", 当前, 目标))
     }
 }
+
+#[cfg(test)]
+mod 队列边界测试 {
+    //! 落盘 - 取队 - 园 · 队列边界测试：边界场景下入队对文件末尾无换行的容错。
+    //!
+    //! 测试隔离（2026-08-19）：进程级 `static Mutex<()>` 串行化 + 临时路径用
+    //! `process::id()` 命名，并行 cargo test 不再因 `std::env::temp_dir()` 残留
+    //! 导致水位断言假阴（照 `落盘取队测试.rs` 模式）。
+
+    use serde::{Deserialize, Serialize};
+    use std::fs;
+    use std::sync::Mutex;
+
+    /// 本 crate 测试进程级互斥锁：并行测试下临时路径不互相残留。
+    static 测试环境锁: Mutex<()> = Mutex::new(());
+
+    /// 造临时路径（用 process::id 隔离并行测试）。
+    fn 建临时路径(标签: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "识海测试-队列边界-{}-{}-{}",
+            标签,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    struct 测试项 {
+        名: String,
+    }
+
+    /// 边界（2026-08-19 整治）：外部改写或上次写入异常可能丢末尾换行，
+    /// 入队须自动补换行并与旧 JSON 隔开，避免逐行解析粘连失败。
+    #[test]
+    fn 末尾无换行_入队不粘连() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 路径 = 建临时路径("末尾无换行");
+
+        // 旧项原文（无尾随换行）
+        let 旧原文 = serde_json::to_string(&测试项 {
+            名: "一".to_string(),
+        })
+        .unwrap();
+        fs::write(&路径, &旧原文).unwrap();
+
+        // 前置：文件非空且不以换行结尾
+        let 前置 = fs::read_to_string(&路径).unwrap();
+        assert!(!前置.is_empty());
+        assert!(!前置.ends_with('\n'), "前置文件必须故意缺末尾换行");
+
+        let 队列 = super::落盘队列::<测试项>::打开(&路径);
+        队列
+            .入队(&测试项 {
+                名: "二".to_string(),
+            })
+            .unwrap();
+
+        // 字节级断言：旧 JSON 字符末尾与新 JSON 首字符之间须出现换行分隔
+        let 后置 = fs::read_to_string(&路径).unwrap();
+        assert!(
+            后置.contains(&format!("{旧原文}\n")),
+            "旧项后必须紧跟换行分隔，实际字节: {后置:?}"
+        );
+        // 逐行解析不得把两行合并为一段
+        let 行们: Vec<&str> = 后置.lines().filter(|行| !行.trim().is_empty()).collect();
+        assert_eq!(行们.len(), 2, "逐行解析应得两条独立 JSON，实际: {后置:?}");
+        assert_eq!(行们[0], 旧原文, "旧项必须原样保留");
+        let 新原文 = serde_json::to_string(&测试项 {
+            名: "二".to_string(),
+        })
+        .unwrap();
+        assert_eq!(行们[1], 新原文);
+        // 入队后文件仍以换行收尾，为下一轮入队提供干净基线
+        assert!(
+            后置.ends_with('\n'),
+            "入队后末尾必须换行收尾，避免下次再粘连"
+        );
+        // 读全部 + 水位
+        let 全 = 队列.读全部().unwrap();
+        assert_eq!(全.len(), 2);
+        assert_eq!(全[0].名, "一");
+        assert_eq!(全[1].名, "二");
+        assert_eq!(队列.水位().unwrap(), 2);
+
+        let _ = fs::remove_file(&路径);
+    }
+
+    /// 边界：空文件入队后第一条 JSON 必须自带换行结尾，
+    /// 为下一轮入队提供干净基线，不得被无换行基线误判。
+    #[test]
+    fn 空文件_入队_末尾以换行收尾() {
+        let _锁 = 测试环境锁.lock().unwrap();
+        let 路径 = 建临时路径("空文件");
+
+        let 队列 = super::落盘队列::<测试项>::打开(&路径);
+        队列
+            .入队(&测试项 {
+                名: "孤".to_string(),
+            })
+            .unwrap();
+
+        let 内容 = fs::read_to_string(&路径).unwrap();
+        assert!(内容.ends_with('\n'), "空文件入队后末尾必须换行收尾");
+        assert_eq!(队列.水位().unwrap(), 1);
+        let 全 = 队列.读全部().unwrap();
+        assert_eq!(全.len(), 1);
+        assert_eq!(全[0].名, "孤");
+
+        let _ = fs::remove_file(&路径);
+    }
+}
