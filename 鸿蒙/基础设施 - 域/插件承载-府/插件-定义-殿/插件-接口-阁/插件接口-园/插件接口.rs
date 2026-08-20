@@ -3,6 +3,7 @@
 //! 府作为插件单元，暴露 Service Definition（插件接口）。
 //! 跨府引用经插件注册表查找，止步于 Service Definition。
 
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::RwLock;
 
@@ -32,6 +33,10 @@ pub trait 府插件: Send + Sync {
 pub struct 插件上下文 {
     /// 插件注册表（府名 → 府插件实例）。
     注册表: RwLock<HashMap<String, Box<dyn 府插件>>>,
+    /// 服务注册表（类型 ID → 服务实例）。
+    ///
+    /// 服务实例通常是 `Arc<dyn 服务trait>`，按 `TypeId` 索引。
+    服务表: RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
 }
 
 impl 插件上下文 {
@@ -39,6 +44,7 @@ impl 插件上下文 {
     pub fn 新() -> Self {
         Self {
             注册表: RwLock::new(HashMap::new()),
+            服务表: RwLock::new(HashMap::new()),
         }
     }
 
@@ -71,6 +77,30 @@ impl 插件上下文 {
     pub fn 已注册(&self) -> Vec<String> {
         let 注册表 = self.注册表.read().unwrap_or_else(|e| e.into_inner());
         注册表.keys().cloned().collect()
+    }
+
+    /// 注册服务——将服务实例注册到服务表，按类型 ID 索引。
+    ///
+    /// 服务实例通常是 `Arc<dyn 服务trait>`，它实现了 `Any + Send + Sync + Clone`。
+    pub fn 注册服务<T: Any + Send + Sync>(&mut self, 服务: T) -> Result<(), String> {
+        let 类型id = TypeId::of::<T>();
+        let mut 服务表 = self.服务表.write().map_err(|e| e.to_string())?;
+        if 服务表.contains_key(&类型id) {
+            return Err(format!("服务类型{:?}已注册", 类型id));
+        }
+        服务表.insert(类型id, Box::new(服务));
+        info!("服务类型{:?}已注册", 类型id);
+        Ok(())
+    }
+
+    /// 查找服务——按类型 ID 查找服务实例，返回克隆。
+    ///
+    /// 调用方传入 `T = Arc<dyn 服务trait>`，查找成功返回 `Option<Arc<dyn 服务trait>>`。
+    pub fn 查找服务<T: Any + Send + Sync + Clone>(&self) -> Option<T> {
+        let 类型id = TypeId::of::<T>();
+        let 服务表 = self.服务表.read().ok()?;
+        let 任意 = 服务表.get(&类型id)?;
+        任意.downcast_ref::<T>().cloned()
     }
 }
 

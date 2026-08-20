@@ -26,6 +26,23 @@ pub use 手脚_施展_殿::*;
 pub use 类型_定义_殿::*;
 pub use 角色_卡册_殿::*;
 
+/// 道术服务——道术施展-府的 Service Definition。
+///
+/// 暴露执行任务方法。当前为占位实现，后续替换为调用角色工作流引擎的真实逻辑。
+pub trait 道术服务: Send + Sync {
+    /// 执行任务——给定任务描述，返回执行结果。
+    fn 执行任务(&self, 任务: &str) -> Result<String, String>;
+}
+
+/// 道术服务占位实现——后续替换为真实逻辑。
+struct 道术服务实例;
+
+impl 道术服务 for 道术服务实例 {
+    fn 执行任务(&self, _任务: &str) -> Result<String, String> {
+        Err("道术服务.执行任务 尚未实现".to_string())
+    }
+}
+
 /// 道术施展-府插件接口。
 pub struct 道术插件;
 
@@ -40,8 +57,10 @@ impl chajian_fu::府插件 for 道术插件 {
 
     fn 应用(
         &self,
-        _ctx: &mut chajian_fu::插件上下文,
+        ctx: &mut chajian_fu::插件上下文,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let 服务: std::sync::Arc<dyn 道术服务> = std::sync::Arc::new(道术服务实例);
+        ctx.注册服务(服务)?;
         Ok(())
     }
 }
