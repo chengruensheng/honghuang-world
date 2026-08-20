@@ -153,4 +153,32 @@ mod 测试 {
             "占位实现应返回未实现错误"
         );
     }
+
+    #[test]
+    fn 全局上下文初始化后能查找服务() {
+        use daoshu_fu::道术服务;
+        use shihai_fu::识海服务;
+        use tianting_fu::天庭服务;
+
+        // 初始化全局上下文（如果已初始化则直接返回已有上下文）
+        let ctx = chajian_fu::初始化全局上下文(vec![
+            Box::new(shihai_fu::识海插件),
+            Box::new(daoshu_fu::道术插件),
+            Box::new(tianting_fu::天庭插件),
+        ]);
+
+        // 查找三府服务
+        assert!(
+            ctx.查找服务::<Arc<dyn 识海服务>>().is_some(),
+            "识海服务应已注册"
+        );
+        assert!(
+            ctx.查找服务::<Arc<dyn 道术服务>>().is_some(),
+            "道术服务应已注册"
+        );
+        assert!(
+            ctx.查找服务::<Arc<dyn 天庭服务>>().is_some(),
+            "天庭服务应已注册"
+        );
+    }
 }

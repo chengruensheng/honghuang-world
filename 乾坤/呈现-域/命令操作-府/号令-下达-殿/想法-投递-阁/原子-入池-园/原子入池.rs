@@ -22,24 +22,17 @@ pub fn 投递想法(内容: &str) -> String {
     };
     info!(想法id = %想法.id, "想法已受理");
 
-    // 启动时注册三府插件（识海→道术→天庭，按依赖顺序）
-    let mut 插件上下文 = chajian_fu::插件上下文::新();
-    if let Err(错误) = chajian_fu::批量注册(
-        &mut 插件上下文,
-        vec![
-            Box::new(shihai_fu::识海插件),
-            Box::new(daoshu_fu::道术插件),
-            Box::new(tianting_fu::天庭插件),
-        ],
-    ) {
-        warn!(想法id = %想法.id, "插件注册失败：{错误}");
-    } else {
-        info!(
-            想法id = %想法.id,
-            已注册 = ?插件上下文.已注册(),
-            "三府插件已注册"
-        );
-    }
+    // 初始化全局插件上下文（识海→道术→天庭，按依赖顺序）
+    let ctx = chajian_fu::初始化全局上下文(vec![
+        Box::new(shihai_fu::识海插件),
+        Box::new(daoshu_fu::道术插件),
+        Box::new(tianting_fu::天庭插件),
+    ]);
+    info!(
+        想法id = %想法.id,
+        已注册 = ?ctx.已注册(),
+        "三府插件已注册"
+    );
 
     // 想法入池
     let 想法路径 = 状态目录().join("想法.jsonl");
