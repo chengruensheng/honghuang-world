@@ -454,8 +454,8 @@ pub fn 执行工具循环(
     // 未被「路径写入次数」拦截——因为空操作不 push 不进产物）。防打磨判定用 两者之和。
     let mut 尝试写入次数: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
-    let 单文件警告线 = 4usize;
-    let 单文件终止线 = 7usize;
+    let 单文件警告线 = 6usize;
+    let 单文件终止线 = 12usize;
     let mut 已警告单文件: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // 已催结后仍连续 N 轮无新增文件 → 强制终止（催结消息不被听的兜底，防只读/命令空转烧预算）。
     let 无新增强制线 = 6usize;
