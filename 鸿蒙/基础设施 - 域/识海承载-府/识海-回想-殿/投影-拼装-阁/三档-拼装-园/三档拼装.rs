@@ -9,7 +9,7 @@
 //! 六准圣审验并发执行（每准圣独立线程），各线程内先建立验收观测上下文再调用模型，模型观测按要求id正确关联。
 
 use crate::{
-    可见工具, 格位, 模型存储, 范畴, 规则级别, 记录, 调用方层级, 顺序档位
+    可见工具, 工作区, 格位, 模型存储, 范畴, 规则级别, 记录, 调用方层级, 顺序档位
 };
 use rizhi_fu::{debug, info};
 
@@ -39,6 +39,29 @@ fn 规则级别对调用方可见(
 
 /// 与 拼装投影 的差异：拼装投影按"格位们"全量拼装，预算字符是全局兜底；
 /// 元数据层化只拼首因+近因，中间档独立列出，避免中间档占用首屏配额。
+///
+/// workspace members 注入（M3 探索空转修复，2026-08-20 入稿）：从 Cargo.toml 动态读取
+/// workspace members 注入项目背景，让执行者从项目结构自己分辨源码目录与构建产物目录。
+fn 读workspace成员() -> Option<String> {
+    let 工作区 = 工作区::定位();
+    let 内容 = std::fs::read_to_string(工作区.根路径().join("Cargo.toml")).ok()?;
+    let members: Vec<String> = 内容
+        .lines()
+        .filter(|行| 行.contains("-府\""))
+        .map(|行| {
+            行.trim()
+                .trim_start_matches('"')
+                .trim_end_matches(',')
+                .trim_end_matches('"')
+                .to_string()
+        })
+        .collect();
+    if members.is_empty() {
+        return None;
+    }
+    Some(format!("\n【workspace members】{}\n", members.join("、")))
+}
+
 pub fn 元数据层化(
     存储: &模型存储,
     角色: &str,
@@ -145,6 +168,13 @@ pub fn 元数据层化(
         if 规则段.trim().len() > "【固定规则·高价值信息】".len() {
             首屏.push_str(&规则段);
         }
+    }
+
+    // workspace members 注入项目背景（M3 探索空转修复，2026-08-20 入稿）：
+    // 从 Cargo.toml 动态读取 workspace members，让执行者从项目结构自己分辨
+    // 源码目录与构建产物目录（如道果树不在 members 里 → 不会被 cargo 编译），不硬编码。
+    if let Some(members段) = 读workspace成员() {
+        首屏.push_str(&members段);
     }
 
     if !中间档们.is_empty() {

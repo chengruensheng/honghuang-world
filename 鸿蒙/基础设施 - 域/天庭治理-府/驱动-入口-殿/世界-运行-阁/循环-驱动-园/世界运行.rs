@@ -966,7 +966,45 @@ fn 构造现状(
     info!(涉及路径 = ?要求.约束.涉及路径, 相关文件 = ?相关文件, "现状装配明细");
     let mut 现状 = String::new();
     let mut 已用字符 = 0usize;
-
+    // 新建文件提示（M3 探索空转修复，2026-08-20 入稿）：涉及路径里文件不存在时
+    // 标注"需要新建"，并从 Cargo.toml 检查目标目录是否在 workspace members 里——
+    // 不在则提示"不会被 cargo 编译"，让执行者自己分辨构建产物目录（不硬编码道果树）。
+    let mut 新建提示数 = 0usize;
+    for 路径 in &要求.约束.涉及路径 {
+        let 绝对 = 根.join(路径);
+        if !绝对.exists() {
+            新建提示数 += 1;
+            现状.push_str(&format!(
+                "【新建文件提示】目标文件 {路径} 不存在，需要新建。请用 写文件 工具直接创建。\n"
+            ));
+            // 目标目录是否在 workspace members 里：读根 Cargo.toml members 段（含 `-府"` 的行）。
+            let 路径归一 = 路径.replace('\\', "/");
+            let 在members = std::fs::read_to_string(根.join("Cargo.toml"))
+                .map(|内容| {
+                    内容.lines().filter(|行| 行.contains("-府\"")).any(|行| {
+                        let m = 行
+                            .trim()
+                            .trim_start_matches('"')
+                            .trim_end_matches(',')
+                            .trim_end_matches('"');
+                        路径归一.starts_with(m)
+                    })
+                })
+                .unwrap_or(true);
+            if !在members {
+                现状.push_str(
+                    "注意：目标目录不在 workspace members 里，文件不会被 cargo 编译。请确认涉及路径是否正确（源码应在 鸿蒙/ 或 乾坤/ 或 证道/ 下）。\n",
+                );
+            }
+        }
+    }
+    if 新建提示数 > 0 {
+        现状.push('\n');
+        warn!(
+            新建文件数 = 新建提示数,
+            "涉及路径含不存在的文件，已注入新建提示"
+        );
+    }
     if !结构下探.is_empty() {
         现状.push_str("【结构下探（府→殿→阁→园）】\n");
         现状.push_str(&结构下探);
