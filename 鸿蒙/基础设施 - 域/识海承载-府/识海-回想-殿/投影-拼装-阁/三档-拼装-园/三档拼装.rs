@@ -9,9 +9,11 @@
 //! 六准圣审验并发执行（每准圣独立线程），各线程内先建立验收观测上下文再调用模型，模型观测按要求id正确关联。
 
 use crate::{
-    可见工具, 工作区, 格位, 模型存储, 范畴, 规则级别, 记录, 调用方层级, 顺序档位
+    依赖图, 可见工具, 工作区, 扫描排除项, 格位, 模型存储, 范畴, 规则级别, 记录, 调用方层级,
+    顺序档位,
 };
 use rizhi_fu::{debug, info};
+use std::path::Path;
 
 /// 元数据层化初始背景：先拼最前+最后档（首因+近因），按较紧的首屏预算；
 /// 中间档不直接喂，在末尾注脚列出名字供模型按需调用 读格位/查格位历史 工具展开。
@@ -40,11 +42,18 @@ fn 规则级别对调用方可见(
 /// 与 拼装投影 的差异：拼装投影按"格位们"全量拼装，预算字符是全局兜底；
 /// 元数据层化只拼首因+近因，中间档独立列出，避免中间档占用首屏配额。
 ///
-/// workspace members 注入（M3 探索空转修复，2026-08-20 入稿）：从 Cargo.toml 动态读取
-/// workspace members 注入项目背景，让执行者从项目结构自己分辨源码目录与构建产物目录。
+/// workspace members + 府间依赖映射注入（M3 探索空转修复 + 府间依赖注入，2026-08-20 入稿）：
+/// 从根 Cargo.toml 读 workspace members，再读各府 Cargo.toml 的 [lib] name 与 [dependencies]，
+/// 构造「府→lib名→依赖列表」映射注入项目背景——让模型知道 shihai_fu 是哪个府的 lib 名、
+/// tianting_fu 依赖 shihai_fu 等府间关系，不硬编码。
 fn 读workspace成员() -> Option<String> {
-    let 工作区 = 工作区::定位();
-    let 内容 = std::fs::read_to_string(工作区.根路径().join("Cargo.toml")).ok()?;
+    读workspace成员在(&工作区::定位())
+}
+
+/// 在指定工作区读 workspace members + 府间依赖映射（供测试注入临时工作区）。
+fn 读workspace成员在(工作区: &工作区) -> Option<String> {
+    let 根 = 工作区.根路径();
+    let 内容 = std::fs::read_to_string(根.join("Cargo.toml")).ok()?;
     let members: Vec<String> = 内容
         .lines()
         .filter(|行| 行.contains("-府\""))
@@ -59,7 +68,153 @@ fn 读workspace成员() -> Option<String> {
     if members.is_empty() {
         return None;
     }
-    Some(format!("\n【workspace members】{}\n", members.join("、")))
+    let mut 段 = format!("\n【workspace members】{}\n", members.join("、"));
+    // 府间依赖映射：读各府 Cargo.toml 的 [lib] name 与 [dependencies]。
+    let mut 依赖映射 = String::from("【府间依赖】\n");
+    let mut 有映射 = false;
+    for member in &members {
+        let 府cargo = 根.join(member).join("Cargo.toml");
+        let Ok(府内容) = std::fs::read_to_string(&府cargo) else {
+            continue;
+        };
+        let 府名 = Path::new(member)
+            .file_name()
+            .map(|名| 名.to_string_lossy().to_string())
+            .unwrap_or_else(|| member.clone());
+        let lib名 = 解析lib名(&府内容).unwrap_or_else(|| 府名.clone());
+        let 依赖们 = 解析依赖段(&府内容);
+        依赖映射.push_str(&format!(
+            "{府名}: lib={lib名}, 依赖=[{}]\n",
+            依赖们.join("、")
+        ));
+        有映射 = true;
+    }
+    if 有映射 {
+        段.push_str(&依赖映射);
+        debug!(府数 = members.len(), "府间依赖映射已注入");
+    }
+    Some(段)
+}
+
+/// 解析 Cargo.toml 的 [lib] name。
+fn 解析lib名(内容: &str) -> Option<String> {
+    let mut 在lib段 = false;
+    for 行 in 内容.lines() {
+        let 行 = 行.trim();
+        if 行.starts_with('[') {
+            在lib段 = 行 == "[lib]";
+            continue;
+        }
+        if 在lib段 {
+            if let Some(值) = 行.strip_prefix("name") {
+                let 值 = 值.trim_start();
+                if 值.starts_with('=') {
+                    let 值 = 值.trim_start_matches('=').trim().trim_matches('"');
+                    if !值.is_empty() {
+                        return Some(值.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 解析 Cargo.toml 的 [dependencies] 段依赖名列表。
+fn 解析依赖段(内容: &str) -> Vec<String> {
+    let mut 依赖们 = Vec::new();
+    let mut 在依赖段 = false;
+    for 行 in 内容.lines() {
+        let 行 = 行.trim();
+        if 行.starts_with('[') {
+            在依赖段 = 行 == "[dependencies]";
+            continue;
+        }
+        if 在依赖段 && !行.is_empty() && !行.starts_with('#') {
+            if let Some(名) = 行
+                .split(|字符: char| ['=', ' ', '{'].contains(&字符))
+                .next()
+            {
+                let 名 = 名.trim();
+                if !名.is_empty() {
+                    依赖们.push(名.to_string());
+                }
+            }
+        }
+    }
+    依赖们
+}
+
+/// 结构树摘要注入（执行背景注入结构树，2026-08-20 入稿）：
+/// 从依赖图加载结构树渲染为文本摘要注入执行背景——让执行层知道项目整体结构
+/// （府→殿→阁→园），不靠记忆猜落点。依赖图不存在或结构树为空时从工作区目录扫描生成。
+fn 读结构树摘要() -> Option<String> {
+    读结构树摘要在(&工作区::定位())
+}
+
+/// 在指定工作区读结构树摘要（供测试注入临时工作区）。
+fn 读结构树摘要在(工作区: &工作区) -> Option<String> {
+    // 优先从依赖图结构树渲染（已落盘的扫描产物，含 crate 内目录层级）。
+    if let Ok(图) = 依赖图::加载自工作区(工作区) {
+        let 摘要 = 图.下探(&[]);
+        if !摘要.is_empty() {
+            debug!(字符数 = 摘要.chars().count(), "结构树摘要已从依赖图渲染");
+            return Some(format!("\n【结构树】\n{}\n", 限制字符(摘要, 2000)));
+        }
+    }
+    // 依赖图不存在或结构树为空 → 从工作区目录扫描生成府级摘要。
+    let 摘要 = 扫描结构摘要(工作区.根路径());
+    if 摘要.is_empty() {
+        return None;
+    }
+    debug!(字符数 = 摘要.chars().count(), "结构树摘要已从目录扫描生成");
+    Some(format!("\n【结构树】\n{}\n", 摘要))
+}
+
+/// 从工作区目录扫描生成府级结构摘要（依赖图不存在时的兜底）。
+fn 扫描结构摘要(根: &Path) -> String {
+    let 排除项 = 扫描排除项(根);
+    let mut crate们: Vec<String> = Vec::new();
+    递归找cargo(根, 根, &排除项, &mut crate们);
+    crate们.sort();
+    crate们.dedup();
+    crate们.join("\n")
+}
+
+/// 递归找 Cargo.toml，收集 crate 相对路径。
+fn 递归找cargo(根: &Path, 目录: &Path, 排除项: &[String], 结果: &mut Vec<String>) {
+    let Ok(条目们) = std::fs::read_dir(目录) else {
+        return;
+    };
+    for 条目 in 条目们.flatten() {
+        let 路径 = 条目.path();
+        let 名 = 条目.file_name().to_string_lossy().to_string();
+        if 路径.is_dir() {
+            if 排除项.iter().any(|项| 项 == &名) {
+                continue;
+            }
+            递归找cargo(根, &路径, 排除项, 结果);
+        } else if 名 == "Cargo.toml" {
+            if let Some(父) = 路径.parent() {
+                if let Ok(相对) = 父.strip_prefix(根) {
+                    let 相对 = 相对.display().to_string().replace('\\', "/");
+                    if !相对.is_empty() {
+                        结果.push(相对);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 限制字符串字符数，超限截断加省略号。
+fn 限制字符(文本: String, 上限: usize) -> String {
+    if 文本.chars().count() <= 上限 {
+        return 文本;
+    }
+    let mut 截断: String = 文本.chars().take(上限).collect();
+    截断.push('…');
+    截断
 }
 
 pub fn 元数据层化(
@@ -170,11 +325,19 @@ pub fn 元数据层化(
         }
     }
 
-    // workspace members 注入项目背景（M3 探索空转修复，2026-08-20 入稿）：
-    // 从 Cargo.toml 动态读取 workspace members，让执行者从项目结构自己分辨
-    // 源码目录与构建产物目录（如道果树不在 members 里 → 不会被 cargo 编译），不硬编码。
+    // workspace members + 府间依赖映射注入项目背景（M3 探索空转修复 + 府间依赖注入，2026-08-20 入稿）：
+    // 从 Cargo.toml 动态读取 workspace members 与各府 [lib] name/[dependencies]，
+    // 让执行者从项目结构自己分辨源码目录与构建产物目录，并知道府间依赖关系
+    // （如 shihai_fu 是识海承载-府的 lib 名、tianting_fu 依赖 shihai_fu），不硬编码。
     if let Some(members段) = 读workspace成员() {
         首屏.push_str(&members段);
+    }
+
+    // 结构树摘要注入执行背景（执行背景注入结构树，2026-08-20 入稿）：
+    // 从依赖图加载结构树渲染为文本摘要，让执行层知道项目整体结构（府→殿→阁→园），
+    // 不靠记忆猜落点。依赖图不存在时从工作区目录扫描生成府级摘要。
+    if let Some(结构树段) = 读结构树摘要() {
+        首屏.push_str(&结构树段);
     }
 
     if !中间档们.is_empty() {
@@ -245,7 +408,7 @@ pub fn 拼装投影(
 #[cfg(test)]
 mod 测试 {
     use super::*;
-    use crate::{共享度, 固化度, 范畴, 记录};
+    use crate::{共享度, 固化度, 结构节点, 范畴, 记录};
 
     /// 设计稿 §4.2 规则3：首屏预算按字符计数（3000 字符口径），全局兜底紧额时应截断输出。
     #[test]
@@ -628,5 +791,168 @@ mod 测试 {
             "临时天道失效后不应再注入：{背景后}"
         );
         let _ = std::fs::remove_dir_all(&目录);
+    }
+
+    /// 府间依赖映射（问题6，2026-08-20 入稿）：读各府 Cargo.toml 的 [lib] name 与
+    /// [dependencies]，构造「府→lib名→依赖列表」映射注入项目背景。
+    /// 验证 shihai_fu 是识海承载-府的 lib 名、tianting_fu 依赖 shihai_fu 等府间关系。
+    #[test]
+    fn 读workspace成员_府间依赖映射正确() {
+        let 根 = std::env::temp_dir().join(format!(
+            "三档拼装-依赖映射-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&根);
+        // 根 Cargo.toml：两个府成员。
+        std::fs::create_dir_all(&根).unwrap();
+        std::fs::write(
+            根.join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\n    \"鸿蒙/基础设施 - 域/识海承载-府\",\n    \"鸿蒙/基础设施 - 域/天庭治理-府\",\n]\n",
+        )
+        .unwrap();
+        // 识海承载-府：lib=shihai_fu，依赖 serde + rizhi_fu。
+        let 识海 = 根.join("鸿蒙/基础设施 - 域/识海承载-府");
+        std::fs::create_dir_all(&识海).unwrap();
+        std::fs::write(
+            识海.join("Cargo.toml"),
+            "[package]\nname = \"shihai_fu\"\n[lib]\nname = \"shihai_fu\"\n[dependencies]\nserde = \"1\"\nrizhi_fu = { path = \"../日志记录-府\" }\n",
+        )
+        .unwrap();
+        // 天庭治理-府：lib=tianting_fu，依赖 shihai_fu（府间依赖）。
+        let 天庭 = 根.join("鸿蒙/基础设施 - 域/天庭治理-府");
+        std::fs::create_dir_all(&天庭).unwrap();
+        std::fs::write(
+            天庭.join("Cargo.toml"),
+            "[package]\nname = \"tianting_fu\"\n[lib]\nname = \"tianting_fu\"\n[dependencies]\nserde = \"1\"\nshihai_fu = { path = \"../识海承载-府\" }\n",
+        )
+        .unwrap();
+
+        let 工作区 = 工作区::新(&根);
+        let 段 = 读workspace成员在(&工作区).expect("应读出 workspace members 与府间依赖");
+        // workspace members 段。
+        assert!(段.contains("workspace members"), "应含段头：{段}");
+        assert!(段.contains("识海承载-府"), "应含府名：{段}");
+        // 府间依赖映射段。
+        assert!(段.contains("府间依赖"), "应含府间依赖段头：{段}");
+        assert!(段.contains("lib=shihai_fu"), "应含 shihai_fu lib 名：{段}");
+        assert!(
+            段.contains("lib=tianting_fu"),
+            "应含 tianting_fu lib 名：{段}"
+        );
+        assert!(段.contains("serde"), "应含 serde 依赖：{段}");
+        assert!(段.contains("rizhi_fu"), "应含 rizhi_fu 依赖：{段}");
+        // 天庭治理-府 依赖 shihai_fu（府间依赖关系）。
+        assert!(段.contains("shihai_fu"), "应含府间依赖 shihai_fu：{段}");
+        let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// 府间依赖映射·无府成员时返回 None（零开销不注入）。
+    #[test]
+    fn 读workspace成员_无府成员返回空() {
+        let 根 = std::env::temp_dir().join(format!(
+            "三档拼装-空workspace-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&根);
+        std::fs::create_dir_all(&根).unwrap();
+        // 根 Cargo.toml：无 -府 结尾成员。
+        std::fs::write(
+            根.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"某-园\"]\n",
+        )
+        .unwrap();
+        let 工作区 = 工作区::新(&根);
+        assert!(读workspace成员在(&工作区).is_none(), "无府成员应返回 None");
+        let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// 结构树摘要·依赖图存在时从结构树渲染（问题10，2026-08-20 入稿）：
+    /// 验证依赖图结构树非空时渲染为文本摘要，含府→殿层级。
+    #[test]
+    fn 读结构树摘要_依赖图存在时非空() {
+        let 根 = std::env::temp_dir().join(format!(
+            "三档拼装-结构树-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&根);
+        std::fs::create_dir_all(&根).unwrap();
+        // 构造依赖图 json：结构树含 识海承载-府 → 识海-回想-殿。
+        let 上下文 = 根.join(".上下文");
+        std::fs::create_dir_all(&上下文).unwrap();
+        let 图 = 依赖图 {
+            档案们: vec![],
+            结构树: 结构节点 {
+                名字: "根".to_string(),
+                子节点: vec![结构节点 {
+                    名字: "识海承载-府".to_string(),
+                    子节点: vec![结构节点::新("识海-回想-殿")],
+                }],
+            },
+        };
+        图.保存(上下文.join("依赖图.json")).unwrap();
+
+        let 工作区 = 工作区::新(&根);
+        let 段 = 读结构树摘要在(&工作区).expect("应读出结构树摘要");
+        assert!(段.contains("结构树"), "应含段头：{段}");
+        assert!(段.contains("识海承载-府"), "应含府名：{段}");
+        assert!(段.contains("识海-回想-殿"), "应含殿名：{段}");
+        let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// 结构树摘要·依赖图不存在时从目录扫描生成兜底：
+    /// 验证无依赖图时扫描工作区 Cargo.toml 生成府级摘要。
+    #[test]
+    fn 读结构树摘要_依赖图不存在时从目录扫描() {
+        let 根 = std::env::temp_dir().join(format!(
+            "三档拼装-结构树兜底-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&根);
+        std::fs::create_dir_all(&根).unwrap();
+        // 不写依赖图，只写 Cargo.toml（模拟未扫描的项目）。
+        let 府 = 根.join("鸿蒙/基础设施 - 域/识海承载-府");
+        std::fs::create_dir_all(&府).unwrap();
+        std::fs::write(府.join("Cargo.toml"), "[package]\nname = \"shihai_fu\"\n").unwrap();
+
+        let 工作区 = 工作区::新(&根);
+        let 段 = 读结构树摘要在(&工作区).expect("应从目录扫描生成结构摘要");
+        assert!(段.contains("结构树"), "应含段头：{段}");
+        assert!(段.contains("识海承载-府"), "应含府路径：{段}");
+        let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// 结构树摘要·空工作区返回 None（零开销不注入）。
+    #[test]
+    fn 读结构树摘要_空工作区返回空() {
+        let 根 = std::env::temp_dir().join(format!(
+            "三档拼装-空结构-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&根);
+        std::fs::create_dir_all(&根).unwrap();
+        // 空工作区，无 Cargo.toml，无依赖图。
+        let 工作区 = 工作区::新(&根);
+        assert!(读结构树摘要在(&工作区).is_none(), "空工作区应返回 None");
+        let _ = std::fs::remove_dir_all(&根);
     }
 }

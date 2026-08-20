@@ -55,6 +55,117 @@ pub fn 是环境故障(退出码: Option<i32>) -> bool {
     }
 }
 
+/// 读取根 Cargo.toml 的 [workspace] members 并展开 glob 模式为实际目录列表（设计稿 §11.2 规则 13）。
+/// members 可能是显式路径（如 `鸿蒙/基础设施 - 域/识海承载-府`）或 glob 模式（如 `鸿蒙/*`）。
+/// 返回相对于工作区根的目录路径列表。读不到或解析失败返回空表（调用方决定是否阻断）。
+pub(crate) fn 读取并展开workspace成员(工作区根: &std::path::Path) -> Vec<PathBuf> {
+    let cargo_toml = 工作区根.join("Cargo.toml");
+    let 内容 = match std::fs::read_to_string(&cargo_toml) {
+        Ok(内容) => 内容,
+        Err(错误) => {
+            warn!("读取 Cargo.toml 失败，无法校验产物入编译树：{错误}");
+            return Vec::new();
+        }
+    };
+    let 模式们 = 解析workspace成员(&内容);
+    let mut 成员们 = Vec::new();
+    for 模式 in 模式们 {
+        if 模式.contains('*') {
+            成员们.extend(展开glob模式(&模式, 工作区根));
+        } else {
+            成员们.push(PathBuf::from(模式));
+        }
+    }
+    成员们
+}
+
+/// 手动解析 Cargo.toml 的 [workspace] members 字段（避免引入 toml crate 依赖）。
+/// 返回成员模式列表（可能是显式路径或 glob 模式如 `鸿蒙/*`）。
+pub(crate) fn 解析workspace成员(内容: &str) -> Vec<String> {
+    let mut 在workspace段 = false;
+    let mut 在members = false;
+    let mut 成员们 = Vec::new();
+    for 行 in 内容.lines() {
+        let 行 = 行.trim();
+        if 行.starts_with('[') {
+            在workspace段 = 行 == "[workspace]";
+            在members = false;
+            continue;
+        }
+        if !在workspace段 {
+            continue;
+        }
+        if 在members {
+            if 行.starts_with(']') {
+                在members = false;
+                continue;
+            }
+            if let Some(成员) = 提取引号字符串(行) {
+                成员们.push(成员);
+            }
+        } else if 行.starts_with("members") {
+            if let Some(等号位) = 行.find('=') {
+                let 右 = 行[等号位 + 1..].trim();
+                if let Some(去括号) = 右.strip_prefix('[') {
+                    在members = true;
+                    // 同行可能已有成员或闭合 ]
+                    let 剩余 = 去括号.trim();
+                    if 剩余.starts_with(']') {
+                        在members = false;
+                    } else if let Some(成员) = 提取引号字符串(剩余) {
+                        成员们.push(成员);
+                    }
+                }
+            }
+        }
+    }
+    成员们
+}
+
+/// 从文本中提取第一个引号字符串（"..."）。用于解析 members 列表里的成员路径。
+fn 提取引号字符串(文本: &str) -> Option<String> {
+    let 起 = 文本.find('"')?;
+    let 余 = &文本[起 + 1..];
+    let 止 = 余.find('"')?;
+    Some(余[..止].to_string())
+}
+
+/// 展开 glob 模式为实际目录列表。支持简单 glob：`前缀/*` 或 `前缀/*/后缀`。
+/// 多个 `*` 的复杂 glob 不支持，原样返回当作显式路径。
+fn 展开glob模式(模式: &str, 工作区根: &std::path::Path) -> Vec<PathBuf> {
+    let 部分: Vec<&str> = 模式.split('*').collect();
+    if 部分.len() != 2 {
+        return vec![PathBuf::from(模式)];
+    }
+    let 前缀 = 部分[0].trim_end_matches('/');
+    let 后缀 = 部分[1].trim_start_matches('/');
+    let 前缀目录 = 工作区根.join(前缀);
+    let mut 结果 = Vec::new();
+    if let Ok(条目们) = std::fs::read_dir(&前缀目录) {
+        for 条目 in 条目们.flatten() {
+            if !条目.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let 名 = 条目.file_name();
+            let 名str = 名.to_string_lossy();
+            let 相对 = if 后缀.is_empty() {
+                PathBuf::from(前缀).join(名str.as_ref())
+            } else {
+                PathBuf::from(前缀).join(名str.as_ref()).join(后缀)
+            };
+            结果.push(相对);
+        }
+    }
+    结果
+}
+
+/// 检查产物路径是否以某个 workspace 成员目录为前缀（按路径组件比较，非字符串前缀）。
+/// 统一用 `/` 作分隔符，避免 Windows `\` / `/` 混用误判。
+pub(crate) fn 产物在workspace内(产物路径: &str, 成员们: &[PathBuf]) -> bool {
+    let 产物 = PathBuf::from(产物路径.replace('\\', "/"));
+    成员们.iter().any(|成员| 产物.starts_with(成员))
+}
+
 /// 任务调度：派遣执行任务，真实落盘改代码，跑构建验证，失败重试。
 pub struct 任务调度 {
     配置: 模型配置,
@@ -130,6 +241,8 @@ impl 任务调度 {
     /// 跨重试共享同一会话历史与总预算：构建失败在同一历史后追加报错续跑（重试保留轨迹），不再开新对话。
     /// 跨重试累计轮数并写入回执：上层的「总轮数」= 跨任务全程累加的 工具循环轮数（首调起算，重试不重置）。
     /// 只读借用：并发派遣共享同一调度器（配置/根只读，构建由内部锁串行）。
+    /// 设计方案/验收标准由上层（运行一轮）传入，注入执行提示让执行者照设计落码、按验收标准自证。
+    #[allow(clippy::too_many_arguments)]
     pub fn 派遣执行(
         &self,
         任务id: &str,
@@ -137,6 +250,8 @@ impl 任务调度 {
         背景: &str,
         现状: &str,
         涉及路径: &[String],
+        设计方案: &str,
+        验收标准: &str,
     ) -> Result<执行回执, String> {
         info!(任务id, 目标 = %任务.目标, "开始派遣执行");
         // 阶段 3 在途登记：派遣开始登记角色在途，结束（Drop）自动清除（角色卸载软保护）。
@@ -169,14 +284,15 @@ impl 任务调度 {
         //（2026-08-17 实测：补测试任务绕圈 19 轮烧 53 万 token 后失败的教训）。
         let 预算 = Self::分级轮数(&任务.工作流);
         // 规则已由 元数据层化 背景的【固定规则】段统一注入（含 细则·解读），此处不再重复注入。
-        let 初提示 = 渲染落盘提示(背景, &现状, &任务.目标, 预算, "");
+        let 初提示 = 渲染落盘提示(背景, &现状, &任务.目标, 预算, "", 设计方案, 验收标准);
         let mut 历史 = vec![对话消息::用户(初提示)];
         let mut 剩余预算 = 预算;
         let mut 累计轮数: u32 = 0;
         let mut 尝试 = 0u32;
         loop {
             // 一轮执行：在同一会话历史上继续工具循环，收集写入产物与消耗轮数。
-            let 产物们 = match self.执行一轮(&mut 历史, 剩余预算, 涉及路径) {
+            let 产物们 = match self.执行一轮(任务id, &mut 历史, 剩余预算, 涉及路径)
+            {
                 Ok((产物们, 轮数, 用量)) => {
                     总用量.加(&用量);
                     累计轮数 = 累计轮数.saturating_add(轮数 as u32);
@@ -280,7 +396,15 @@ impl 任务调度 {
             }
             // 无论构建成败，产物清单都并入 diff 兜底（与真实落盘一致）。
             let 产物们 = self.合并产物(产物们, self.diff补产物(&基线));
-            if 构建结果.退出码 == Some(0) {
+            // 产物须入编译树（设计稿 §11.2 规则 13）：构建通过后检查产物路径是否在 workspace members 内，
+            // 不在则构建假阳性——cargo --workspace 不编译非 members 的文件，产物未经验证即"通过"。
+            // 涉及路径为空（审验/核查类）或产物为非 RS 必需文件（如 Cargo.toml）时不检查。
+            let 产物未入编译树 = if 构建结果.退出码 == Some(0) {
+                self.校验产物入编译树(&产物们, 涉及路径).err()
+            } else {
+                None
+            };
+            if 构建结果.退出码 == Some(0) && 产物未入编译树.is_none() {
                 info!(任务id, 尝试 = 尝试 + 1, 累计轮数, "构建通过");
                 // 回滚垫保留写前状态（不清理）：供「打回撤销」恢复世界写前盘面，
                 // 防按版本快照覆盖未存档的界主/助手改动；定档成功后由主政统一清理。
@@ -298,7 +422,8 @@ impl 任务调度 {
 
             // 机械前置全绿（设计稿 §11.2 规则 12）之上：环境故障（进程启动失败/异常终止）短路。
             // 不把「系统级 0xC0000142 进程启动失败」误当「编译错误」反复重试烧 token（2026-08-18 实测教训）。
-            if 是环境故障(构建结果.退出码) {
+            // 产物未入编译树是构建假阳性而非环境故障，走重试不短路。
+            if 产物未入编译树.is_none() && 是环境故障(构建结果.退出码) {
                 error!(任务id, 退出码 = ?构建结果.退出码, "构建进程环境故障（非编译错误），立即终止不重试");
                 if let Err(撤销错误) = 垫.撤销(&当前任务()) {
                     error!(任务id, 撤销错误, "环境故障后回滚垫撤销失败");
@@ -315,6 +440,10 @@ impl 任务调度 {
             }
 
             尝试 += 1;
+            // 构建报错：产物未入编译树时用检查原因，否则用构建标准错误。续跑据此提示模型修正。
+            let 构建报错 = 产物未入编译树
+                .clone()
+                .unwrap_or_else(|| 构建结果.标准错误.clone());
             warn!(任务id, 尝试, 剩余预算, 累计轮数, 退出码 = ?构建结果.退出码, "构建失败");
             if 尝试 >= 最大重试次数() {
                 error!(任务id, 尝试, 累计轮数, "重试耗尽，任务失败");
@@ -328,14 +457,14 @@ impl 任务调度 {
                     产物们,
                     说明: format!(
                         "cargo build 失败（重试 {尝试} 次，累计 {累计轮数} 轮）：{}",
-                        构建结果.标准错误
+                        构建报错
                     ),
                     用量: 总用量,
                     轮数: 累计轮数,
                 });
             }
             // 同会话续跑：追加构建报错，模型基于轨迹继续修正。
-            历史.push(对话消息::用户(渲染续跑提示(&构建结果.标准错误)));
+            历史.push(对话消息::用户(渲染续跑提示(&构建报错)));
         }
     }
 
@@ -387,6 +516,40 @@ impl 任务调度 {
         结果
     }
 
+    /// 产物须入编译树（设计稿 §11.2 规则 13）：检查每个产物路径是否落在 workspace members 覆盖的目录范围内。
+    /// 不在则构建假阳性——`cargo build --workspace` 不编译非 members 的文件，产物未经验证即"通过"。
+    /// 涉及路径为空（审验/核查类）时跳过检查；产物为非 RS 必需文件（如 Cargo.toml）时跳过该产物。
+    /// 返回 Err 时说明哪些产物不在 workspace members 里（未经编译验证），调用方应按构建失败处理。
+    pub(crate) fn 校验产物入编译树(
+        &self,
+        产物们: &[产物条目],
+        涉及路径: &[String],
+    ) -> Result<(), String> {
+        if 涉及路径.is_empty() {
+            return Ok(());
+        }
+        let 成员们 = 读取并展开workspace成员(&self.工作区根);
+        if 成员们.is_empty() {
+            warn!("workspace members 为空或读取失败，跳过产物入编译树检查");
+            return Ok(());
+        }
+        let 脱靶们: Vec<&str> = 产物们
+            .iter()
+            .filter(|产物| {
+                产物.路径.ends_with(".rs") && !产物在workspace内(&产物.路径, &成员们)
+            })
+            .map(|产物| 产物.路径.as_str())
+            .collect();
+        if 脱靶们.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "产物未入编译树（不在 workspace members 覆盖范围，未经编译验证）：{}",
+                脱靶们.join(", ")
+            ))
+        }
+    }
+
     /// 执行一轮：在同一会话历史上继续工具循环，收集写入产物。
     /// 返回 (产物清单, 消耗轮数, 累计用量)；Err 为 (错误说明, 消耗轮数, 已写产物, 已用 token)。
     /// 首调用已并入工具循环（历史末位即初提示/续跑提示），不再单独探测模型，省一次往返。
@@ -395,12 +558,14 @@ impl 任务调度 {
     #[allow(clippy::type_complexity)]
     fn 执行一轮(
         &self,
+        任务id: &str,
         历史: &mut Vec<对话消息>,
         剩余预算: usize,
         涉及路径: &[String],
     ) -> Result<(Vec<产物条目>, usize, 用量), (String, usize, Vec<产物条目>, 用量)> {
         let 事件流实例 = 事件流::在工作区(&工作区::新(&self.工作区根));
         let (文本, 写入文件们, 轮数, _历史, 用量) = match 执行工具循环(
+            任务id,
             &self.配置,
             历史,
             剩余预算,
@@ -528,7 +693,7 @@ mod 测试_渲染提示 {
         let 目标 = "目标示例：验证非空规则段被正确注入到落盘提示";
         let 预算: usize = 24;
         let 规则 = "测试规则段_ABC_RULE_INJECTION_VERIFY_非空规则应当被原样注入输出";
-        let 输出 = 渲染落盘提示(背景, 现状, 目标, 预算, 规则);
+        let 输出 = 渲染落盘提示(背景, 现状, 目标, 预算, 规则, "", "");
         assert!(
             输出.contains(规则),
             "渲染落盘提示 未注入非空规则段。\n期望输出包含: {规则}\n实际输出:\n{输出}"

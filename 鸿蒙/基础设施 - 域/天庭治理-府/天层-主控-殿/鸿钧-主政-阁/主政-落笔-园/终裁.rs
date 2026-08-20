@@ -245,11 +245,15 @@ pub struct 终裁回执 {
 
 /// 机械前置门槛：仅做绝对硬性检查。
 /// 通过 → 返回 None 进入准圣审验；不通过 → 返回 Some(打回终裁) 立即终结。
+///
+/// `涉及文件` 用于产物路径匹配检查（治 M3 写错位置假阳性）：产物必须落在涉及路径指定
+/// 的位置。涉及文件为空时跳过本检查（审验/核查类任务无涉及路径，设计稿 §11.2 规则 5）。
 fn 机械前置门槛(
     要求id: &str,
     产物们: &[产物条目],
     耗时秒: f64,
     失败说明: Option<&str>,
+    涉及文件: &[String],
 ) -> Option<终裁回执> {
     // 1. 编译失败：产物不可信，直接打回。
     if let Some(说明) = 失败说明 {
@@ -307,7 +311,29 @@ fn 机械前置门槛(
         });
     }
 
-    // 4. 空洞产物：产物必须真实存在且非空（防空文件静默破坏）。
+    // 4. 产物路径匹配涉及范围：产物必须落在涉及路径指定的位置（治 M3 写错位置假阳性，
+    //    如「鸿蒙/基础设施-域/」缺空格写成「鸿蒙/基础设施 - 域/」）。涉及文件为空时跳过
+    //    （审验/核查类任务无涉及路径）；产物为空时跳过（无产物走准圣判断，设计稿 §11.2 规则 5）。
+    //    复用 `路径相符`：统一分隔符、不区分大小写、包含匹配。
+    if !涉及文件.is_empty() && !产物们.is_empty() && !路径相符(涉及文件, 产物们) {
+        warn!(要求 = 要求id, "终裁打回：产物路径偏离涉及范围");
+        return Some(终裁回执 {
+            验收: 验收回执 {
+                要求id: 要求id.to_string(),
+                结论: 验收结论::打回,
+                验收意见: Some(
+                    "实现层：产物路径偏离涉及范围（产物未落在涉及路径指定的位置）".to_string(),
+                ),
+                产物: vec![],
+                耗时秒,
+            },
+            准圣意见们: vec![],
+            终裁依据: "产物路径偏离涉及范围".to_string(),
+            用量: 用量::default(),
+        });
+    }
+
+    // 5. 空洞产物：产物必须真实存在且非空（防空文件静默破坏）。
     let 有空洞 = 产物们.iter().any(|产物| {
         let 绝对 = 根.根路径().join(&产物.路径);
         std::fs::metadata(&绝对)
@@ -663,12 +689,96 @@ fn 读审验标准() -> Option<String> {
     Some(清单)
 }
 
+/// 项目结构摘要（问题15）：读依赖图结构树 + workspace members，渲染为文本注入准圣/鸿钧提示词。
+///
+/// 治「准圣/鸿钧不知项目全貌、凭局部产物推断架构」——注入项目结构树与 workspace 成员清单，
+/// 让审验方从整体结构判断产物归属合理性、模块接入是否符合六层落点（维度/域/府/殿/阁/园）。
+///
+/// 两段：
+/// - 【结构树】：从 `shihai_fu::依赖图::加载自工作区` 读结构树，递归渲染为缩进文本（每层 2 空格）。
+/// - 【workspace members】：从根 Cargo.toml 读 workspace members（含 `-府"` 的行即成员，
+///   适配单行/多行 members，与 建档.rs 同口径）。
+///
+/// 预算：总上限 2000 字符，超则截断标注。读失败/无结构返回占位（不阻断审验）。
+fn 项目结构摘要() -> String {
+    const 总上限: usize = 2_000;
+    let 工作区 = shihai_fu::工作区::定位();
+
+    // 结构树：从依赖图读，递归渲染为缩进文本。
+    let 结构树段 = match shihai_fu::依赖图::加载自工作区(&工作区) {
+        Ok(图) => 渲染结构树(&图.结构树),
+        Err(_) => "（无结构树）".to_string(),
+    };
+
+    // workspace members：从根 Cargo.toml 读（含 `-府"` 的行即成员，与 建档.rs 同口径）。
+    let members段 = std::fs::read_to_string(工作区.根路径().join("Cargo.toml"))
+        .map(|内容| {
+            let 成员们: Vec<String> = 内容
+                .lines()
+                .filter(|行| 行.contains("-府\""))
+                .map(|行| {
+                    行.trim()
+                        .trim_start_matches('"')
+                        .trim_end_matches(',')
+                        .trim_end_matches('"')
+                        .to_string()
+                })
+                .collect();
+            if 成员们.is_empty() {
+                "（无 workspace members）".to_string()
+            } else {
+                成员们.join("、")
+            }
+        })
+        .unwrap_or_else(|_| "（读 Cargo.toml 失败）".to_string());
+
+    let 合并 = format!(
+        "【结构树】\n{树}\n【workspace members】\n{members}",
+        树 = 结构树段,
+        members = members段
+    );
+    if 合并.chars().count() > 总上限 {
+        let mut 截断: String = 合并.chars().take(总上限).collect();
+        截断.push_str("…（项目结构摘要截断）");
+        return 截断;
+    }
+    合并
+}
+
+/// 递归渲染结构节点为缩进文本（每层 2 空格，根节点不缩进）。
+fn 渲染结构树(节点: &shihai_fu::结构节点) -> String {
+    let mut 输出 = String::new();
+    渲染结构树_递归(节点, 0, &mut 输出);
+    if 输出.is_empty() {
+        return "（空结构树）".to_string();
+    }
+    输出
+}
+
+/// 结构树递归渲染内部函数：深度控制缩进，子节点逐级下探。
+fn 渲染结构树_递归(节点: &shihai_fu::结构节点, 深度: usize, 输出: &mut String) {
+    if !节点.名字.is_empty() {
+        for _ in 0..深度 {
+            输出.push_str("  ");
+        }
+        输出.push_str(&节点.名字);
+        输出.push('\n');
+    }
+    for 子 in &节点.子节点 {
+        渲染结构树_递归(子, 深度 + 1, 输出);
+    }
+}
+
 /// 单准圣审验：模型一次调用 → 该维度意见。
+///
+/// `项目结构`：由调用方（六准圣审验）预计算一次传入，避免每个准圣线程重复读依赖图与
+/// Cargo.toml。内容为 `项目结构摘要()` 的产出（结构树 + workspace members）。
 fn 单准圣审验(
     要求书: &要求书,
     产物们: &[产物条目],
     维度: &准圣维度,
     配置: &模型配置,
+    项目结构: &str,
 ) -> Result<(准圣意见, 用量), String> {
     // A 体系（2026-08-19）：按当前准圣维度过滤产物——前端准圣只看 .html/.css/.js 等，
     // 后端只看 .rs 库代码，测试只看 tests/ 或含 #[test] 的 .rs。每个准圣只审自己类别的产物。
@@ -701,7 +811,7 @@ fn 单准圣审验(
         .unwrap_or_else(|| "（无审验标准清单——按各维度职司与要求验收标准审验）".to_string());
 
     let 提示 = format!(
-        "你是{dim}\n\n{role}\n\n【审验标准清单】（逐条核对，任一违反即打回并指明违反条目）\n{stdlist}\n\n【要求方向】{dir}\n【验收标准】{std}\n【涉及路径】{path}\n【涉及现状】\n{cur}\n【产物清单】\n{prod}\n【产物内容摘要】（机械提取自产物真实文件，可据此核对实现细节，不必假设无法读取文件）\n{sum}\n【产物原文摘录】（机械读自产物真实文件、预算内截断；请以真实内容为准核对实现细节，勿仅凭字节数/符号推断）\n{raw}\n\n【现实事实】（执行层已机械验证，勿以假设推翻）\n{fact}\n\n请基于以上事实独立审验，仅输出 JSON（无 Markdown、无解释、无 think）：\n{{\"结论\":\"通过|打回\",\"评分\":0-100,\"关键问题\":\"一句话\",\"改进建议\":[\"建议1\",\"建议2\"]}}\n\n判定原则：\n- 通过：你的维度内未发现阻断性问题，可改进但不影响本轮交付。\n- 打回：你的维度内存在必须修复的阻断性问题，包括违反【审验标准清单】中属于你维度的条目。\n- 产物清单为空时（设计稿 §11.2 规则 5/7：现状已达标无需产物的语义裁决）：\n  - 要求方向属审验/核查类（含 审验/核对/检查/验证/达标/核查 措辞）、要求书允许「已达标则不写文件」、且涉及路径文件均存在非空 → 判「通过」（评分 60-85，按实际核验程度给分）。\n  - 要求方向属实现/新增/开发类且无产物 → 判「打回」。\n  - 涉及路径文件缺失或为空 → 判「打回」。\n- 改进建议最多 3 条；无则输出空数组。\n\n输出纪律：允许先思考（think），但 **think 结束后必须紧接输出上方 JSON 对象**——若你的思考链很长，请控制 think 长度，务必给 JSON 留足输出空间；只有 JSON 才算有效审验，think 单独输出视为审验失败。",
+        "你是{dim}\n\n{role}\n\n【审验标准清单】（逐条核对，任一违反即打回并指明违反条目）\n{stdlist}\n\n【要求方向】{dir}\n【验收标准】{std}\n【涉及路径】{path}\n【涉及现状】\n{cur}\n【产物清单】\n{prod}\n【产物内容摘要】（机械提取自产物真实文件，可据此核对实现细节，不必假设无法读取文件）\n{sum}\n【产物原文摘录】（机械读自产物真实文件、预算内截断；请以真实内容为准核对实现细节，勿仅凭字节数/符号推断）\n{raw}\n\n【项目结构】（依赖图结构树 + workspace members，供判断产物归属与模块接入合理性）\n{struct}\n\n【现实事实】（执行层已机械验证，勿以假设推翻）\n{fact}\n\n请基于以上事实独立审验，仅输出 JSON（无 Markdown、无解释、无 think）：\n{{\"结论\":\"通过|打回\",\"评分\":0-100,\"关键问题\":\"一句话\",\"改进建议\":[\"建议1\",\"建议2\"]}}\n\n判定原则：\n- 通过：你的维度内未发现阻断性问题，可改进但不影响本轮交付。\n- 打回：你的维度内存在必须修复的阻断性问题，包括违反【审验标准清单】中属于你维度的条目。\n- 产物清单为空时（设计稿 §11.2 规则 5/7：现状已达标无需产物的语义裁决）：\n  - 要求方向属审验/核查类（含 审验/核对/检查/验证/达标/核查 措辞）、要求书允许「已达标则不写文件」、且涉及路径文件均存在非空 → 判「通过」（评分 60-85，按实际核验程度给分）。\n  - 要求方向属实现/新增/开发类且无产物 → 判「打回」。\n  - 涉及路径文件缺失或为空 → 判「打回」。\n- 改进建议最多 3 条；无则输出空数组。\n\n输出纪律：允许先思考（think），但 **think 结束后必须紧接输出上方 JSON 对象**——若你的思考链很长，请控制 think 长度，务必给 JSON 留足输出空间；只有 JSON 才算有效审验，think 单独输出视为审验失败。",
         dim = 维度.名称(),
         role = 维度.角色提示(),
         stdlist = 审验标准,
@@ -712,6 +822,7 @@ fn 单准圣审验(
         prod = 产物清单,
         sum = 内容摘要,
         raw = 原文摘录,
+        struct = 项目结构,
         fact = 现实事实,
     );
 
@@ -782,6 +893,9 @@ pub fn 六准圣审验(
     配置: &模型配置,
 ) -> (Vec<准圣意见>, 用量) {
     let 要求id = 要求书.id.clone();
+    // 项目结构摘要预计算一次（读依赖图 + Cargo.toml），避免每个准圣线程重复 IO。
+    // 各线程 clone 字符串副本传入 单准圣审验，不争用共享资源。
+    let 项目结构 = 项目结构摘要();
     // A 体系：按产物类别去重选准圣（每个产物 → 1 个准圣；多产物跨类别 → 多准圣并发）。
     // 复用 准圣维度::按产物类别选（A 改动 1 已实现）。
     let 类别_产物们: std::collections::BTreeMap<准圣维度, Vec<产物条目>> = {
@@ -800,10 +914,11 @@ pub fn 六准圣审验(
             .map(|(维度, 类别产物们)| {
                 let 要求id = 要求id.clone();
                 let 类别产物们 = 类别产物们.clone();
+                let 项目结构 = 项目结构.clone();
                 作用域.spawn(move || {
                     // 线程本地验收观测上下文：模型调用的 记请求/记回复 按此关联 要求id+验收角色。
                     let _观测守卫 = 进入观测(观测角色::验收, None, Some(要求id), None);
-                    单准圣审验(要求书, &类别产物们, 维度, 配置)
+                    单准圣审验(要求书, &类别产物们, 维度, 配置, &项目结构)
                 })
             })
             .collect();
@@ -837,7 +952,7 @@ pub fn 六准圣审验(
                     错误 = %错误, "准圣审验失败，重试一次"
                 );
                 let 类别产物们 = &类别_产物们[维度];
-                match 单准圣审验(要求书, 类别产物们, 维度, 配置) {
+                match 单准圣审验(要求书, 类别产物们, 维度, 配置, &项目结构) {
                     Ok((意见, 用量)) => {
                         info!(
                             要求 = %要求书.id, 维度 = 维度.名称(),
@@ -914,9 +1029,11 @@ fn 鸿钧终裁(
         .join("\n");
     let 内容摘要 = 产物内容摘要(产物们);
     let 原文摘录 = 产物原文摘录(产物们);
+    // 项目结构摘要（问题15）：注入结构树 + workspace members，供鸿钧从整体架构判断争议。
+    let 项目结构 = 项目结构摘要();
 
     let 提示 = format!(
-        "你是鸿钧道祖，负责验收终裁。\n六准圣意见存在争议（{pass}/{total} 通过），请综合判断。\n\n【要求方向】{dir}\n【验收标准】{std}\n\n【六准圣意见】\n{opinion}\n\n【产物清单】\n{prod}\n【产物内容摘要】（机械提取自产物真实文件）\n{sum}\n【产物原文摘录】（机械读自产物真实文件、预算内截断；争议裁决请以真实内容为准）\n{raw}\n\n【现实事实】（执行层已机械验证，勿以假设推翻）\n{fact}\n\n仅输出 JSON：\n{{\"结论\":\"通过|打回\",\"依据\":\"一句话综合理由\"}}\n\n判定原则：\n- 打回：至少 1 个准圣的打回意见为阻断性（接口契约错/编译/孤儿/涉及文件缺失）。\n- 通过：所有打回意见仅为改进建议、非阻断性。\n- 审验型要求且产物为空、要求书允许「已达标则不写文件」、涉及路径文件均存在非空时，「产物缺失」不作为阻断性（设计稿 §11.2 规则 7）。",
+        "你是鸿钧道祖，负责验收终裁。\n六准圣意见存在争议（{pass}/{total} 通过），请综合判断。\n\n【要求方向】{dir}\n【验收标准】{std}\n\n【六准圣意见】\n{opinion}\n\n【产物清单】\n{prod}\n【产物内容摘要】（机械提取自产物真实文件）\n{sum}\n【产物原文摘录】（机械读自产物真实文件、预算内截断；争议裁决请以真实内容为准）\n{raw}\n\n【项目结构】（依赖图结构树 + workspace members，供判断产物归属与模块接入合理性）\n{struct}\n\n【现实事实】（执行层已机械验证，勿以假设推翻）\n{fact}\n\n仅输出 JSON：\n{{\"结论\":\"通过|打回\",\"依据\":\"一句话综合理由\"}}\n\n判定原则：\n- 打回：至少 1 个准圣的打回意见为阻断性（接口契约错/编译/孤儿/涉及文件缺失）。\n- 通过：所有打回意见仅为改进建议、非阻断性。\n- 审验型要求且产物为空、要求书允许「已达标则不写文件」、涉及路径文件均存在非空时，「产物缺失」不作为阻断性（设计稿 §11.2 规则 7）。",
         pass = 通过数,
         total = 总数,
         dir = 要求书.方向,
@@ -925,6 +1042,7 @@ fn 鸿钧终裁(
         prod = 产物清单,
         sum = 内容摘要,
         raw = 原文摘录,
+        struct = 项目结构,
         fact = 现实事实,
     );
 
@@ -1002,7 +1120,8 @@ pub fn 终裁裁决_无名(
     // 白箱观测：验收阶段进入验收角色（栈顶覆盖主政的鸿钧档；无要求书时退化为空要求）。
     let _观测守卫 = 进入观测(观测角色::验收, None, Some(要求id.to_string()), None);
     // ① 机械前置门槛
-    if let Some(打回) = 机械前置门槛(要求id, 产物们, 耗时秒, 失败说明) {
+    if let Some(打回) = 机械前置门槛(要求id, 产物们, 耗时秒, 失败说明, 涉及文件)
+    {
         return 打回;
     }
 
@@ -1256,13 +1375,13 @@ mod 测试 {
     #[test]
     fn 机械门槛_无产物放行交准圣() {
         // 执行成功但无产物 = 现状已达标无需改动，机械门槛不拦，交六准圣 LLM 判断（设计稿 §11.2 规则 5）。
-        let 回执 = 机械前置门槛("r1", &[], 0.0, None);
+        let 回执 = 机械前置门槛("r1", &[], 0.0, None, &[]);
         assert!(回执.is_none(), "执行成功无产物不应被机械门槛打回");
     }
 
     #[test]
     fn 机械门槛_编译失败直接打回() {
-        let 回执 = 机械前置门槛("r1", &[], 0.0, Some("cargo build 失败")).expect("应直接打回");
+        let 回执 = 机械前置门槛("r1", &[], 0.0, Some("cargo build 失败"), &[]).expect("应直接打回");
         assert_eq!(回执.验收.结论, 验收结论::打回);
         assert_eq!(回执.验收.验收意见.as_deref(), Some("cargo build 失败"));
     }
@@ -1275,7 +1394,7 @@ mod 测试 {
             字节数: 1,
             变化类型: "新增".to_string(),
         }];
-        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None).expect("上跳路径应直接打回");
+        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None, &[]).expect("上跳路径应直接打回");
         assert_eq!(回执.验收.结论, 验收结论::打回);
         assert!(回执
             .验收
@@ -1293,7 +1412,7 @@ mod 测试 {
             字节数: 1,
             变化类型: "新增".to_string(),
         }];
-        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None).expect("绝对路径应直接打回");
+        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None, &[]).expect("绝对路径应直接打回");
         assert_eq!(回执.验收.结论, 验收结论::打回);
         assert!(回执
             .验收
@@ -1311,7 +1430,7 @@ mod 测试 {
             字节数: 1,
             变化类型: "新增".to_string(),
         }];
-        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None);
+        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None, &[]);
         if let Some(终裁) = 回执 {
             assert!(!终裁
                 .验收
@@ -1320,6 +1439,93 @@ mod 测试 {
                 .unwrap_or("")
                 .contains("路径越界"))
         }
+    }
+
+    /// 治要求-91假阳性：M3 把文件写在错误位置（「基础设施-域」缺空格），机械门槛应在
+    /// 路径匹配检查处直接打回，不放过位置偏离的产物。
+    #[test]
+    fn 机械门槛_产物路径偏离涉及范围打回() {
+        let 涉及 = vec!["鸿蒙/基础设施 - 域/入口.rs".to_string()];
+        let 产物们 = vec![产物条目 {
+            路径: "鸿蒙/基础设施-域/入口.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "新增".to_string(),
+        }];
+        let 回执 =
+            机械前置门槛("r1", &产物们, 0.0, None, &涉及).expect("产物路径偏离涉及范围应直接打回");
+        assert_eq!(回执.验收.结论, 验收结论::打回);
+        assert!(
+            回执
+                .验收
+                .验收意见
+                .as_deref()
+                .unwrap_or("")
+                .contains("路径偏离涉及范围"),
+            "应标注路径偏离：{:?}",
+            回执.验收.验收意见
+        );
+        assert_eq!(回执.终裁依据, "产物路径偏离涉及范围");
+    }
+
+    /// 产物路径匹配涉及路径且文件真实非空时，机械门槛放行进入准圣审验。
+    #[test]
+    fn 机械门槛_产物路径匹配涉及范围放行() {
+        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let 根 = std::env::temp_dir().join(format!("终裁路径匹配测试-{}", std::process::id()));
+        std::fs::create_dir_all(根.join("鸿蒙").join("基础设施 - 域")).unwrap();
+        std::fs::write(
+            根.join("鸿蒙").join("基础设施 - 域").join("入口.rs"),
+            "pub fn 入口() {}",
+        )
+        .unwrap();
+        let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 涉及 = vec!["鸿蒙/基础设施 - 域/入口.rs".to_string()];
+        let 产物们 = vec![产物条目 {
+            路径: "鸿蒙/基础设施 - 域/入口.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "新增".to_string(),
+        }];
+        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None, &涉及);
+        match 旧根 {
+            Some(值) => std::env::set_var("WORLD_WORKSPACE_ROOT", 值),
+            None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
+        }
+        drop(_锁);
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(
+            回执.is_none(),
+            "产物路径匹配涉及路径且文件非空应放行进入准圣审验"
+        );
+    }
+
+    /// 涉及文件为空时跳过路径匹配检查（审验/核查类任务，设计稿 §11.2 规则 5），
+    /// 产物落在任意位置均不被本检查打回。
+    #[test]
+    fn 机械门槛_涉及为空时跳过路径匹配检查() {
+        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let 根 = std::env::temp_dir().join(format!("终裁空涉及测试-{}", std::process::id()));
+        std::fs::create_dir_all(根.join("任意目录")).unwrap();
+        std::fs::write(根.join("任意目录").join("产物.rs"), "pub fn 任意() {}").unwrap();
+        let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 产物们 = vec![产物条目 {
+            路径: "任意目录/产物.rs".to_string(),
+            类别: "代码".to_string(),
+            字节数: 1,
+            变化类型: "新增".to_string(),
+        }];
+        // 涉及文件为空：即便产物路径不在任何涉及位置，也不应被路径匹配检查打回。
+        let 回执 = 机械前置门槛("r1", &产物们, 0.0, None, &[]);
+        match 旧根 {
+            Some(值) => std::env::set_var("WORLD_WORKSPACE_ROOT", 值),
+            None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
+        }
+        drop(_锁);
+        let _ = std::fs::remove_dir_all(&根);
+        assert!(回执.is_none(), "涉及文件为空时应跳过路径匹配检查放行");
     }
 
     #[test]
@@ -1554,6 +1760,101 @@ mod 测试 {
         assert!(!清单.contains("废弃"), "失效清单不应被读：{清单}");
         std::env::remove_var("WORLD_WORKSPACE_ROOT");
         let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// 问题15：项目结构摘要含结构树与 workspace members 两段。
+    /// 构造临时工作区：写 Cargo.toml（含 workspace members）+ 依赖图（含结构树），
+    /// 断言摘要含【结构树】/【workspace members】标识与真实内容。
+    #[test]
+    fn 项目结构摘要_含结构树与workspace成员() {
+        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let 根 = std::env::temp_dir().join(format!("终裁项目结构测试-{}", std::process::id()));
+        std::fs::create_dir_all(根.join(".上下文")).unwrap();
+        // Cargo.toml 含 workspace members（多行 members 形式，与 建档.rs 同口径：含 `-府"` 的行）。
+        std::fs::write(
+            根.join("Cargo.toml"),
+            "[workspace]\nmembers = [\n    \"鸿蒙/基础设施 - 域/识海承载-府\",\n    \"鸿蒙/基础设施 - 域/天庭治理-府\",\n]\n",
+        )
+        .unwrap();
+        // 依赖图：构造含结构树的工作区并保存。
+        let 工作区 = shihai_fu::工作区::新(&根);
+        // 结构树：根 → 鸿蒙 → 基础设施-域 → 识海承载-府
+        let mut 图 = shihai_fu::依赖图 {
+            结构树: shihai_fu::结构节点::新("根"),
+            ..Default::default()
+        };
+        图.结构树.插入(&[
+            "鸿蒙".to_string(),
+            "基础设施 - 域".to_string(),
+            "识海承载-府".to_string(),
+        ]);
+        图.保存在工作区(&工作区).unwrap();
+
+        let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 摘要 = 项目结构摘要();
+        match 旧根 {
+            Some(值) => std::env::set_var("WORLD_WORKSPACE_ROOT", 值),
+            None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
+        }
+        drop(_锁);
+        let _ = std::fs::remove_dir_all(&根);
+
+        assert!(摘要.contains("【结构树】"), "应含结构树段标识：{摘要}");
+        assert!(
+            摘要.contains("【workspace members】"),
+            "应含 workspace members 段标识：{摘要}"
+        );
+        assert!(摘要.contains("识海承载-府"), "应含结构树节点：{摘要}");
+        assert!(摘要.contains("天庭治理-府"), "应含 workspace 成员：{摘要}");
+    }
+
+    /// 问题15：渲染结构树递归缩进正确，子节点逐级加深。
+    #[test]
+    fn 渲染结构树_递归缩进() {
+        let mut 根 = shihai_fu::结构节点::新("根");
+        根.插入(&["甲".to_string(), "甲子".to_string()]);
+        根.插入(&["乙".to_string()]);
+        let 文 = 渲染结构树(&根);
+        assert!(文.contains("根"), "应含根节点：{文}");
+        assert!(文.contains("甲"), "应含子节点甲：{文}");
+        assert!(文.contains("甲子"), "应含孙节点甲子：{文}");
+        assert!(文.contains("乙"), "应含子节点乙：{文}");
+        // 缩进：甲子 比 甲 更深（含更多前导空格）。
+        let 甲行 = 文.lines().find(|行| 行.trim() == "甲").unwrap_or("");
+        let 甲子行 = 文.lines().find(|行| 行.trim() == "甲子").unwrap_or("");
+        assert!(
+            甲子行.len() > 甲行.len(),
+            "甲子缩进应深于甲：甲={甲行:?} 甲子={甲子行:?}"
+        );
+    }
+
+    /// 问题15：无依赖图与 Cargo.toml 时不崩，返回占位文本。
+    #[test]
+    fn 项目结构摘要_空工作区不崩() {
+        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let 根 = std::env::temp_dir().join(format!("终裁项目结构空测试-{}", std::process::id()));
+        std::fs::create_dir_all(&根).unwrap();
+        let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
+        let 摘要 = 项目结构摘要();
+        match 旧根 {
+            Some(值) => std::env::set_var("WORLD_WORKSPACE_ROOT", 值),
+            None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
+        }
+        drop(_锁);
+        let _ = std::fs::remove_dir_all(&根);
+
+        // 无依赖图 → 默认空结构树；无 Cargo.toml → 读失败占位。两段都应有内容不崩。
+        assert!(摘要.contains("【结构树】"), "应含结构树段标识：{摘要}");
+        assert!(
+            摘要.contains("【workspace members】"),
+            "应含 workspace members 段标识：{摘要}"
+        );
+        assert!(
+            摘要.contains("读 Cargo.toml 失败") || 摘要.contains("无 workspace members"),
+            "无 Cargo.toml 应有占位提示：{摘要}"
+        );
     }
 
     #[test]

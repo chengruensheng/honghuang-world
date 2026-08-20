@@ -62,10 +62,14 @@ fn 记网络成败(成功: bool, 原因: &str) -> bool {
     !成功 && 状态.连续失败 >= 网络连续失败暂停阈值
 }
 
-/// 溢出全文落盘（spill，设计稿 §4.2）：超大工具结果存 `.上下文/spill/{轮次}_{序号}_{工具}.txt`。
+/// 溢出全文落盘（spill，设计稿 §4.2）：超大工具结果存 `.上下文/spill/{任务id}_{轮次}_{序号}_{工具}.txt`。
 /// 内联结果只留截断头段 + 定位符，模型按需 读文件/搜索内容 回读全文——既省 token 又保真。
 /// 落盘失败返回 None，调用方退化为纯截断（不阻断主流程）。
+///
+/// 文件名含任务id（设计稿 §4.2 spill 三连修复 2026-08-20）：消除跨任务/跨重试同轮次序号覆盖。
+/// 落盘时同步清理：spill 目录总大小超阈值则按修改时间删最旧文件降到阈值下，防磁盘膨胀。
 fn spill_落盘(
+    任务id: &str,
     工作区根: &Path,
     轮次: usize,
     序号: usize,
@@ -74,9 +78,51 @@ fn spill_落盘(
 ) -> Option<String> {
     let 目录 = 工作区根.join(".上下文/spill");
     std::fs::create_dir_all(&目录).ok()?;
-    let 文件名 = format!("{轮次}_{序号}_{工具}.txt");
+    清理spill目录(&目录);
+    let 文件名 = format!("{任务id}_{轮次}_{序号}_{工具}.txt");
     std::fs::write(目录.join(&文件名), 全文).ok()?;
     Some(format!(".上下文/spill/{文件名}"))
+}
+
+/// spill 目录总大小阈值：超此值按修改时间清理最旧文件，防磁盘膨胀（设计稿 §4.2 spill 三连修复）。
+/// 200MB：单任务 spill 通常 <10MB，跨任务累积上限 200MB 足够回读近期；超限清最旧保最新。
+const SPILL_总大小阈值: u64 = 200 * 1024 * 1024;
+
+/// 清理 spill 目录：总大小超阈值时按修改时间删最旧文件，直到降到阈值下。
+/// 容错：遍历/取元数据失败时跳过该文件，不阻断落盘主流程。
+fn 清理spill目录(目录: &Path) {
+    let 条目们 = match std::fs::read_dir(目录) {
+        Ok(条目) => 条目,
+        Err(_) => return,
+    };
+    let mut 文件们: Vec<(std::path::PathBuf, u64, std::time::SystemTime)> = Vec::new();
+    let mut 总大小: u64 = 0;
+    for 条目 in 条目们.flatten() {
+        let 路径 = 条目.path();
+        let 元数据 = match std::fs::metadata(&路径) {
+            Ok(元数据) if 元数据.is_file() => 元数据,
+            _ => continue,
+        };
+        let 大小 = 元数据.len();
+        let 修改时间 = 元数据
+            .modified()
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        总大小 += 大小;
+        文件们.push((路径, 大小, 修改时间));
+    }
+    if 总大小 <= SPILL_总大小阈值 {
+        return;
+    }
+    // 按修改时间升序（最旧在前），逐个删直到总大小降到阈值下。
+    文件们.sort_by_key(|(_, _, 时间)| *时间);
+    for (路径, 大小, _) in 文件们 {
+        if 总大小 <= SPILL_总大小阈值 {
+            break;
+        }
+        if std::fs::remove_file(&路径).is_ok() {
+            总大小 = 总大小.saturating_sub(大小);
+        }
+    }
 }
 
 /// 工具循环最大预算（轮数，跨重试累计）。默认 32，可用环境变量 WORLD_TOOL_ROUNDS 覆盖。
@@ -129,7 +175,9 @@ pub const 结果_微压缩_字符阈值: usize = 12_000;
 /// 单次工具结果回传上限（防上下文爆炸，超出截断并提示）。
 const 结果上限: usize = 6000;
 /// 读文件 结果上限：模型点名要读的文件必须看全，否则永远读不全写不了；大文件仍截断防爆。
-const 读文件上限: usize = 60000;
+/// 120000 字符约 60~120 KB 源码，覆盖中型府殿阁园整文件；超此仍走 spill 落盘 + 截断头段。
+/// 2026-08-20 由 60000 提至 120000：实测 60000 时大文件尾部漏看，模型盲改下半截出错。
+const 读文件上限: usize = 120_000;
 
 /// 工具循环回执：最终文本 + 已写入的文件（路径与字节数）+ 会话历史与轮数。
 pub struct 工具循环回执 {
@@ -205,19 +253,36 @@ pub fn 摘要历史(历史: &mut Vec<对话消息>) -> bool {
     if 删起块 >= 删终块 {
         return false;
     }
-    let 切开始 = 块们[删起块].0;
-    let 切片终 = 块们[删终块 - 1].1;
+    // 含 spill 定位符的块整体保留（设计稿 §4.2 spill 三连修复 2026-08-20）：
+    // 防关键定位符（.上下文/spill/...）被摘要压缩丢失，模型仍可按定位符回读溢出全文。
+    let 块含定位符们: Vec<bool> = (0..块数)
+        .map(|块idx| {
+            let (起, 终) = 块们[块idx];
+            (起..终).any(|i| 历史[i].内容.contains(".上下文/spill/"))
+        })
+        .collect();
+    // 可压缩块 = 中间块里不含 spill 定位符的块；含定位符的块原样保留。
+    let 可压缩块们: Vec<usize> = (删起块..删终块).filter(|&b| !块含定位符们[b]).collect();
+    if 可压缩块们.is_empty() {
+        return false; // 中间块全含定位符，无可压缩
+    }
 
     // 统计被压缩段的条数与字符
-    let 压缩条数 = 切片终 - 切开始;
-    let 压缩字符: usize = (切开始..切片终).map(|i| 历史[i].内容.chars().count()).sum();
+    let 压缩条数: usize = 可压缩块们.iter().map(|&b| 块们[b].1 - 块们[b].0).sum();
+    let 压缩字符: usize = 可压缩块们
+        .iter()
+        .flat_map(|&b| 块们[b].0..块们[b].1)
+        .map(|i| 历史[i].内容.chars().count())
+        .sum();
 
     // 收集被压缩段涉及的工具调用名（让模型知道发生过哪些工具）
     let mut 工具名集合: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for 消息 in 历史.iter().take(切片终).skip(切开始) {
-        if let Some(调用们) = &消息.工具调用们 {
-            for 调用 in 调用们 {
-                工具名集合.insert(调用.名字.clone());
+    for &b in &可压缩块们 {
+        for 消息 in 历史.iter().take(块们[b].1).skip(块们[b].0) {
+            if let Some(调用们) = &消息.工具调用们 {
+                for 调用 in 调用们 {
+                    工具名集合.insert(调用.名字.clone());
+                }
             }
         }
     }
@@ -232,12 +297,25 @@ pub fn 摘要历史(历史: &mut Vec<对话消息>) -> bool {
     let 提示 = format!(
         "【会话内压缩】中间 {压缩条数} 条消息已摘要（约 {压缩字符} 字符）。{工具摘要}早期上下文见相应工具调用与文件落盘结果；如需具体细节请用 读文件 工具按路径回看，或继续在最新轮次追加任务要点。"
     );
-
-    // 抽出中间段并替换为单条系统摘要
-    let 中间段: Vec<对话消息> = 历史.drain(切开始..切片终).collect();
     let 摘要消息 = 对话消息::系统(提示);
     let 摘要字符 = 摘要消息.内容.chars().count();
-    历史.insert(切开始, 摘要消息);
+
+    // 构建新历史：保留前块 + 摘要消息 + 含定位符中间块（原样保留）+ 保留后块。
+    // 含定位符的块不压缩，紧随摘要消息之后保留原位，防 spill 定位符丢失。
+    let mut 新历史: Vec<对话消息> = Vec::with_capacity(历史.len() - 压缩条数 + 1);
+    for b in 0..删起块 {
+        新历史.extend(历史[块们[b].0..块们[b].1].iter().cloned());
+    }
+    新历史.push(摘要消息);
+    for b in 删起块..删终块 {
+        if 块含定位符们[b] {
+            新历史.extend(历史[块们[b].0..块们[b].1].iter().cloned());
+        }
+    }
+    for b in 删终块..块数 {
+        新历史.extend(历史[块们[b].0..块们[b].1].iter().cloned());
+    }
+    *历史 = 新历史;
 
     info!(
         压缩前字符 = 总字符,
@@ -246,20 +324,25 @@ pub fn 摘要历史(历史: &mut Vec<对话消息>) -> bool {
         摘要字符,
         "历史已摘要压缩"
     );
-    let _ = 中间段; // 已 drop
     true
 }
 
 /// 微压缩工具结果：单条结果超 结果_微压缩_字符阈值 时追加「按需回读」入口。
 /// 在原 字节上限截断 之上再加一层（多数情况下更宽松），避免单条结果撑爆上下文。
-pub fn 微压缩结果(原始结果: &str) -> String {
+/// `路径` 非空时附在回读提示里（设计稿 §4.2 spill 三连修复 2026-08-20）：模型可直接按路径读，不再猜。
+pub fn 微压缩结果(原始结果: &str, 路径: Option<&str>) -> String {
     let 字符数 = 原始结果.chars().count();
     if 字符数 <= 结果_微压缩_字符阈值 {
         return 原始结果.to_string();
     }
-    format!(
-        "{原始结果}\n\n（结果约 {字符数} 字符；如需完整内容请用 读文件 工具按路径读取，或继续追问要点。）"
-    )
+    match 路径 {
+        Some(路径) => format!(
+            "{原始结果}\n\n（结果约 {字符数} 字符；如需完整内容请用 读文件 工具按路径 {路径} 读取，或继续追问要点。）"
+        ),
+        None => format!(
+            "{原始结果}\n\n（结果约 {字符数} 字符；如需完整内容请用 读文件 工具按路径读取，或继续追问要点。）"
+        ),
+    }
 }
 
 /// 会话内微压缩（设计稿 §4.2 规则3）：历史中非最新保留段的工具结果消息，
@@ -267,7 +350,11 @@ pub fn 微压缩结果(原始结果: &str) -> String {
 /// 保留最新 摘要_保留_最新_消息数 条消息不动（当前上下文完整），
 /// 工具结果消息的 tool_call_id 配对保留（MiniMax 校验 tool id 配对，与内容无关），
 /// 零 LLM 成本。
-pub fn 微压缩旧工具结果(历史: &mut [对话消息]) {
+/// `路径映射` 按 tool_call_id 取工具调用路径参数，附在回读提示里（设计稿 §4.2 spill 三连修复）。
+pub fn 微压缩旧工具结果(
+    历史: &mut [对话消息],
+    路径映射: &std::collections::HashMap<String, String>,
+) {
     let 保留数 = 摘要_保留_最新_消息数.min(历史.len());
     let 截止 = 历史.len() - 保留数;
     for 消息 in 历史.iter_mut().take(截止) {
@@ -279,9 +366,13 @@ pub fn 微压缩旧工具结果(历史: &mut [对话消息]) {
             continue;
         }
         let 前缀: String = 消息.内容.chars().take(200).collect();
-        消息.内容 = format!(
-            "【旧工具结果已压缩（原 {字符数} 字符）】{前缀}……（完整内容请用 读文件 工具按路径回看）"
-        );
+        let 路径提示 = 消息
+            .工具调用标识
+            .as_ref()
+            .and_then(|标识| 路径映射.get(标识))
+            .map(|路径| format!("（完整内容请用 读文件 工具按路径 {路径} 回看）"))
+            .unwrap_or_else(|| "（完整内容请用 读文件 工具按路径回看）".to_string());
+        消息.内容 = format!("【旧工具结果已压缩（原 {字符数} 字符）】{前缀}……{路径提示}");
     }
 }
 
@@ -310,6 +401,8 @@ pub fn 记本轮进度(
 /// 构建失败后上层在同一历史后追加报错即可续跑（重试保留轨迹），预算按 剩余预算 共享扣减。
 /// 出错时返回 工具循环失败，携带截至出错时的 部分回执（已写文件、用量、历史 不丢）。
 ///
+/// `任务id` 用于 spill 落盘文件名（消除跨任务覆盖，设计稿 §4.2 spill 三连修复）。
+///
 /// 终止条件（按设计稿 §4.2 规则3）：
 /// 1. 达到轮数上限；
 /// 2. 累计 token 用量达到任务预算（90 万）→ 任务 token 熔断；
@@ -320,6 +413,7 @@ pub fn 记本轮进度(
 /// 调用点与 match 分支，收益低于成本；错误回执本就是少数路径，故允许）。
 #[allow(clippy::result_large_err)]
 pub fn 执行工具循环(
+    任务id: &str,
     配置: &模型配置,
     历史: &mut Vec<对话消息>,
     剩余预算: usize,
@@ -365,6 +459,9 @@ pub fn 执行工具循环(
     let mut 已警告单文件: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // 已催结后仍连续 N 轮无新增文件 → 强制终止（催结消息不被听的兜底，防只读/命令空转烧预算）。
     let 无新增强制线 = 6usize;
+    // 工具调用路径映射：tool_call_id → 路径参数，供 微压缩旧工具结果 附路径（设计稿 §4.2 spill 三连修复）。
+    let mut 工具调用路径映射: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     for 轮次 in 0..轮数上限 {
         // 任务级 token 预算熔断（每轮开头检查）
@@ -395,7 +492,7 @@ pub fn 执行工具循环(
         }
         // 会话内微压缩（设计稿 §4.2 规则3）：旧轮工具结果修剪为前 200 字符前缀，
         // 保留最新段不动（当前上下文完整），零 LLM 成本防旧结果全文撑爆上下文。
-        微压缩旧工具结果(历史);
+        微压缩旧工具结果(历史, &工具调用路径映射);
 
         info!(
             轮次 = 轮次 + 1,
@@ -557,7 +654,7 @@ pub fn 执行工具循环(
                     let 结果 = if 结果.len() > 上限 {
                         let 边界 = 结果.floor_char_boundary(上限);
                         let 全文字节 = 结果.len();
-                        match spill_落盘(工作区根, 轮次 + 1, 调用序号, &调用.名字, &结果) {
+                        match spill_落盘(任务id, 工作区根, 轮次 + 1, 调用序号, &调用.名字, &结果) {
                             Some(相对路径) => format!(
                                 "{}……（结果过长已截断：共 {全文字节} 字节；完整内容已存 {相对路径}，如需定位编译错误请 搜索内容 \"error\" 或 读文件 该文件）",
                                 &结果[..边界]
@@ -568,7 +665,15 @@ pub fn 执行工具循环(
                         结果
                     };
                     // 工具结果微压缩：超 12k 字符追加「按需回读」入口（设计稿 §4.2 规则3 第 2 件）。
-                    let 结果 = 微压缩结果(&结果);
+                    // 附工具调用路径参数（设计稿 §4.2 spill 三连修复 2026-08-20）：模型可直接按路径读，不再猜。
+                    let 调用路径: Option<String> =
+                        serde_json::from_str::<serde_json::Value>(&调用.参数)
+                            .ok()
+                            .and_then(|v| v["路径"].as_str().map(|s| s.to_string()));
+                    if let Some(路径) = &调用路径 {
+                        工具调用路径映射.insert(调用.标识.clone(), 路径.clone());
+                    }
+                    let 结果 = 微压缩结果(&结果, 调用路径.as_deref());
                     if 失败 {
                         warn!(轮次 = 轮次 + 1, 工具 = %调用.名字, 参数 = %摘要, "工具执行失败：{结果}");
                     } else {
@@ -816,6 +921,7 @@ mod 测试 {
     }
 
     /// 会话内微压缩：只压旧工具结果（≤200 字符前缀），保留最新段不动，tool_call_id 配对不破。
+    /// 路径映射命中时压缩提示附路径（设计稿 §4.2 spill 三连修复）。
     #[test]
     fn 微压缩旧工具结果_压旧保新不破配对() {
         let mut 历史 = vec![
@@ -829,7 +935,9 @@ mod 测试 {
             对话消息::助手_带工具调用("思考3".to_string(), vec![造调用("call-3")]),
             对话消息::工具结果("call-3", "最新结果".to_string()), // 最新保留段，不动
         ];
-        微压缩旧工具结果(&mut 历史);
+        let mut 路径映射 = std::collections::HashMap::new();
+        路径映射.insert("call-0".to_string(), "乾坤/甲.rs".to_string());
+        微压缩旧工具结果(&mut 历史, &路径映射);
         // 旧工具结果被压缩并保留配对
         assert!(
             历史[2].内容.contains("已压缩"),
@@ -838,6 +946,11 @@ mod 测试 {
         );
         assert!(历史[2].内容.chars().count() < 360, "压缩后应显著变短");
         assert_eq!(历史[2].工具调用标识.as_deref(), Some("call-0"));
+        assert!(
+            历史[2].内容.contains("乾坤/甲.rs"),
+            "压缩提示应附路径：{}",
+            历史[2].内容
+        );
         // 最新保留段内容不动
         assert_eq!(历史[8].内容, "最新结果");
         // 短结果不压缩
@@ -879,15 +992,17 @@ mod 测试 {
     }
 
     /// 溢出全文落盘：全文写入 `.上下文/spill/`，返回相对定位符，内容与原文一致。
+    /// 文件名含任务id（设计稿 §4.2 spill 三连修复 2026-08-20）。
     #[test]
     fn spill_全文落盘_可回读() {
         let 临时 = std::env::temp_dir().join(format!("世界测试_spill_{}", std::process::id()));
         let 根 = 临时.clone();
         let 全文 = "error[E0308] 类型不匹配\n".repeat(80);
-        let 相对 = spill_落盘(&根, 7, 3, "运行命令", &全文).expect("spill 落盘应成功");
+        let 任务id = "task-abc123";
+        let 相对 = spill_落盘(任务id, &根, 7, 3, "运行命令", &全文).expect("spill 落盘应成功");
         assert!(
-            相对.starts_with(".上下文/spill/7_3_运行命令.txt"),
-            "相对路径含轮次序号工具: {相对}"
+            相对.starts_with(".上下文/spill/task-abc123_7_3_运行命令.txt"),
+            "相对路径含任务id轮次序号工具: {相对}"
         );
         let 回读 = std::fs::read_to_string(根.join(&相对)).expect("spill 全文应可读");
         assert_eq!(回读, 全文, "spill 全文应与原文一致（保真）");
@@ -900,8 +1015,134 @@ mod 测试 {
         // 以「一个已存在文件」当根：create_dir_all(.上下文/spill) 会因中间路径是文件而失败。
         let 临时 = std::env::temp_dir().join(format!("世界测试_spill坏_{}", std::process::id()));
         std::fs::write(&临时, "占用").ok();
-        let 结果 = spill_落盘(&临时, 1, 1, "运行命令", "全文");
+        let 结果 = spill_落盘("task-x", &临时, 1, 1, "运行命令", "全文");
         assert!(结果.is_none(), "根被文件占用时落盘应失败返回 None");
         std::fs::remove_file(&临时).ok();
+    }
+
+    /// spill 文件名含任务id：不同任务id 产出不同文件名，消除跨任务覆盖。
+    #[test]
+    fn spill_文件名含任务id_不跨任务覆盖() {
+        let 临时 =
+            std::env::temp_dir().join(format!("世界测试_spill任务id_{}", std::process::id()));
+        let 根 = 临时.clone();
+        let 全文 = "内容".to_string();
+        let 甲 = spill_落盘("task-甲", &根, 1, 0, "读文件", &全文).expect("甲落盘成功");
+        let 乙 = spill_落盘("task-乙", &根, 1, 0, "读文件", &全文).expect("乙落盘成功");
+        assert_ne!(甲, 乙, "不同任务id 应产出不同定位符");
+        assert!(甲.contains("task-甲"), "甲定位符含任务id：{甲}");
+        assert!(乙.contains("task-乙"), "乙定位符含任务id：{乙}");
+        // 两文件并存，互不覆盖
+        assert!(根.join(&甲).exists(), "甲文件应存在");
+        assert!(根.join(&乙).exists(), "乙文件应存在");
+        std::fs::remove_dir_all(&临时).ok();
+    }
+
+    /// spill 清理机制：目录总大小超阈值时按修改时间清最旧，降到阈值下。
+    /// 构造总大小 > 200MB 的 spill 目录，再调 spill_落盘 触发清理，验证最旧文件被删。
+    #[test]
+    fn spill_清理机制_超阈值清最旧() {
+        let 临时 = std::env::temp_dir().join(format!("世界测试_spill清理_{}", std::process::id()));
+        let 根 = 临时.clone();
+        let 目录 = 根.join(".上下文/spill");
+        std::fs::create_dir_all(&目录).expect("建 spill 目录");
+        // 写 3 个旧文件，每个 80MB，总 240MB > 200MB 阈值；写入后 sleep 确保修改时间严格递增。
+        // 清理后应删最旧的 old_0（240-80=160 ≤200），old_1/old_2 保留。
+        let 块 = vec![0u8; 80 * 1024 * 1024];
+        for 序 in 0..3u32 {
+            std::fs::write(目录.join(format!("old_{序}.txt")), &块).expect("写旧文件");
+            std::thread::sleep(std::time::Duration::from_millis(120));
+        }
+        // 触发清理：spill_落盘 内部先清理再写新文件。
+        let 新定位 = spill_落盘("task-新", &根, 1, 0, "读文件", "新内容").expect("新落盘成功");
+        // 最旧的 old_0 应被删，old_1/old_2 保留（160MB + 新文件 ≤200MB）。
+        assert!(!目录.join("old_0.txt").exists(), "最旧文件 old_0 应被清理");
+        assert!(目录.join("old_1.txt").exists(), "old_1 应保留");
+        assert!(目录.join("old_2.txt").exists(), "old_2 应保留");
+        assert!(根.join(&新定位).exists(), "新文件应存在");
+        std::fs::remove_dir_all(&临时).ok();
+    }
+
+    /// 摘要历史跳过含 spill 定位符的消息：含 `.上下文/spill/` 的消息不压缩，保留原样。
+    #[test]
+    fn 摘要历史_跳过含spill定位符消息() {
+        // 8 块结构：块0-2 保留前，块3-5 中间段，块6-7 保留后。
+        // 块4 含 spill 定位符→保留；块3、块5 普通→可压缩。验证含定位符块不 drain。
+        let 大结果 = "结果".repeat(1000); // 2000 字符，5 处共 10000，加定位符块确保总字符 > 10000 阈值
+        let 含定位符结果 = format!(
+            "结果过长已截断：完整内容已存 .上下文/spill/task-x_4_0_运行命令.txt，{}",
+            "细节".repeat(1000)
+        );
+        let mut 历史 = vec![
+            对话消息::用户("初始任务".to_string()),
+            对话消息::助手_带工具调用("思考1".to_string(), vec![造调用("call-1")]),
+            对话消息::工具结果("call-1", 大结果.clone()),
+            对话消息::助手_带工具调用("思考2".to_string(), vec![造调用("call-2")]),
+            对话消息::工具结果("call-2", 大结果.clone()),
+            // 块3：普通中间块——应被压缩
+            对话消息::助手_带工具调用("思考3".to_string(), vec![造调用("call-3")]),
+            对话消息::工具结果("call-3", 大结果.clone()),
+            // 块4：含 spill 定位符的中间块——应保留不压缩
+            对话消息::助手_带工具调用("思考4".to_string(), vec![造调用("call-4")]),
+            对话消息::工具结果("call-4", 含定位符结果.clone()),
+            // 块5：普通中间块——应被压缩
+            对话消息::助手_带工具调用("思考5".to_string(), vec![造调用("call-5")]),
+            对话消息::工具结果("call-5", 大结果.clone()),
+            // 块6-7：尾块（最新保留段）
+            对话消息::助手_带工具调用("思考6".to_string(), vec![造调用("call-6")]),
+            对话消息::工具结果("call-6", 大结果.clone()),
+            对话消息::助手_带工具调用("思考7".to_string(), vec![造调用("call-7")]),
+            对话消息::工具结果("call-7", "最新结果".to_string()),
+        ];
+        let 压缩前字符 = 历史_字符数(&历史);
+        let 已压缩 = 摘要历史(&mut 历史);
+        assert!(已压缩, "历史超阈值应触发压缩");
+        // 含 spill 定位符的消息应原样保留
+        let 保留了定位符 = 历史.iter().any(|m| m.内容.contains(".上下文/spill/"));
+        assert!(
+            保留了定位符,
+            "含 spill 定位符的消息应保留不压缩：{:?}",
+            历史.iter().map(|m| &m.内容).collect::<Vec<_>>()
+        );
+        // 压缩后字符数应小于压缩前
+        let 压缩后字符 = 历史_字符数(&历史);
+        assert!(
+            压缩后字符 < 压缩前字符,
+            "压缩后 {压缩后字符} 应小于压缩前 {压缩前字符}"
+        );
+        // 工具配对不破：每条 tool result 的标识都能找到配对 assistant 调用
+        let mut 存活标识 = std::collections::HashSet::new();
+        for m in &历史 {
+            if let Some(调用们) = &m.工具调用们 {
+                for 调用 in 调用们 {
+                    存活标识.insert(调用.标识.clone());
+                }
+            }
+            if let Some(标识) = &m.工具调用标识 {
+                assert!(
+                    存活标识.contains(标识),
+                    "孤立工具结果 {标识} 无配对 assistant"
+                );
+            }
+        }
+    }
+
+    /// 微压缩结果附路径：路径非空时回读提示含路径，路径为空时退化为通用提示。
+    #[test]
+    fn 微压缩结果_附路径() {
+        let 长结果 = "x".repeat(结果_微压缩_字符阈值 + 100);
+        let 带路径 = 微压缩结果(&长结果, Some("乾坤/甲.rs"));
+        assert!(
+            带路径.contains("乾坤/甲.rs"),
+            "带路径时提示应含路径：{带路径}"
+        );
+        let 无路径 = 微压缩结果(&长结果, None);
+        assert!(
+            无路径.contains("按路径读取") && !无路径.contains("乾坤/甲.rs"),
+            "无路径时提示应通用且不含路径：{无路径}"
+        );
+        // 短结果不压缩，路径参数无影响
+        let 短结果 = "短".to_string();
+        assert_eq!(微压缩结果(&短结果, Some("乾坤/甲.rs")), "短");
     }
 }

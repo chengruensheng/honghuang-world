@@ -2,7 +2,7 @@
 
 use crate::类型_定义_殿::{拆解项, 要求书, 要求类别, 设计方案};
 use jiance_fu::{观测角色, 进入观测};
-use moxing_fu::{对话消息, 常规上限, 模型配置, 调用模型};
+use moxing_fu::{对话消息, 常规上限, 模型配置, 用量, 调用模型};
 use rizhi_fu::{info, warn};
 
 /// 分级设计（设计稿 §1.5.5 拍板 2）：简单任务单轮商讨（初稿+四圣一次评审，意见记日志不回改）；
@@ -17,7 +17,7 @@ pub fn 分级设计(要求: &要求书, 配置: &模型配置) -> 设计方案 {
     } else {
         info!(要求id = %要求.id, "简单任务：单轮商讨（初稿 + 四圣一次评审）");
         let 稿 = 模型设计(要求, 配置);
-        let 意见们 = 四维评审(要求, &稿, 配置);
+        let (意见们, _) = 四维评审(要求, &稿, 配置);
         for 意见 in 意见们.iter().filter(|意见| 意见.有意见) {
             info!(要求id = %要求.id, 角度 = 意见.角度, 意见 = %意见.意见, "单轮评审意见（记录不回改）");
         }
@@ -67,9 +67,99 @@ pub fn 模板设计(要求: &要求书) -> 设计方案 {
     }
 }
 
+/// 读项目结构摘要（设计稿 §11.2 设计阶段加固）：结构树 + workspace members + 府间依赖。
+/// 助设计主笔落位正确——看到项目骨架，不臆造不存在的府殿阁园。
+/// 结构树从依赖图加载（`依赖图::下探` 空关键词 → 渲染全部 crate 树）；
+/// workspace members 从根 Cargo.toml 读取（参考三档拼装.rs 读workspace成员）；
+/// 府间依赖读各府 Cargo.toml [dependencies] 段，注入「府 → 依赖列表」映射。
+fn 读项目结构() -> String {
+    let mut 段 = String::new();
+    let 工作区 = shihai_fu::工作区::定位();
+    // 结构树：从依赖图加载，下探全部（关键词空 → 渲染全部 crate 树）。
+    if let Ok(图) = shihai_fu::依赖图::加载自工作区(&工作区) {
+        let 树 = 图.下探(&[]);
+        if !树.is_empty() {
+            段.push_str("【项目结构树】\n");
+            段.push_str(&树);
+            段.push('\n');
+        }
+    }
+    // workspace members + 府间依赖：从根 Cargo.toml 读 members，再读各府 Cargo.toml [dependencies]。
+    let 根路径 = 工作区.根路径();
+    let Some(内容) = std::fs::read_to_string(根路径.join("Cargo.toml")).ok() else {
+        return 段;
+    };
+    let members: Vec<String> = 内容
+        .lines()
+        .filter(|行| 行.contains("-府\""))
+        .map(|行| {
+            行.trim()
+                .trim_start_matches('"')
+                .trim_end_matches(',')
+                .trim_end_matches('"')
+                .to_string()
+        })
+        .collect();
+    if members.is_empty() {
+        return 段;
+    }
+    段.push_str("【workspace members】");
+    段.push_str(&members.join("、"));
+    段.push('\n');
+    // 府间依赖：读各府 Cargo.toml [dependencies]，注入「府 → 依赖列表」映射。
+    let mut 依赖段 = String::from("【府间依赖】\n");
+    let mut 有依赖 = false;
+    for 府 in &members {
+        if let Some(行) = 读府依赖(根路径.join(府)) {
+            依赖段.push_str(&行);
+            有依赖 = true;
+        }
+    }
+    if 有依赖 {
+        段.push_str(&依赖段);
+    }
+    段
+}
+
+/// 读单个府 Cargo.toml 的 [dependencies] 段，返回「府名 → 依赖列表」一行文本。
+fn 读府依赖(府路径: std::path::PathBuf) -> Option<String> {
+    let 内容 = std::fs::read_to_string(府路径.join("Cargo.toml")).ok()?;
+    let 府名 = 府路径.file_name()?.to_string_lossy().to_string();
+    let mut 依赖们: Vec<String> = Vec::new();
+    let mut 在依赖段 = false;
+    for 行 in 内容.lines() {
+        let 去空白 = 行.trim();
+        if 去空白.starts_with('[') {
+            在依赖段 = 去空白 == "[dependencies]";
+            continue;
+        }
+        if 在依赖段 {
+            if let Some(名) = 去空白.split_once('=').map(|(名, _)| 名.trim()) {
+                if !名.is_empty() {
+                    依赖们.push(名.to_string());
+                }
+            }
+        }
+    }
+    if 依赖们.is_empty() {
+        return None;
+    }
+    Some(format!("{府名} → {}\n", 依赖们.join("、")))
+}
+
 /// 模型设计（设计稿 §12 P2-9）：提示模型按 方向/类别/验收标准/涉及路径
 /// 产出设计方案 JSON（设计 + 拆解 + 自评），解析失败或字段缺失回退模板设计。
+/// 提示词注入项目结构树 + workspace members + 府间依赖（设计稿 §11.2 设计阶段加固），
+/// 助主笔落位正确——看到项目骨架，不臆造不存在的府殿阁园。
 pub fn 模型设计(要求: &要求书, 配置: &模型配置) -> 设计方案 {
+    let 结构 = 读项目结构();
+    模型设计_带用量(要求, 配置, &结构).0
+}
+
+/// 模型设计带用量：返回 (设计方案, 用量)，供 圣人工作群设计 做预算累计。
+fn 模型设计_带用量(
+    要求: &要求书, 配置: &模型配置, 结构: &str
+) -> (设计方案, 用量) {
     let 涉及路径 = if 要求.约束.涉及路径.is_empty() {
         "（未指定）".to_string()
     } else {
@@ -83,28 +173,29 @@ pub fn 模型设计(要求: &要求书, 配置: &模型配置) -> 设计方案 {
          硬约束：拆解不超过 3 个子任务，每个子任务必须独立可完成，涉及路径互不重叠。\n\
          工作流 字段必须且只能取一个值：L1_qa/L2_script/L3_program/L4_complex 之一（示例填了 L3_program，禁止填列表或竖线分隔的多值，多值会被机械校验打回）。\n\
          自评必填：必须逐条说明设计如何自证验收标准，空自评会被机械校验直接打回。\n\n\
-         【要求id】{id}\n【方向】{方向}\n【类别】{类别:?}\n【验收标准】{验收标准}\n【涉及路径】\n{涉及路径}",
+         【要求id】{id}\n【方向】{方向}\n【类别】{类别:?}\n【验收标准】{验收标准}\n【涉及路径】\n{涉及路径}\n{结构}",
         id = 要求.id,
         方向 = 要求.方向,
         类别 = 要求.类别,
         验收标准 = 要求.验收标准,
-        涉及路径 = 涉及路径
+        涉及路径 = 涉及路径,
+        结构 = 结构
     );
     match 调用模型(配置, &[对话消息::用户(提示)], 常规上限) {
         Ok((回复, 用量)) => match 解析设计方案(&要求.id, &回复) {
             Some(方案) => {
                 info!(要求id = %要求.id, 拆解数 = 方案.拆解.len(), 提示词 = 用量.提示词, "LLM设计完成");
-                方案
+                (方案, 用量)
             }
             None => {
                 let 摘要: String = 回复.chars().take(200).collect();
                 warn!(要求id = %要求.id, 回复长度 = 回复.len(), 摘要, "LLM设计解析失败，回退模板");
-                模板设计(要求)
+                (模板设计(要求), 用量)
             }
         },
         Err(错误) => {
             warn!(要求id = %要求.id, 错误 = %错误, "LLM设计调用失败，回退模板");
-            模板设计(要求)
+            (模板设计(要求), 用量::default())
         }
     }
 }
@@ -127,13 +218,24 @@ const 四维角度: [(&str, &str); 4] = [
 /// 圣人工作群评审（设计稿 §18.3）：主笔发稿 → 四维分角度评审 → 意见收敛。
 /// 本质：多人分角度审设计稿，意见收敛后定稿；主笔单人设计有盲区，四维各补专业知识。
 /// 收敛上限 2 轮：评审 → 有意见则综合改稿 → 再评，直到全部一致收敛或达上限。
+/// 四维评审并行（`thread::scope`，各角度独立线程）；设总预算上限 20 万 token，
+/// 四维评审 + 改稿累计超预算即终止采用当前稿（设计稿 §11.2 设计阶段加固）。
 pub fn 圣人工作群设计(要求: &要求书, 配置: &模型配置) -> 设计方案 {
-    let mut 稿 = 模型设计(要求, 配置);
+    const 总预算上限: u64 = 200_000;
+    let 结构 = 读项目结构();
+    let (初稿, 用量0) = 模型设计_带用量(要求, 配置, &结构);
+    let mut 稿 = 初稿;
+    let mut 累计 = 用量0;
     for 轮 in 0..2 {
-        let 意见们 = 四维评审(要求, &稿, 配置);
+        let (意见们, 用量1) = 四维评审(要求, &稿, 配置);
+        累计.加(&用量1);
         let 有意见们: Vec<&评审意见> = 意见们.iter().filter(|意见| 意见.有意见).collect();
         if 有意见们.is_empty() {
             info!(要求id = %要求.id, 轮, "设计评审全部意见一致收敛");
+            return 稿;
+        }
+        if 累计.总计 > 总预算上限 {
+            warn!(要求id = %要求.id, 轮, 累计 = 累计.总计, 上限 = 总预算上限, "设计评审超预算，采用当前稿");
             return 稿;
         }
         let 意见文本 = 有意见们
@@ -142,46 +244,88 @@ pub fn 圣人工作群设计(要求: &要求书, 配置: &模型配置) -> 设�
             .collect::<Vec<_>>()
             .join("\n");
         info!(要求id = %要求.id, 轮, 意见数 = 有意见们.len(), "设计评审有意见，综合改稿");
-        稿 = 改稿(要求, &稿, &意见文本, 配置);
+        let (新稿, 用量2) = 改稿_带用量(要求, &稿, &意见文本, 配置, &结构);
+        累计.加(&用量2);
+        稿 = 新稿;
+        if 累计.总计 > 总预算上限 {
+            warn!(要求id = %要求.id, 轮, 累计 = 累计.总计, 上限 = 总预算上限, "设计改稿超预算，采用当前稿");
+            return 稿;
+        }
     }
     warn!(要求id = %要求.id, "设计评审达上限未完全收敛，采用最新稿");
     稿
 }
 
 /// 四维分角度评审：每个角度独立一次 LLM 调用，产出评审意见。
+/// 并行执行（`std::thread::scope`，各角度独立线程，参考终裁.rs 六准圣审验并行实现），
+/// 返回 (意见们, 累计用量) 供 圣人工作群设计 做预算累计。
 fn 四维评审(
     要求: &要求书, 方案: &设计方案, 配置: &模型配置
-) -> Vec<评审意见> {
-    四维角度
-        .iter()
-        .map(|(角度, 关注点)| {
-            let 提示 = format!(
-                "你是{角度}（世界设计评审）。从「{关注点}」角度评审下列设计方案，\
-                 只输出 JSON 对象，不要多余文字。\n\
-                 JSON 结构：{{\"有意见\":true|false,\"意见\":\"具体意见（无意见则空）\"}}\n\n\
-                 【方向】{方向}\n【设计】{设计}\n【拆解】{拆解:?}",
-                角度 = 角度,
-                关注点 = 关注点,
-                方向 = 要求.方向,
-                设计 = 方案.设计,
-                拆解 = 方案.拆解
-            );
-            match 调用模型(配置, &[对话消息::用户(提示)], 常规上限) {
-                Ok((回复, _)) => 解析评审意见(角度, &回复),
-                Err(_) => 评审意见 {
-                    角度,
-                    有意见: false,
-                    意见: String::new(),
-                },
-            }
-        })
-        .collect()
+) -> (Vec<评审意见>, 用量) {
+    let 结果们: Vec<(评审意见, 用量)> = std::thread::scope(|作用域| {
+        let 句柄们: Vec<_> = 四维角度
+            .into_iter()
+            .map(|(角度, 关注点)| {
+                let 提示 = format!(
+                    "你是{角度}（世界设计评审）。从「{关注点}」角度评审下列设计方案，\
+                     只输出 JSON 对象，不要多余文字。\n\
+                     JSON 结构：{{\"有意见\":true|false,\"意见\":\"具体意见（无意见则空）\"}}\n\n\
+                     【方向】{方向}\n【设计】{设计}\n【拆解】{拆解:?}",
+                    角度 = 角度,
+                    关注点 = 关注点,
+                    方向 = 要求.方向,
+                    设计 = 方案.设计,
+                    拆解 = 方案.拆解
+                );
+                作用域.spawn(move || {
+                    match 调用模型(配置, &[对话消息::用户(提示)], 常规上限) {
+                        Ok((回复, 用量)) => (解析评审意见(角度, &回复), 用量),
+                        Err(_) => (
+                            评审意见 {
+                                角度,
+                                有意见: false,
+                                意见: String::new(),
+                            },
+                            用量::default(),
+                        ),
+                    }
+                })
+            })
+            .collect();
+        句柄们
+            .into_iter()
+            .map(|句柄| {
+                句柄.join().unwrap_or_else(|_| {
+                    (
+                        评审意见 {
+                            角度: "异常",
+                            有意见: false,
+                            意见: String::new(),
+                        },
+                        用量::default(),
+                    )
+                })
+            })
+            .collect()
+    });
+    let mut 意见们 = Vec::with_capacity(结果们.len());
+    let mut 累计 = 用量::default();
+    for (意见, 用量) in 结果们 {
+        累计.加(&用量);
+        意见们.push(意见);
+    }
+    (意见们, 累计)
 }
 
-/// 综合意见改稿：把各角度评审意见注入主笔，重新出稿；失败回退现稿。
-fn 改稿(
-    要求: &要求书, 现稿: &设计方案, 意见文本: &str, 配置: &模型配置
-) -> 设计方案 {
+/// 综合意见改稿带用量：把各角度评审意见注入主笔，重新出稿；失败回退现稿。
+/// 提示词注入项目结构（设计稿 §11.2 设计阶段加固），返回 (设计方案, 用量) 供预算累计。
+fn 改稿_带用量(
+    要求: &要求书,
+    现稿: &设计方案,
+    意见文本: &str,
+    配置: &模型配置,
+    结构: &str,
+) -> (设计方案, 用量) {
     let 涉及路径 = if 要求.约束.涉及路径.is_empty() {
         "（未指定）".to_string()
     } else {
@@ -193,16 +337,20 @@ fn 改稿(
          硬约束：拆解不超过 3 个子任务，每个子任务必须独立可完成，涉及路径互不重叠。\n\
          工作流 字段必须且只能取一个值：L1_qa/L2_script/L3_program/L4_complex 之一（示例填了 L3_program，禁止填列表或竖线分隔的多值，多值会被机械校验打回）。\n\
          自评必填：必须逐条说明设计如何自证验收标准，空自评会被机械校验直接打回。\n\n\
-         【方向】{方向}\n【现稿】{设计}\n【拆解】{拆解:?}\n【涉及路径】\n{涉及路径}\n【评审意见】\n{意见}",
+         【方向】{方向}\n【现稿】{设计}\n【拆解】{拆解:?}\n【涉及路径】\n{涉及路径}\n{结构}\n【评审意见】\n{意见}",
         方向 = 要求.方向,
         设计 = 现稿.设计,
         拆解 = 现稿.拆解,
         涉及路径 = 涉及路径,
+        结构 = 结构,
         意见 = 意见文本
     );
     match 调用模型(配置, &[对话消息::用户(提示)], 常规上限) {
-        Ok((回复, _)) => 解析设计方案(&要求.id, &回复).unwrap_or_else(|| 现稿.clone()),
-        Err(_) => 现稿.clone(),
+        Ok((回复, 用量)) => (
+            解析设计方案(&要求.id, &回复).unwrap_or_else(|| 现稿.clone()),
+            用量,
+        ),
+        Err(_) => (现稿.clone(), 用量::default()),
     }
 }
 
@@ -351,7 +499,9 @@ fn 解析设计方案(要求id: &str, 回复: &str) -> Option<设计方案> {
 
 #[cfg(test)]
 mod 测试 {
-    use super::{提取_json候选们, 是复杂任务, 解析设计方案, 解析评审意见};
+    use super::{
+        提取_json候选们, 是复杂任务, 解析设计方案, 解析评审意见, 读府依赖, 读项目结构
+    };
 
     #[test]
     fn 解析评审意见_有意见() {
@@ -606,5 +756,58 @@ mod 测试 {
             方案.设计,
             方案.拆解.len()
         );
+    }
+
+    /// 读府依赖：解析 [dependencies] 段，提取依赖名清单。
+    #[test]
+    fn 读府依赖_解析依赖段() {
+        let 根 = std::env::temp_dir().join(format!(
+            "读府依赖测试-{}-{}",
+            std::process::id(),
+            shihai_fu::当前毫秒()
+        ));
+        std::fs::create_dir_all(&根).unwrap();
+        std::fs::write(
+            根.join("Cargo.toml"),
+            "[package]\nname = \"x\"\n\n[dependencies]\nserde = \"1\"\nshihai_fu = { path = \"../识海承载-府\" }\n",
+        )
+        .unwrap();
+        let 行 = 读府依赖(根.clone()).expect("应解析出依赖");
+        assert!(行.contains("serde"), "应含 serde 依赖：{行}");
+        assert!(行.contains("shihai_fu"), "应含 shihai_fu 依赖：{行}");
+        let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// 读府依赖：无 [dependencies] 段返回 None。
+    #[test]
+    fn 读府依赖_无依赖段返回none() {
+        let 根 = std::env::temp_dir().join(format!(
+            "读府依赖测试空-{}-{}",
+            std::process::id(),
+            shihai_fu::当前毫秒()
+        ));
+        std::fs::create_dir_all(&根).unwrap();
+        std::fs::write(根.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        assert!(
+            读府依赖(根.clone()).is_none(),
+            "无 [dependencies] 段应返回 None"
+        );
+        let _ = std::fs::remove_dir_all(&根);
+    }
+
+    /// 读项目结构：在真实工作区跑应含 workspace members 段。
+    /// 不硬断言具体内容（环境变量 WORLD_WORKSPACE_ROOT 可能被并行测试设到临时目录），
+    /// 仅验证不 panic 且返回 String；真实工作区下应非空。
+    #[test]
+    fn 读项目结构_不panic且真实工作区非空() {
+        let 结构 = 读项目结构();
+        // 真实工作区（WORLD_WORKSPACE_ROOT 未被改写时）应含 workspace members 段。
+        // 并行测试可能改写环境变量，此处软断言：不 panic 即过，含 members 段时额外验证格式。
+        if 结构.contains("【workspace members】") {
+            assert!(
+                结构.contains("-府"),
+                "workspace members 段应含 -府 后缀府名：{结构}"
+            );
+        }
     }
 }
