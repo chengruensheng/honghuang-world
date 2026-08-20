@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod 测试 {
-    use chajian_fu::{府插件, 插件上下文};
+    use chajian_fu::插件上下文;
     use std::sync::Arc;
 
     /// 测试用服务 trait。
@@ -104,11 +104,10 @@ mod 测试 {
     }
 
     #[test]
-    fn 插件应用注册服务能查找() {
+    fn 批量注册自动调应用注册服务() {
         let mut ctx = 插件上下文::新();
-        // 注册()只入插件注册表不调应用()；应用()才注册服务到服务表
-        ctx.注册(Box::new(服务插件)).unwrap();
-        服务插件.应用(&mut ctx).unwrap();
+        // 批量注册()对每个插件先调应用()注册服务，再注册()入注册表
+        chajian_fu::批量注册(&mut ctx, vec![Box::new(服务插件)]).unwrap();
         let 查到 = ctx.查找服务::<Arc<dyn 示例服务>>();
         assert!(查到.is_some());
         assert_eq!(查到.unwrap().取值(), 100);
@@ -121,11 +120,16 @@ mod 测试 {
         use tianting_fu::天庭服务;
 
         let mut ctx = 插件上下文::新();
-        // 按依赖顺序应用三府插件——应用()中注册各府服务到服务表
-        // 注册()只入注册表不调应用()，故此处直接调应用()注册服务
-        shihai_fu::识海插件.应用(&mut ctx).unwrap();
-        daoshu_fu::道术插件.应用(&mut ctx).unwrap();
-        tianting_fu::天庭插件.应用(&mut ctx).unwrap();
+        // 批量注册()按依赖顺序先调应用()注册服务，再注册()入注册表
+        chajian_fu::批量注册(
+            &mut ctx,
+            vec![
+                Box::new(shihai_fu::识海插件),
+                Box::new(daoshu_fu::道术插件),
+                Box::new(tianting_fu::天庭插件),
+            ],
+        )
+        .unwrap();
 
         // 查找三府服务
         let 识海 = ctx.查找服务::<Arc<dyn 识海服务>>();
