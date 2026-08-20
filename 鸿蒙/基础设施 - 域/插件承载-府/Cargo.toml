@@ -1,0 +1,12 @@
+[package]
+name = "chajian_fu"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "chajian_fu"
+path = "入口.rs"
+doctest = false
+
+[dependencies]
+rizhi_fu = { path = "../日志记录-府" }
