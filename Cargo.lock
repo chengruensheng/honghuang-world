@@ -50,6 +50,7 @@ dependencies = [
 name = "daoshu_fu"
 version = "0.1.0"
 dependencies = [
+ "chajian_fu",
  "jiance_fu",
  "json5",
  "moxing_fu",
@@ -277,6 +278,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "mingling_fu"
 version = "0.1.0"
 dependencies = [
+ "chajian_fu",
  "daoshu_fu",
  "moxing_fu",
  "peizhi_fu",
@@ -549,6 +551,7 @@ dependencies = [
 name = "shihai_fu"
 version = "0.1.0"
 dependencies = [
+ "chajian_fu",
  "jiance_fu",
  "moxing_fu",
  "rizhi_fu",
@@ -662,6 +665,7 @@ dependencies = [
 name = "tianting_fu"
 version = "0.1.0"
 dependencies = [
+ "chajian_fu",
  "daoshu_fu",
  "jiance_fu",
  "moxing_fu",

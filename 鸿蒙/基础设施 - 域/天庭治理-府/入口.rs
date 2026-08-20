@@ -36,3 +36,23 @@ pub use 类型_定义_殿::*;
 pub use 进化_主控_殿::*;
 pub use 队列_调度_殿::*;
 pub use 驱动_入口_殿::*;
+
+/// 天庭治理-府插件接口。
+pub struct 天庭插件;
+
+impl chajian_fu::府插件 for 天庭插件 {
+    fn 名称(&self) -> &str {
+        "天庭治理-府"
+    }
+
+    fn 注入(&self) -> Vec<&str> {
+        vec!["识海承载-府", "道术施展-府"]
+    }
+
+    fn 应用(
+        &self,
+        _ctx: &mut chajian_fu::插件上下文,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        Ok(())
+    }
+}

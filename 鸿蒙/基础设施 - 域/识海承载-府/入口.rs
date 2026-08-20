@@ -16,3 +16,23 @@ pub mod 识海_回想_殿;
 pub use 识海_回想_殿::*;
 pub use 识海_纳藏_殿::*;
 pub use 识海_铭记_殿::*;
+
+/// 识海承载-府插件接口。
+pub struct 识海插件;
+
+impl chajian_fu::府插件 for 识海插件 {
+    fn 名称(&self) -> &str {
+        "识海承载-府"
+    }
+
+    fn 注入(&self) -> Vec<&str> {
+        vec![]
+    }
+
+    fn 应用(
+        &self,
+        _ctx: &mut chajian_fu::插件上下文,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        Ok(())
+    }
+}

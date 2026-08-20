@@ -25,3 +25,23 @@ pub use 工作流_编排_殿::*;
 pub use 手脚_施展_殿::*;
 pub use 类型_定义_殿::*;
 pub use 角色_卡册_殿::*;
+
+/// 道术施展-府插件接口。
+pub struct 道术插件;
+
+impl chajian_fu::府插件 for 道术插件 {
+    fn 名称(&self) -> &str {
+        "道术施展-府"
+    }
+
+    fn 注入(&self) -> Vec<&str> {
+        vec!["识海承载-府"]
+    }
+
+    fn 应用(
+        &self,
+        _ctx: &mut chajian_fu::插件上下文,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        Ok(())
+    }
+}
