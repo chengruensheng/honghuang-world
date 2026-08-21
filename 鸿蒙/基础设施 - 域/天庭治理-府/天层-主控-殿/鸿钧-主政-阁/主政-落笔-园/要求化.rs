@@ -263,8 +263,7 @@ fn 兜底提取路径(文本: &str) -> Vec<String> {
 mod 测试 {
     use super::{兜底提取路径, 净化涉及路径, 补命令联动路径};
 
-    /// 本 crate 测试进程级 env 互斥锁（与 终裁.rs 测试共用一把）：并行测试下 WORLD_WORKSPACE_ROOT 串行。
-    static 测试环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// 本 crate 测试进程级 env 互斥锁（与 终裁.rs 测试共用 crate::工作区测试锁）：并行测试下 WORLD_WORKSPACE_ROOT 串行。
 
     #[test]
     fn 标准路径保留() {
@@ -439,7 +438,9 @@ mod 测试 {
     /// §14.15 配置化：装配.json 配置自定义扩展名 → 净化放行该类型（数据驱动，改配置不改代码）。
     #[test]
     fn 净化涉及路径_装配配置自定义扩展名生效() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("要求化-扩展名-{}", std::process::id()));
         let 上下文 = 根.join(".上下文");
         std::fs::create_dir_all(&上下文).unwrap();

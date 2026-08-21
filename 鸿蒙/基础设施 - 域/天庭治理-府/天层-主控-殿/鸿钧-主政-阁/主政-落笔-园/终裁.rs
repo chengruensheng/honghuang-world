@@ -1210,11 +1210,13 @@ mod 测试 {
 
     /// 本 crate 测试进程级 env 互斥锁：并行测试下 WORLD_WORKSPACE_ROOT 串行使用
     ///（cargo test 各 crate 独立进程，crate 内一把锁即可；证道 侧另有全局 隔离设施 共享锁）。
-    static 测试环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// 终裁.rs / 要求化.rs 共用 crate::工作区测试锁，防两把锁不互斥竞态。
 
     #[test]
     fn 产物内容摘要_提取符号与测试() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁摘要测试-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
         let 文件 = 根.join("样例.rs");
@@ -1241,7 +1243,9 @@ mod 测试 {
 
     #[test]
     fn 产物内容摘要_非rs与空文件不崩() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁摘要测试2-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
         std::fs::write(根.join("说明.md"), "# 说明\n\n正文内容。").unwrap();
@@ -1273,7 +1277,9 @@ mod 测试 {
     /// §14.16：.json 产物提取顶层键名。
     #[test]
     fn 产物内容摘要_json提取顶层键() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁摘要测试3-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
         std::fs::write(
@@ -1299,7 +1305,9 @@ mod 测试 {
     /// §14.19 缺陷 12：产物原文摘录注入准圣提示词——真实内容（含头尾截断），治"凭字节猜"。
     #[test]
     fn 产物原文摘录_注入真实内容与截断() {
-        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁原文摘录测试-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
         // 长文件：触发截断分支（> 1200 字符）。
@@ -1356,7 +1364,9 @@ mod 测试 {
     /// §14.19 缺陷 12：产物原文摘录对空产物/不可读文件返回占位，不崩。
     #[test]
     fn 产物原文摘录_空产物与缺失文件不崩() {
-        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁原文摘录测试2-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
@@ -1471,7 +1481,9 @@ mod 测试 {
     /// 产物路径匹配涉及路径且文件真实非空时，机械门槛放行进入准圣审验。
     #[test]
     fn 机械门槛_产物路径匹配涉及范围放行() {
-        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁路径匹配测试-{}", std::process::id()));
         std::fs::create_dir_all(根.join("鸿蒙").join("基础设施 - 域")).unwrap();
         std::fs::write(
@@ -1505,7 +1517,9 @@ mod 测试 {
     /// 产物落在任意位置均不被本检查打回。
     #[test]
     fn 机械门槛_涉及为空时跳过路径匹配检查() {
-        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁空涉及测试-{}", std::process::id()));
         std::fs::create_dir_all(根.join("任意目录")).unwrap();
         std::fs::write(根.join("任意目录").join("产物.rs"), "pub fn 任意() {}").unwrap();
@@ -1566,7 +1580,9 @@ mod 测试 {
         std::fs::create_dir_all(&根).unwrap();
         std::fs::write(根.join("存在的.rs"), "pub fn 有内容() {}\n").unwrap();
         std::fs::write(根.join("空的.rs"), "").unwrap();
-        let 锁 = 测试环境锁.lock().unwrap_or_else(|e| e.into_inner());
+        let 锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 现状 = 涉及路径现状(&[
@@ -1621,7 +1637,9 @@ mod 测试 {
             },
         };
         shihai_fu::保存执行基线(&shihai_fu::工作区::新(&根), &基线).unwrap();
-        let 锁 = 测试环境锁.lock().unwrap_or_else(|e| e.into_inner());
+        let 锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 现状 = 涉及路径现状(&[
@@ -1728,7 +1746,9 @@ mod 测试 {
     /// 读审验标准（让世界自审）：细则·解读 格位的「准圣审验标准清单」可读且过滤失效。
     #[test]
     fn 读审验标准_从格位取清单并过滤失效() {
-        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁审验标准测试-{}", std::process::id()));
         std::fs::create_dir_all(根.join(".上下文").join("格位")).unwrap();
         let 存储 = shihai_fu::模型存储::打开(根.join(".上下文").join("格位"));
@@ -1767,7 +1787,9 @@ mod 测试 {
     /// 断言摘要含【结构树】/【workspace members】标识与真实内容。
     #[test]
     fn 项目结构摘要_含结构树与workspace成员() {
-        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁项目结构测试-{}", std::process::id()));
         std::fs::create_dir_all(根.join(".上下文")).unwrap();
         // Cargo.toml 含 workspace members（多行 members 形式，与 建档.rs 同口径：含 `-府"` 的行）。
@@ -1832,7 +1854,9 @@ mod 测试 {
     /// 问题15：无依赖图与 Cargo.toml 时不崩，返回占位文本。
     #[test]
     fn 项目结构摘要_空工作区不崩() {
-        let _锁 = 测试环境锁.lock().unwrap_or_else(|毒| 毒.into_inner());
+        let _锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|毒| 毒.into_inner());
         let 根 = std::env::temp_dir().join(format!("终裁项目结构空测试-{}", std::process::id()));
         std::fs::create_dir_all(&根).unwrap();
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
@@ -1890,7 +1914,9 @@ mod 测试 {
         )
         .unwrap();
 
-        let 锁 = 测试环境锁.lock().unwrap_or_else(|e| e.into_inner());
+        let 锁 = crate::工作区测试锁
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let 旧根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 产物们 = vec![产物条目 {

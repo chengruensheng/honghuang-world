@@ -100,3 +100,8 @@ impl chajian_fu::府插件 for 天庭插件 {
         Ok(())
     }
 }
+
+/// crate 级测试共享锁：所有设置 WORLD_WORKSPACE_ROOT 环境变量的测试共用此锁，
+/// 防并行测试竞态改写同一进程级环境变量（终裁.rs / 要求化.rs 原各自一把锁不互斥）。
+#[cfg(test)]
+pub(crate) static 工作区测试锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
