@@ -2,7 +2,7 @@
 //! 执行完成后按验收结论推进想法状态（未处理→已化为要求/已打回），
 //! 落盘写回想法.jsonl 对应记录，防同一意图被反复重复投递。
 
-use crate::{工作区根, 打开存储, 状态目录, 读模型配置};
+use crate::{打开存储, 状态目录};
 use rizhi_fu::{error, info, warn};
 use std::fs;
 
@@ -11,9 +11,7 @@ pub fn 投递想法(内容: &str) -> String {
         warn!("想法为空");
         return "想法为空，请提供内容".to_string();
     }
-    let 配置 = 读模型配置();
     let 存储 = 打开存储();
-    let 调度 = daoshu_fu::任务调度::新(配置.clone(), 工作区根());
     let 想法 = tianting_fu::想法 {
         id: format!("想法-{}", shihai_fu::当前毫秒()),
         内容: 内容.to_string(),
@@ -48,7 +46,14 @@ pub fn 投递想法(内容: &str) -> String {
         "代码",
     ));
 
-    match tianting_fu::主政一轮(&想法, &配置, &存储, &调度) {
+    let 天庭服务 = match ctx.查找服务::<std::sync::Arc<dyn tianting_fu::天庭服务>>() {
+        Some(天庭) => 天庭,
+        None => {
+            error!(想法id = %想法.id, "天庭服务未注册");
+            return "天庭服务未注册".to_string();
+        }
+    };
+    match 天庭服务.调度要求(&想法) {
         Ok(主政回执) => {
             // 验收.jsonl 落盘完整终裁回执（每个子要求/单要求各一条，含六准圣意见/终裁依据/用量），
             // 历史读取方按旧验收回执解析自动兼容。

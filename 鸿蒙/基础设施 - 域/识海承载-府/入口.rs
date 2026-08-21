@@ -19,24 +19,42 @@ pub use 识海_铭记_殿::*;
 
 /// 识海服务——识海承载-府的 Service Definition。
 ///
-/// 暴露回想（检索投影）和铐记（回填记忆）两方法。
-/// 当前为占位实现，后续替换为调用回想-殿/铭记-殿的真实逻辑。
+/// 暴露回想（检索投影）和铐记（回填记忆）两方法，包回想-殿/纳藏-殿的真实逻辑。
+/// 实例持有模型存储，方法不再传存储参数。
 pub trait 识海服务: Send + Sync {
-    /// 检索投影——给定查询，返回拼装的投影文本。
-    fn 回想(&self, 查询: &str) -> Result<String, String>;
-    /// 回填记忆——给定内容，记入识海。
-    fn 铐记(&self, 内容: &str) -> Result<(), String>;
+    /// 检索投影——给定角色/格位/字符预算/调用方层级，调元数据层化返回拼装的投影文本。
+    fn 回想(
+        &self,
+        角色: &str,
+        格位们: &[格位],
+        预算字符: usize,
+        调用方: 调用方层级,
+    ) -> Result<String, String>;
+    /// 回填记忆——给定格位名/内容/来源/录入者，写一条记录落盘。
+    fn 铐记(
+        &self, 格位名: &str, 内容: &str, 来源: &str, 录入者: &str
+    ) -> Result<(), String>;
 }
 
-/// 识海服务占位实现——后续替换为真实逻辑。
-struct 识海服务实例;
+/// 识海服务实例——持有模型存储，包回想-殿/纳藏-殿真实逻辑。
+struct 识海服务实例 {
+    存储: 模型存储,
+}
 
 impl 识海服务 for 识海服务实例 {
-    fn 回想(&self, _查询: &str) -> Result<String, String> {
-        Err("识海服务.回想 尚未实现".to_string())
+    fn 回想(
+        &self,
+        角色: &str,
+        格位们: &[格位],
+        预算字符: usize,
+        调用方: 调用方层级,
+    ) -> Result<String, String> {
+        元数据层化(&self.存储, 角色, 格位们, 预算字符, 调用方)
     }
-    fn 铐记(&self, _内容: &str) -> Result<(), String> {
-        Err("识海服务.铐记 尚未实现".to_string())
+    fn 铐记(
+        &self, 格位名: &str, 内容: &str, 来源: &str, 录入者: &str
+    ) -> Result<(), String> {
+        self.存储.写记录(&记录::新(格位名, 内容, 来源, 录入者))
     }
 }
 
@@ -56,7 +74,9 @@ impl chajian_fu::府插件 for 识海插件 {
         &self,
         ctx: &mut chajian_fu::插件上下文,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let 服务: std::sync::Arc<dyn 识海服务> = std::sync::Arc::new(识海服务实例);
+        let 工作区 = 工作区::定位();
+        let 存储 = 模型存储::在工作区(&工作区);
+        let 服务: std::sync::Arc<dyn 识海服务> = std::sync::Arc::new(识海服务实例 { 存储 });
         ctx.注册服务(服务)?;
         Ok(())
     }

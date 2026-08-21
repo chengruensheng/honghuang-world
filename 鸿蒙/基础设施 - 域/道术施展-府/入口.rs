@@ -28,18 +28,42 @@ pub use 角色_卡册_殿::*;
 
 /// 道术服务——道术施展-府的 Service Definition。
 ///
-/// 暴露执行任务方法。当前为占位实现，后续替换为调用角色工作流引擎的真实逻辑。
+/// 暴露执行任务方法，包任务-调度-殿的派遣执行真实逻辑。
+/// 实例持有任务调度（内含模型配置+工作区根），方法不再传配置/工作区根参数。
 pub trait 道术服务: Send + Sync {
-    /// 执行任务——给定任务描述，返回执行结果。
-    fn 执行任务(&self, 任务: &str) -> Result<String, String>;
+    /// 执行任务——给定任务id/任务/背景/现状/涉及路径/设计方案/验收标准，调派遣执行返回回执。
+    #[allow(clippy::too_many_arguments)]
+    fn 执行任务(
+        &self,
+        任务id: &str,
+        任务: &执行任务,
+        背景: &str,
+        现状: &str,
+        涉及路径: &[String],
+        设计方案: &str,
+        验收标准: &str,
+    ) -> Result<执行回执, String>;
 }
 
-/// 道术服务占位实现——后续替换为真实逻辑。
-struct 道术服务实例;
+/// 道术服务实例——持有任务调度，包任务-调度-殿真实逻辑。
+struct 道术服务实例 {
+    调度: 任务调度,
+}
 
 impl 道术服务 for 道术服务实例 {
-    fn 执行任务(&self, _任务: &str) -> Result<String, String> {
-        Err("道术服务.执行任务 尚未实现".to_string())
+    #[allow(clippy::too_many_arguments)]
+    fn 执行任务(
+        &self,
+        任务id: &str,
+        任务: &执行任务,
+        背景: &str,
+        现状: &str,
+        涉及路径: &[String],
+        设计方案: &str,
+        验收标准: &str,
+    ) -> Result<执行回执, String> {
+        self.调度
+            .派遣执行(任务id, 任务, 背景, 现状, 涉及路径, 设计方案, 验收标准)
     }
 }
 
@@ -59,7 +83,16 @@ impl chajian_fu::府插件 for 道术插件 {
         &self,
         ctx: &mut chajian_fu::插件上下文,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let 服务: std::sync::Arc<dyn 道术服务> = std::sync::Arc::new(道术服务实例);
+        let 工作区 = shihai_fu::工作区::定位();
+        let peizhi配置 =
+            peizhi_fu::读模型配置(工作区.根路径().join(".env").to_str().unwrap_or(""));
+        let 配置 = moxing_fu::模型配置 {
+            密钥: peizhi配置.密钥,
+            地址: peizhi配置.地址,
+            模型: peizhi配置.模型,
+        };
+        let 调度 = 任务调度::新(配置, 工作区.根路径().to_path_buf());
+        let 服务: std::sync::Arc<dyn 道术服务> = std::sync::Arc::new(道术服务实例 { 调度 });
         ctx.注册服务(服务)?;
         Ok(())
     }

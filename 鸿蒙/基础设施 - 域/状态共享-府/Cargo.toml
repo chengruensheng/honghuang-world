@@ -1,0 +1,9 @@
+[package]
+name = "zhuangtai_fu"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "zhuangtai_fu"
+path = "入口.rs"
+doctest = false

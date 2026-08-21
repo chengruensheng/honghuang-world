@@ -39,28 +39,33 @@ pub use 驱动_入口_殿::*;
 
 /// 天庭服务——天庭治理-府的 Service Definition。
 ///
-/// 暴露调度要求、验收产物、归档版本三方法。当前为占位实现，后续替换为真实逻辑。
+/// 暴露调度要求、验收产物、归档版本三方法。调度要求包主政一轮真实逻辑；
+/// 验收产物/归档版本阶段一占位（验收/归档在调度要求内完成）。
+/// 实例持有模型配置/模型存储/任务调度，方法不再传这些依赖参数。
 pub trait 天庭服务: Send + Sync {
-    /// 调度要求——给定要求id，推进要求流转。
-    fn 调度要求(&self, 要求id: &str) -> Result<(), String>;
-    /// 验收产物——给定要求id，执行验收。
+    /// 调度要求——给定想法，调主政一轮推进想法流转，返回主政回执。
+    fn 调度要求(&self, 想法: &想法) -> Result<主政回执, String>;
+    /// 验收产物——阶段一占位：验收在调度要求内完成，独立验收待阶段二。
     fn 验收产物(&self, 要求id: &str) -> Result<(), String>;
-    /// 归档版本——给定要求id，归档定档。
+    /// 归档版本——阶段一占位：归档在调度要求内完成，独立归档待阶段二。
     fn 归档版本(&self, 要求id: &str) -> Result<(), String>;
 }
 
-/// 天庭服务占位实现——后续替换为真实逻辑。
-struct 天庭服务实例;
+/// 天庭服务实例——持有模型配置/模型存储，包驱动-入口-殿真实逻辑。
+struct 天庭服务实例 {
+    配置: moxing_fu::模型配置,
+    存储: shihai_fu::模型存储,
+}
 
 impl 天庭服务 for 天庭服务实例 {
-    fn 调度要求(&self, _要求id: &str) -> Result<(), String> {
-        Err("天庭服务.调度要求 尚未实现".to_string())
+    fn 调度要求(&self, 想法: &想法) -> Result<主政回执, String> {
+        主政一轮(想法, &self.配置, &self.存储)
     }
     fn 验收产物(&self, _要求id: &str) -> Result<(), String> {
-        Err("天庭服务.验收产物 尚未实现".to_string())
+        Err("天庭服务.验收产物 阶段一占位：验收在调度要求内完成".to_string())
     }
     fn 归档版本(&self, _要求id: &str) -> Result<(), String> {
-        Err("天庭服务.归档版本 尚未实现".to_string())
+        Err("天庭服务.归档版本 阶段一占位：归档在调度要求内完成".to_string())
     }
 }
 
@@ -80,7 +85,17 @@ impl chajian_fu::府插件 for 天庭插件 {
         &self,
         ctx: &mut chajian_fu::插件上下文,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let 服务: std::sync::Arc<dyn 天庭服务> = std::sync::Arc::new(天庭服务实例);
+        let 工作区 = shihai_fu::工作区::定位();
+        let peizhi配置 =
+            peizhi_fu::读模型配置(工作区.根路径().join(".env").to_str().unwrap_or(""));
+        let 配置 = moxing_fu::模型配置 {
+            密钥: peizhi配置.密钥,
+            地址: peizhi配置.地址,
+            模型: peizhi配置.模型,
+        };
+        let 存储 = shihai_fu::模型存储::在工作区(&工作区);
+        let 服务: std::sync::Arc<dyn 天庭服务> =
+            std::sync::Arc::new(天庭服务实例 { 配置, 存储 });
         ctx.注册服务(服务)?;
         Ok(())
     }

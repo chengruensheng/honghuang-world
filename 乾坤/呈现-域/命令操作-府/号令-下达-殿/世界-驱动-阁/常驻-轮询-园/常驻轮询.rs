@@ -58,7 +58,6 @@ pub fn 世界守护() -> String {
     // 并行工作线程：各自循环领任务线执行。任务线排他锁保证互斥领取、执行期不持锁即可并行。
     std::thread::scope(|作用域| {
         for 序号 in 0..并发 {
-            let 配置 = &配置;
             let 存储 = &存储;
             作用域.spawn(move || {
                 let mut 轮 = 0u32;
@@ -79,7 +78,7 @@ pub fn 世界守护() -> String {
                     if 序号 == 0 && 轮.is_multiple_of(自进化间隔轮数) {
                         自进化一轮();
                     }
-                    match tianting_fu::执行一条待执行任务线(配置, 存储) {
+                    match tianting_fu::执行一条待执行任务线(存储) {
                         Ok(Some(汇报)) => {
                             info!(汇报 = %汇报.chars().take(120).collect::<String>(), "任务线完成");
                         }
@@ -143,9 +142,8 @@ fn 自进化一轮() {
 /// 「世界 驱动」：立即执行一条待执行任务线（手动驱动，供未跑守护时使用）。
 /// 单次调用执行一条（保持 CLI 简单可预期）。
 pub fn 世界驱动() -> String {
-    let 配置 = 读模型配置();
     let 存储 = 打开存储();
-    match tianting_fu::执行一条待执行任务线(&配置, &存储) {
+    match tianting_fu::执行一条待执行任务线(&存储) {
         Ok(Some(汇报)) => format!("已执行一条任务线\n{汇报}"),
         Ok(None) => "当前无待执行任务线（锁被占用时本轮跳过，稍后再试）".to_string(),
         Err(错误) => format!("执行失败：{错误}"),
