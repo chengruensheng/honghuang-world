@@ -2,7 +2,7 @@
 
 use crate::{会话记录, 全部格位, 工具清单, 记录};
 use rizhi_fu::{debug, error, info, warn};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -225,6 +225,145 @@ impl 模型存储 {
         链头.reverse();
         Ok(链头)
     }
+
+    /// 清洗格位：reducer 四步（去重 + 剔失效 + 分组留链头 + 标矛盾）→ 重写 jsonl 只含链头。
+    /// 纯代码 reducer（设计稿 §14.20）：不调 LLM、零 token，机械判定归代码。
+    /// 幂等：对已清洗的 jsonl 再跑一次，去重数/剔除失效数/矛盾清单均为空。
+    pub fn 清洗格位(&self, 格位名: &str) -> Result<清洗报告, String> {
+        let 全部 = self.读格位(格位名)?;
+        let 原条数 = 全部.len();
+
+        // 步1 去重：同内容指纹（内容+证据+分组键）只留时间戳最新。
+        let mut 指纹表: HashMap<(String, String, String), 记录> = HashMap::new();
+        for 记录 in 全部 {
+            let 键 = 内容指纹(&记录);
+            指纹表
+                .entry(键)
+                .and_modify(|旧| {
+                    if 记录.时间戳 > 旧.时间戳 {
+                        *旧 = 记录.clone();
+                    }
+                })
+                .or_insert(记录);
+        }
+        let 去重后: Vec<记录> = 指纹表.into_values().collect();
+        let 去重数 = 原条数.saturating_sub(去重后.len());
+
+        // 步2 剔失效：物理清理失效记录。
+        let 剔除前 = 去重后.len();
+        let 有效: Vec<记录> = 去重后.into_iter().filter(|记录| !记录.失效).collect();
+        let 剔除失效数 = 剔除前.saturating_sub(有效.len());
+
+        // 步4 标矛盾：同分组键不同内容指纹的记录对标（在有效记录里，供上层聚焦，不剔除）。
+        let mut 按分组键: HashMap<String, Vec<记录>> = HashMap::new();
+        for 记录 in &有效 {
+            按分组键.entry(分组键(记录)).or_default().push(记录.clone());
+        }
+        let mut 矛盾清单: Vec<矛盾> = 按分组键
+            .into_iter()
+            .filter(|(_, 组)| 组.len() > 1)
+            .map(|(键, mut 组)| {
+                组.sort_by_key(|记录| 记录.时间戳);
+                矛盾 {
+                    实体键: 键,
+                    冲突记录们: 组,
+                }
+            })
+            .collect();
+        矛盾清单.sort_by(|甲, 乙| 甲.实体键.cmp(&乙.实体键));
+
+        // 步3 分组留链头：按分组键分组，每组留时间戳最新一条（链头 = 实体当前状态）。
+        let mut 链头表: HashMap<String, 记录> = HashMap::new();
+        for 记录 in 有效 {
+            链头表
+                .entry(分组键(&记录))
+                .and_modify(|旧| {
+                    if 记录.时间戳 > 旧.时间戳 {
+                        *旧 = 记录.clone();
+                    }
+                })
+                .or_insert(记录);
+        }
+        let mut 链头们: Vec<记录> = 链头表.into_values().collect();
+        链头们.sort_by_key(|记录| 记录.时间戳);
+        let 分组留链头数 = 链头们.len();
+
+        // 重写 jsonl 只含链头（物理清理失效 + 重复 + 旧版本）。
+        self.重写格位(格位名, &链头们)?;
+
+        info!(
+            格位 = %格位名,
+            原条数,
+            剔除失效数,
+            去重数,
+            分组留链头数,
+            矛盾数 = 矛盾清单.len(),
+            "格位已清洗"
+        );
+        Ok(清洗报告 {
+            原条数,
+            剔除失效数,
+            去重数,
+            分组留链头数,
+            矛盾清单,
+        })
+    }
+
+    /// 重写格位 jsonl：覆盖写入给定记录（按顺序一行一条）。
+    fn 重写格位(&self, 格位名: &str, 记录们: &[记录]) -> Result<(), String> {
+        let 路径 = self.格位文件路径(格位名);
+        let mut 文本 = String::new();
+        for 记录 in 记录们 {
+            let 行 =
+                serde_json::to_string(记录).map_err(|错误| format!("序列化记录失败: {错误}"))?;
+            文本.push_str(&行);
+            文本.push('\n');
+        }
+        fs::write(&路径, 文本).map_err(|错误| {
+            error!(格位 = %格位名, 路径 = %路径.display(), "重写格位失败：{错误}");
+            format!("重写格位失败 {}: {错误}", 路径.display())
+        })?;
+        debug!(格位 = %格位名, 条数 = 记录们.len(), "格位已重写");
+        Ok(())
+    }
+}
+
+/// 分组键：实体键为空时按内容兜底（与 读链头集 同策略，兼容旧式无键记录）。
+fn 分组键(记录: &记录) -> String {
+    if 记录.实体键.is_empty() {
+        记录.内容.clone()
+    } else {
+        记录.实体键.clone()
+    }
+}
+
+/// 内容指纹：(内容, 证据, 分组键) ——同分组键下同内容同证据视为重复。
+fn 内容指纹(记录: &记录) -> (String, String, String) {
+    (记录.内容.clone(), 记录.证据.clone(), 分组键(记录))
+}
+
+/// 清洗报告：reducer 四步后的统计 + 矛盾清单（设计稿 §14.20.6）。
+#[derive(Clone, Debug, PartialEq)]
+pub struct 清洗报告 {
+    /// 清洗前 jsonl 总条数。
+    pub 原条数: usize,
+    /// `失效=true` 物理剔除条数。
+    pub 剔除失效数: usize,
+    /// 同内容指纹只留最新后剔除的重复条数。
+    pub 去重数: usize,
+    /// 按分组键留链头后写入 jsonl 的最终条数。
+    pub 分组留链头数: usize,
+    /// 同分组键不同内容指纹的记录对标，供上层聚焦裁决。
+    pub 矛盾清单: Vec<矛盾>,
+}
+
+/// 矛盾：同分组键下多条不同内容指纹的记录，供上层聚焦裁决（不剔除，只标记）。
+#[derive(Clone, Debug, PartialEq)]
+pub struct 矛盾 {
+    /// 触发矛盾的分组键（实体键，或空实体键时为内容兜底）。
+    pub 实体键: String,
+    /// 同键下不同内容指纹的冲突记录（按时间戳升序）。
+    pub 冲突记录们: Vec<记录>,
 }
 
 /// 代码变更后，证据指向变更路径的记录标记失效，返回失效条数（防幻觉）。
@@ -240,4 +379,123 @@ pub fn 标记证据失效(记录们: &mut [记录], 变更路径: &str) -> usize
         warn!(变更路径, 失效条数 = 计数, "证据失效标记");
     }
     计数
+}
+
+#[cfg(test)]
+mod 测试 {
+    //! 模型 - 落盘 - 园 · 清洗格位 reducer 测试（设计稿 §14.20）：
+    //! 去重 + 剔失效 + 分组留链头 + 标矛盾 + 幂等 + 空实体键兜底。
+
+    use super::*;
+    use crate::来源;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// 临时格位目录：pid + 计数 + 标签 隔离并行测试。
+    fn 临时格位目录(标签: &str) -> PathBuf {
+        static 计数: AtomicU64 = AtomicU64::new(0);
+        let n = 计数.fetch_add(1, Ordering::SeqCst);
+        let pid = std::process::id();
+        let 目录 = std::env::temp_dir().join(format!("shihai_清洗格位_{pid}_{n}_{标签}"));
+        let _ = std::fs::remove_dir_all(&目录);
+        std::fs::create_dir_all(&目录).unwrap();
+        目录
+    }
+
+    /// 造一条记录（手动设时间戳，避免 当前毫秒 抖动）。
+    fn 造记录(
+        实体键: &str, 内容: &str, 证据: &str, 时间戳: u64, 失效: bool
+    ) -> 记录 {
+        记录 {
+            格位名: "测试格位".to_string(),
+            内容: 内容.to_string(),
+            证据: 证据.to_string(),
+            时间戳,
+            来源: 来源::代码,
+            前记录: None,
+            失效,
+            实体键: 实体键.to_string(),
+            规则级别: None,
+        }
+    }
+
+    #[test]
+    fn 清洗_去重剔失效分组留链头标矛盾() {
+        let 目录 = 临时格位目录("四步");
+        let 存储 = 模型存储::打开(&目录);
+        let 记录1 = 造记录("甲", "甲内容", "甲证据", 100, false);
+        let 记录2 = 造记录("甲", "甲内容", "甲证据", 200, false); // 与记录1同指纹，去重留此
+        let 记录3 = 造记录("甲", "甲内容新", "甲证据", 300, false); // 同实体键不同内容，矛盾
+        let 记录4 = 造记录("乙", "乙内容", "乙证据", 400, true); // 失效且指纹唯一，剔失效
+        let 记录5 = 造记录("乙", "乙内容新", "乙证据", 500, false); // 乙链头（与记录4不同指纹）
+        for 记录 in [&记录1, &记录2, &记录3, &记录4, &记录5] {
+            存储.写记录(记录).unwrap();
+        }
+
+        let 报告 = 存储.清洗格位("测试格位").unwrap();
+        assert_eq!(报告.原条数, 5);
+        assert_eq!(报告.去重数, 1, "记录1与记录2同指纹应去重1");
+        assert_eq!(报告.剔除失效数, 1, "记录4失效应剔除1");
+        assert_eq!(报告.分组留链头数, 2, "甲留链头+乙留链头=2");
+        assert_eq!(报告.矛盾清单.len(), 1, "甲实体键有两条不同内容指纹应标矛盾");
+        let 矛盾 = &报告.矛盾清单[0];
+        assert_eq!(矛盾.实体键, "甲");
+        assert_eq!(矛盾.冲突记录们.len(), 2);
+        assert_eq!(矛盾.冲突记录们[0].时间戳, 200, "冲突记录按时间戳升序");
+        assert_eq!(矛盾.冲突记录们[1].时间戳, 300);
+
+        let 读回 = 存储.读格位("测试格位").unwrap();
+        assert_eq!(读回.len(), 2, "jsonl 应只含2条链头");
+        assert_eq!(读回[0].时间戳, 300, "甲链头=记录3（最新）");
+        assert_eq!(读回[1].时间戳, 500, "乙链头=记录5");
+        let _ = std::fs::remove_dir_all(&目录);
+    }
+
+    #[test]
+    fn 清洗_幂等() {
+        let 目录 = 临时格位目录("幂等");
+        let 存储 = 模型存储::打开(&目录);
+        let 记录1 = 造记录("甲", "甲内容", "甲证据", 100, false);
+        let 记录2 = 造记录("甲", "甲内容", "甲证据", 200, false);
+        存储.写记录(&记录1).unwrap();
+        存储.写记录(&记录2).unwrap();
+        存储.清洗格位("测试格位").unwrap();
+
+        let 报告 = 存储.清洗格位("测试格位").unwrap();
+        assert_eq!(报告.去重数, 0, "已清洗应无重复");
+        assert_eq!(报告.剔除失效数, 0, "已清洗应无失效");
+        assert!(报告.矛盾清单.is_empty(), "已清洗应无矛盾");
+        assert_eq!(报告.分组留链头数, 1);
+        let _ = std::fs::remove_dir_all(&目录);
+    }
+
+    #[test]
+    fn 清洗_空实体键按内容兜底不误判矛盾() {
+        let 目录 = 临时格位目录("空键");
+        let 存储 = 模型存储::打开(&目录);
+        let 记录1 = 造记录("", "同内容", "同证据", 100, false);
+        let 记录2 = 造记录("", "同内容", "同证据", 200, false); // 同指纹，去重
+        let 记录3 = 造记录("", "异内容", "同证据", 300, false); // 空键按内容兜底，不同组
+        存储.写记录(&记录1).unwrap();
+        存储.写记录(&记录2).unwrap();
+        存储.写记录(&记录3).unwrap();
+
+        let 报告 = 存储.清洗格位("测试格位").unwrap();
+        assert_eq!(报告.去重数, 1, "记录1与记录2同指纹应去重1");
+        assert_eq!(报告.分组留链头数, 2, "兜底分组键：同内容+异内容=2组");
+        assert!(
+            报告.矛盾清单.is_empty(),
+            "空键按内容兜底，不同内容归不同组，不矛盾"
+        );
+        let _ = std::fs::remove_dir_all(&目录);
+    }
+
+    #[test]
+    fn 清洗_空格位返回空报告() {
+        let 目录 = 临时格位目录("空格位");
+        let 存储 = 模型存储::打开(&目录);
+        let 报告 = 存储.清洗格位("不存在").unwrap();
+        assert_eq!(报告.原条数, 0);
+        assert_eq!(报告.分组留链头数, 0);
+        let _ = std::fs::remove_dir_all(&目录);
+    }
 }

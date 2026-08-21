@@ -1,7 +1,7 @@
 //! 增量 - 检测 - 园 · 测试
 
 use super::*;
-use crate::工作区;
+use crate::{依赖图, 工作区};
 use std::fs;
 use std::path::Path;
 
@@ -203,4 +203,54 @@ fn 真实项目_变更闭环() {
             .unwrap_or_default()
     );
     assert!(!临时路径.exists(), "临时文件应已清理");
+}
+
+#[test]
+fn 地道整理_识别删除后清理依赖图陈旧边() {
+    let _锁 = 测试环境锁.lock().unwrap();
+    let 根 = 建临时工作区("陈旧边");
+    建工程(&根);
+    // 甲.rs 引用乙.rs 的 乙函数 → 乙函数.波及 含 甲.rs（入边），验证清理文件移除入边。
+    fs::write(
+        根.join("工程-a/子/甲.rs"),
+        "use super::乙::乙;\npub fn 甲() { 乙(); }\n",
+    )
+    .unwrap();
+    let 工作区 = 工作区::新(&根);
+    let 存储 = crate::模型存储::在工作区(&工作区);
+    crate::扫描(&存储, &根).expect("前置：扫描建依赖图应成功");
+    let 图0 = 依赖图::加载自工作区(&工作区).expect("前置：加载依赖图应成功");
+    assert!(
+        !图0.查涉及文件(&["工程-a/子/甲.rs".to_string()]).is_empty(),
+        "前置：甲.rs 应有符号档案"
+    );
+
+    // 首次地道整理建基线（不报变更）
+    地道整理(&工作区).unwrap();
+    // 删甲.rs
+    fs::remove_file(根.join("工程-a/子/甲.rs")).unwrap();
+    // 地道整理识别删除 → 同步清理依赖图陈旧边
+    let 报告 = 地道整理(&工作区).unwrap();
+    assert!(
+        报告.删除.contains(&"工程-a/子/甲.rs".to_string()),
+        "应识别甲.rs 删除"
+    );
+
+    let 图1 = 依赖图::加载自工作区(&工作区).unwrap();
+    assert!(
+        图1.查涉及文件(&["工程-a/子/甲.rs".to_string()]).is_empty(),
+        "甲.rs 删除后依赖图应不含其符号档案"
+    );
+    assert!(
+        !图1.查涉及文件(&["工程-a/子/乙.rs".to_string()]).is_empty(),
+        "乙.rs 应保留"
+    );
+    assert!(
+        图1.档案们.iter().all(|档案| 档案
+            .波及
+            .iter()
+            .all(|波| 波.replace('\\', "/") != "工程-a/子/甲.rs")),
+        "甲.rs 的入边应已从所有波及中清理"
+    );
+    let _ = fs::remove_dir_all(&根);
 }
