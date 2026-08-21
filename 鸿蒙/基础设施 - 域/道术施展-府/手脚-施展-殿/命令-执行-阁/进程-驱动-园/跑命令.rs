@@ -36,15 +36,17 @@ pub fn 运行命令(
     参数们: &[&str],
     工作目录: Option<&str>,
 ) -> Result<命令结果, String> {
-    运行命令超时(命令, 参数们, 工作目录, 默认超时毫秒)
+    运行命令超时(命令, 参数们, 工作目录, 默认超时毫秒, &[])
 }
 
 /// 运行外部命令，可选工作目录，指定超时（毫秒）。超时后强杀子进程并返回超时错误。
+/// `额外环境`：注入子进程的环境变量（如 `RUSTC_WRAPPER=sccache`），空切片时继承父进程环境不变。
 pub fn 运行命令超时(
     命令: &str,
     参数们: &[&str],
     工作目录: Option<&str>,
     超时毫秒: u64,
+    额外环境: &[(&str, &str)],
 ) -> Result<命令结果, String> {
     // Windows shell 内置命令翻译：cat/ls 是 cmd/PowerShell 内置，Rust std::process::Command
     // 不识别（不会去 shell 解析），LLM 跑 `cat <file>` 撞「program not found」。
@@ -80,6 +82,9 @@ pub fn 运行命令超时(
     进程.args(&真参数们);
     if let Some(目录) = 工作目录 {
         进程.current_dir(目录);
+    }
+    if !额外环境.is_empty() {
+        进程.envs(额外环境.iter().copied());
     }
     进程.stdout(Stdio::piped());
     进程.stderr(Stdio::piped());
@@ -253,7 +258,7 @@ mod tests {
     fn cat_翻译后_超时强杀仍工作() {
         // cat 无参数 → 走 cmd.exe /C type 无参数 → Windows 提示「系统找不到文件」并快速退出
         // 只需确认不挂死、不报超时
-        let 结果 = 运行命令超时("cat", &[], None, 500);
+        let 结果 = 运行命令超时("cat", &[], None, 500, &[]);
         let 通过 = 结果.is_ok() || 结果.as_ref().err().is_some_and(|e| e.contains("超时"));
         assert!(通过, "cat 无参数应快速结束或超时被杀，实际：{:?}", 结果);
     }

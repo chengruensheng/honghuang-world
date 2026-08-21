@@ -20,7 +20,7 @@ mod 测试 {
     #[test]
     fn 运行命令超时_短命令正常返回() {
         // 10 秒超时，cargo --version 应秒级完成。
-        let 结果 = 运行命令超时("cargo", &["--version"], None, 10_000).unwrap();
+        let 结果 = 运行命令超时("cargo", &["--version"], None, 10_000, &[]).unwrap();
         assert_eq!(结果.退出码, Some(0));
         assert_eq!(结果.错误码, "OK");
         assert!(!结果.标准输出.is_empty());
@@ -34,6 +34,7 @@ mod 测试 {
             &["-NoProfile", "-Command", "Start-Sleep -Seconds 30"],
             None,
             1_000,
+            &[],
         )
         .unwrap_err();
         assert!(错.contains("超时"), "应返回超时错误：{错}");

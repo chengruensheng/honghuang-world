@@ -17,7 +17,7 @@ use shihai_fu::当前任务 as 取当前任务;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 /// 源码区排除目录：记忆数据、版本库、构建物、依赖树、临时目录不进视图、不进快照。
 /// 与 识海承载-府 扫描排除项 对齐（含 临时文件夹——模型观测日志等临时文件不进视图，
@@ -30,6 +30,20 @@ const 排除目录们: [&str; 6] = [
     "node_modules",
     "临时文件夹",
 ];
+
+/// sccache 可用性缓存：首次检查后复用，避免每次物化都 spawn 子进程探测。
+/// sccache 不在 PATH 时返回 false，沙箱运行不注入 RUSTC_WRAPPER，不影响现有功能。
+fn sccache可用() -> bool {
+    static 缓存: OnceLock<bool> = OnceLock::new();
+    *缓存.get_or_init(|| {
+        std::process::Command::new("sccache")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok()
+    })
+}
 
 /// 文件指纹：大小 + 修改纳秒（Windows NTFS 100ns 精度，足够捕捉命令改写）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,6 +119,7 @@ impl 沙箱视图 {
             新建 += 1;
         }
         debug!(新建, "视图物化完成");
+
         Ok(())
     }
 
@@ -169,7 +184,26 @@ impl 沙箱视图 {
         };
         let 超时 = 超时毫秒.unwrap_or(默认超时毫秒);
         info!(命令, cwd = %视图cwd, 超时, "沙箱内执行命令");
-        let 结果 = 运行命令超时(命令, 参数们, Some(&视图cwd), 超时)?;
+        // sccache 加速（设计稿 §11.2 规则 18）：沙箱视图排除 target/道果树，每次全量编译无缓存。
+        // 修法：① 共享 CARGO_TARGET_DIR（.上下文/命令沙箱/共享构建缓存/）让 sccache 在同目录下
+        // 缓存命中（sccache 缓存键含 --out-dir 路径，跨目录不命中）；② RUSTC_WRAPPER=sccache
+        // 走全局缓存；③ CARGO_INCREMENTAL=0 让 sccache 缓存生效（sccache 不缓存增量编译单元）。
+        // 注：cargo 的 rustc-wrapper 配置只在 $CARGO_HOME 生效、不在 workspace 根 .cargo 生效，
+        // 故走环境变量注入。sccache 不可用时仅共享 target 目录（cargo 增量编译复用产物）。
+        let 共享构建目录 = self
+            .工作区根
+            .join(".上下文")
+            .join("命令沙箱")
+            .join("共享构建缓存");
+        let _ = fs::create_dir_all(&共享构建目录);
+        let 共享构建路径 = 共享构建目录.to_string_lossy().into_owned();
+        let sccache就绪 = sccache可用();
+        let mut 环境: Vec<(&str, &str)> = vec![("CARGO_TARGET_DIR", 共享构建路径.as_str())];
+        if sccache就绪 {
+            环境.push(("RUSTC_WRAPPER", "sccache"));
+            环境.push(("CARGO_INCREMENTAL", "0"));
+        }
+        let 结果 = 运行命令超时(命令, 参数们, Some(&视图cwd), 超时, &环境)?;
         let (越界数, 越界详情) = self.检测回滚(&前视图, &前真实)?;
         Ok(沙箱结果 {
             结果,

@@ -28,6 +28,22 @@ pub struct 当前想法id(pub String);
 #[derive(Clone, Debug)]
 pub struct 当前要求id(pub String);
 
+/// 验证用id——端到端测试专用状态 id newtype，序列化契约同 当前设计id（字段名 `verify_id`）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct 验证用id(pub String);
+
+impl 验证用id {
+    pub const 序列化字段名: &'static str = "verify_id";
+
+    pub fn 新(id: impl Into<String>) -> Self {
+        验证用id(id.into())
+    }
+
+    pub fn 值(&self) -> &str {
+        &self.0
+    }
+}
+
 /// 当前设计id：跨府共享当前主控推进的设计稿标识。
 /// 序列化形式统一 snake_case：JSON 字段名 `current_design_id`。
 /// 并发契约：调用方保证启动期一次性写入、运行期只读，选用 RwLock 读多写少模式。
@@ -91,14 +107,28 @@ impl Serialize for 当前设计id {
 impl Deserialize for 当前设计id {
     type Error = 状态键值错误;
     fn deserialize(输入: &str) -> Result<Self, Self::Error> {
-        let 修剪 = 输入.trim();
-        if 修剪.len() < 2 || !修剪.starts_with('"') || !修剪.ends_with('"') {
-            return Err(状态键值错误::反序列化失败 {
+        serde_json::from_str::<String>(输入)
+            .map(当前设计id)
+            .map_err(|_| 状态键值错误::反序列化失败 {
                 输入: 输入.to_string(),
-            });
-        }
-        let 内 = &修剪[1..修剪.len() - 1];
-        Ok(当前设计id(内.to_string()))
+            })
+    }
+}
+
+impl Serialize for 验证用id {
+    fn serialize(&self) -> String {
+        format!("\"{}\"", self.0)
+    }
+}
+
+impl Deserialize for 验证用id {
+    type Error = 状态键值错误;
+    fn deserialize(输入: &str) -> Result<Self, Self::Error> {
+        serde_json::from_str::<String>(输入)
+            .map(验证用id)
+            .map_err(|_| 状态键值错误::反序列化失败 {
+                输入: 输入.to_string(),
+            })
     }
 }
 
@@ -154,5 +184,20 @@ mod 测试 {
         let 字段值 = 原始.serialize();
         let 还原 = 当前设计id::deserialize(&字段值).unwrap();
         assert_eq!(原始, 还原);
+    }
+
+    #[test]
+    fn 验证用id_字段名锁定为_verify_id() {
+        assert_eq!(验证用id::序列化字段名, "verify_id");
+    }
+
+    #[test]
+    fn 验证用id_round_trip_端到端契约() {
+        let 原始 = 验证用id::新("verify-001/甲阶段");
+        let 字段值 = 原始.serialize();
+        assert_eq!(字段值, "\"verify-001/甲阶段\"");
+        let 还原 = 验证用id::deserialize(&字段值).unwrap();
+        assert_eq!(原始, 还原);
+        assert_eq!(原始.值(), "verify-001/甲阶段");
     }
 }

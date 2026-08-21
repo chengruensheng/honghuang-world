@@ -7,3 +7,6 @@ edition = "2021"
 name = "zhuangtai_fu"
 path = "入口.rs"
 doctest = false
+
+[dependencies]
+serde_json = "1"
