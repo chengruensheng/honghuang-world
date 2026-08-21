@@ -20,6 +20,8 @@ pub fn 投递想法(内容: &str) -> String {
     };
     info!(想法id = %想法.id, "想法已受理");
 
+    // 初始化全局状态共享（供主循环写入当前想法id/要求id，观览查询读取）
+    let _ = zhuangtai_fu::初始化全局状态();
     // 初始化全局插件上下文（识海→道术→天庭，按依赖顺序）
     let ctx = chajian_fu::初始化全局上下文(vec![
         Box::new(shihai_fu::识海插件),

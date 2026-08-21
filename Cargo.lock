@@ -288,6 +288,7 @@ dependencies = [
  "shihai_fu",
  "shijian_fu",
  "tianting_fu",
+ "zhuangtai_fu",
 ]
 
 [[package]]
@@ -677,6 +678,7 @@ dependencies = [
  "shihai_fu",
  "shijian_fu",
  "thiserror",
+ "zhuangtai_fu",
 ]
 
 [[package]]

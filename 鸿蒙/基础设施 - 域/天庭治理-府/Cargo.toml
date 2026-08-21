@@ -20,3 +20,4 @@ peizhi_fu = { path = "../../世界配置 - 域/配置管理-府" }
 rizhi_fu = { path = "../日志记录-府" }
 jiance_fu = { path = "../../观测探针-府" }
 chajian_fu = { path = "../插件承载-府" }
+zhuangtai_fu = { path = "../状态共享-府" }
