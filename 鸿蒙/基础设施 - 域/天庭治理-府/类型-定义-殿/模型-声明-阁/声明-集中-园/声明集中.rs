@@ -164,22 +164,9 @@ pub struct 设计方案 {
     pub 自评: String,
 }
 
-/// 产物条目。
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct 产物条目 {
-    pub 路径: String,
-    pub 类别: String,
-    pub 字节数: u64,
-    /// 相对本轮执行前基线指纹的变化类型：新增 | 修改 | 未变（设计稿 §12 阶段四 P0-1）。
-    /// serde 默认「未变」向后兼容旧记录；未变文件不进产物清单。
-    #[serde(default = "默认变化类型")]
-    pub 变化类型: String,
-}
-
-/// 变化类型 默认值：未变（旧记录反序列化兜底）。
-fn 默认变化类型() -> String {
-    "未变".to_string()
-}
+/// 产物条目 / 产物类别 / 变化类型：统一引自道术施展-府（消除两 crate 重复定义）。
+/// 旧记录反序列化由 `变化类型` 的 `Default::default() = 未变` 兜底兼容。
+pub use daoshu_fu::{产物条目, 产物类别, 变化类型};
 
 /// 验收回执（鸿钧产出）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

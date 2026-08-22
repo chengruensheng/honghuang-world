@@ -22,7 +22,7 @@ pub fn 留痕(
 ) -> 进化记录 {
     // 事件流：进化留痕（append-only 事实源，进化环每留痕一条）。
     let 流 = shihai_fu::事件流::在工作区(&shihai_fu::工作区::定位());
-    let _ = 流.追加事件(
+    流.追加事件静默(
         shihai_fu::事件类型::进化留痕,
         serde_json::json!({
             "进化id": id,

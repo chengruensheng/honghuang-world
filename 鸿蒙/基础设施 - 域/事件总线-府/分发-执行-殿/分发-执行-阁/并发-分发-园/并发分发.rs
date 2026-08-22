@@ -43,7 +43,9 @@ impl 事件总线 {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let 事件名 = 事件.to_string();
         {
-            let mut 表 = self.注册表.write().expect("事件总线注册表写锁");
+            // 写锁 poison 时仍取出数据：poison 仅标记持锁线程曾 panic，数据本身可用，
+            // 取出可避免级联 panic 让整个事件总线不可用（对齐§2.3.1 容错策略）。
+            let mut 表 = self.注册表.write().unwrap_or_else(|e| e.into_inner());
             表.entry(事件名.clone()).or_default().push(注册项 {
                 模式, 回调, 序号
             });
@@ -66,7 +68,8 @@ impl 事件总线 {
 
     /// 通知分发（emit）：观察，按注册顺序调用；监听器 Err 只记录不中止。
     pub fn 通知(&self, 事件: &str, 载荷: &mut 载荷) {
-        let 表 = self.注册表.read().expect("事件总线注册表读锁");
+        // 读锁 poison 容错：同注册写锁，poison 后数据仍可用，避免级联 panic。
+        let 表 = self.注册表.read().unwrap_or_else(|e| e.into_inner());
         let Some(项们) = 表.get(事件) else {
             return;
         };
@@ -81,7 +84,8 @@ impl 事件总线 {
 
     /// 串行分发（serial）：按注册顺序调用；任一 Err 即中止（由事件声明方决定语义）。
     pub fn 串行(&self, 事件: &str, 载荷: &mut 载荷) -> Result<(), String> {
-        let 表 = self.注册表.read().expect("事件总线注册表读锁");
+        // 读锁 poison 容错：同通知分发，poison 后数据仍可用，避免级联 panic。
+        let 表 = self.注册表.read().unwrap_or_else(|e| e.into_inner());
         let Some(项们) = 表.get(事件) else {
             return Ok(());
         };
@@ -96,9 +100,10 @@ impl 事件总线 {
 
     /// 事件上的监听器数（观测用）。
     pub fn 监听数(&self, 事件: &str) -> usize {
+        // 读锁 poison 容错：观测接口不应因 poison panic，poison 后数据仍可读。
         self.注册表
             .read()
-            .expect("事件总线注册表读锁")
+            .unwrap_or_else(|e| e.into_inner())
             .get(事件)
             .map(Vec::len)
             .unwrap_or(0)
@@ -152,7 +157,9 @@ impl<T: 'static> 流水线<T> {
             .下一序号
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         {
-            let mut 项们 = self.项们.write().expect("流水线写锁");
+            // 写锁 poison 容错：poison 仅标记持锁线程曾 panic，数据本身可用，
+            // 取出可避免级联 panic 让整条流水线不可用（对齐§2.3.1 容错策略）。
+            let mut 项们 = self.项们.write().unwrap_or_else(|e| e.into_inner());
             项们.push(流水线项 {
                 回调: Box::new(监听),
                 序号,
@@ -172,7 +179,8 @@ impl<T: 'static> 流水线<T> {
 
     /// 执行链：按注册顺序执行，任一 Err 即中止（waterfall 语义）。
     pub fn 执行(&self, 载荷: &mut T) -> Result<(), String> {
-        let 项们 = self.项们.read().expect("流水线读锁");
+        // 读锁 poison 容错：poison 后数据仍可用，避免级联 panic 中断 waterfall 执行。
+        let 项们 = self.项们.read().unwrap_or_else(|e| e.into_inner());
         let mut 项们: Vec<&流水线项<T>> = 项们.iter().collect();
         项们.sort_by_key(|项| 项.序号);
         for 项 in 项们 {
@@ -183,7 +191,8 @@ impl<T: 'static> 流水线<T> {
 
     /// 链上监听器数（观测用）。
     pub fn 长度(&self) -> usize {
-        self.项们.read().expect("流水线读锁").len()
+        // 读锁 poison 容错：观测接口不应因 poison panic，poison 后数据仍可读。
+        self.项们.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 }
 

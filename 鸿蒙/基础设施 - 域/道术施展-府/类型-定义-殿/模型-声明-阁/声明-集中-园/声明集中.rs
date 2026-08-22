@@ -51,21 +51,62 @@ pub enum 执行状态 {
     失败,
 }
 
+/// 产物类别：执行产出的种类（替代裸字符串，集中枚举语义）。
+/// 序列化以变体名直出（"代码"/"脚本"/"文档"/"配置"/"其他"），向后兼容旧 jsonl 记录。
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum 产物类别 {
+    #[default]
+    代码,
+    脚本,
+    文档,
+    配置,
+    其他,
+}
+
+impl std::fmt::Display for 产物类别 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            产物类别::代码 => "代码",
+            产物类别::脚本 => "脚本",
+            产物类别::文档 => "文档",
+            产物类别::配置 => "配置",
+            产物类别::其他 => "其他",
+        }
+        .fmt(f)
+    }
+}
+
+/// 变化类型：相对本轮执行前基线指纹的变化（新增 | 修改 | 未变）。
+/// 序列化以变体名直出，向后兼容旧 jsonl 记录。
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum 变化类型 {
+    新增,
+    修改,
+    #[default]
+    未变,
+}
+
+impl std::fmt::Display for 变化类型 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            变化类型::新增 => "新增",
+            变化类型::修改 => "修改",
+            变化类型::未变 => "未变",
+        }
+        .fmt(f)
+    }
+}
+
 /// 产物条目：执行产出的一个文件 / 脚本 / 文档。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct 产物条目 {
     pub 路径: String,
-    pub 类别: String,
+    pub 类别: 产物类别,
     pub 字节数: u64,
     /// 相对本轮执行前基线指纹的变化类型：新增 | 修改 | 未变。
     /// serde 默认「未变」向后兼容旧记录；未变文件不进产物清单。
-    #[serde(default = "默认变化类型")]
-    pub 变化类型: String,
-}
-
-/// 变化类型 默认值：未变（旧记录反序列化兜底）。
-fn 默认变化类型() -> String {
-    "未变".to_string()
+    #[serde(default)]
+    pub 变化类型: 变化类型,
 }
 
 /// 执行回执：一次执行的结果、产物清单、token 用量与轮数。
