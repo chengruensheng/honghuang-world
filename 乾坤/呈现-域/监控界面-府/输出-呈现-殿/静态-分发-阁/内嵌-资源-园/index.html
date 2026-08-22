@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洪荒 · 分裂流</title>
+<link rel="stylesheet" href="/static/style.css?v=6">
+</head>
+<body>
+<!-- 内联 SVG 图标定义（离线运行，不依赖外部 CDN） -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <defs>
+    <!-- 提示词：文档图标 -->
+    <symbol id="ic-prompt" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 2h6l3 3v9H3z"/><path d="M9 2v3h3"/><path d="M5 8h6M5 11h4"/>
+    </symbol>
+    <!-- 思考：火花图标 -->
+    <symbol id="ic-think" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l2 2M10 10l2 2M12 4l-2 2M6 10l-2 2"/>
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/>
+    </symbol>
+    <!-- 工具：扳手图标 -->
+    <symbol id="ic-tool" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 2a2.5 2.5 0 0 0-3 3L3 10l3 3 5-5a2.5 2.5 0 0 0 3-3l-2 2-2-2 2-2z"/>
+    </symbol>
+    <!-- 返回：箭头返回图标 -->
+    <symbol id="ic-return" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 3L4 8l5 5"/><path d="M4 8h9"/>
+    </symbol>
+    <!-- 回复：对话气泡图标 -->
+    <symbol id="ic-reply" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 3h12v8H6l-3 3v-3H2z"/><path d="M5 7h2M9 7h2"/>
+    </symbol>
+    <!-- 完成：勾选图标 -->
+    <symbol id="ic-done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 8l3 3 7-7"/>
+    </symbol>
+    <!-- 活跃：加载旋转图标 -->
+    <symbol id="ic-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+      <path d="M8 2a6 6 0 1 0 6 6" />
+    </symbol>
+    <!-- 分裂：分叉图标 -->
+    <symbol id="ic-fork" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="4" cy="4" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+      <path d="M5 4h2a2 2 0 0 1 2 2M5 12h2a2 2 0 0 0 2-2"/>
+    </symbol>
+    <!-- 合流：合并图标 -->
+    <symbol id="ic-merge" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="4" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="4" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+      <path d="M11 4H9a2 2 0 0 0-2 2M11 12H9a2 2 0 0 1-2-2"/>
+    </symbol>
+    <!-- chevron-down：展开/收起箭头 -->
+    <symbol id="ic-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6l5 4 5-4"/>
+    </symbol>
+    <!-- 事件：时钟图标（页脚统计） -->
+    <symbol id="ic-events" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/>
+    </symbol>
+    <!-- token：芯片图标 -->
+    <symbol id="ic-token" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="4" width="8" height="8" rx="1"/><path d="M2 6h2M2 10h2M12 6h2M12 10h2M6 2v2M10 2v2M6 12v2M10 12v2"/>
+    </symbol>
+    <!-- 耗时：沙漏图标 -->
+    <symbol id="ic-clock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 2h8M4 14h8M5 2c0 4 6 4 6 6s-6 2-6 6M11 2c0 4-6 4-6 6s6 2 6 6"/>
+    </symbol>
+    <!-- 活跃线：分支图标 -->
+    <symbol id="ic-lines" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="3" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="13" cy="4" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+      <path d="M4 8h2a2 2 0 0 1 2 2M4 8h2a2 2 0 0 0 2-2"/>
+    </symbol>
+    <!-- 阴脑：月亮图标 -->
+    <symbol id="ic-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 9a5 5 0 1 1-5-7 4 4 0 0 0 5 7z"/>
+    </symbol>
+    <!-- 矛盾：对峙图标 -->
+    <symbol id="ic-conflict" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 8h10"/><path d="M5 5l-2 3 2 3M11 5l2 3-2 3"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="app">
+  <header class="顶栏">
+    <div class="顶栏-左">
+      <span class="世界名">洪荒 · 分裂流</span>
+    </div>
+    <div class="顶栏-中">
+      <span class="阶段" id="阶段"></span>
+      <span class="想法" id="当前想法"></span>
+      <span class="要求" id="当前要求"></span>
+    </div>
+    <div class="顶栏-右">
+      <span class="时刻" id="时刻"></span>
+      <span class="状态点" id="状态点"></span>
+      <span class="并发度" id="并发度" title="活跃任务线数">线 0</span>
+    </div>
+  </header>
+
+  <nav class="段头">
+    <div class="段头-容器">
+      <button data-view="步骤流" class="激活">步骤流</button>
+      <button data-view="任务树">任务树</button>
+    </div>
+  </nav>
+
+  <main class="主体">
+    <aside class="任务列表" id="任务列表"></aside>
+    <section class="步骤面板">
+      <div class="事件流" id="事件流"></div>
+    </section>
+    <aside class="旁路栏" id="旁路栏"></aside>
+  </main>
+
+  <footer class="页脚" id="页脚"></footer>
+</div>
+<script src="/static/app.js?v=6"></script>
+</body>
+</html>

@@ -3,16 +3,21 @@
 > 落位:乾坤/呈现-域/监控界面-府
 > 依据:融合蓝图-设计稿.md §11
 > 本质:世界执行期间的直播 + 白箱 + 让用户信任
+> **2026-08-21 三次修订**：技术栈由 Python 改为 Rust（axum + tokio + SSE），入 Cargo workspace，lib=`jiankong_fu`。下方"启动/架构"已更新；代码示例部分（transform 装配器等）为旧 Python 实现，待落码时整体重写为 Rust。详见融合蓝图 §11。
 
 ---
 
 ## 启动
 
-    python server.py 8080
+    cargo run -p mingling_fu -- 监控 启动
 
-默认端口 8080。可以传参改端口:
+或独立 bin：
 
-    python server.py 9090
+    cargo run -p jiankong_fu
+
+默认端口 8080。可以传参改端口：
+
+    cargo run -p jiankong_fu -- --port 9090
 
 打开浏览器:http://127.0.0.1:8080
 
@@ -21,15 +26,16 @@
 ## 架构
 
     监控界面-府/
-    ├── server.py             # Python 标准库 http.server + ThreadingHTTPServer
-    ├── monitor.rooms.json   # 9 卡片清单与关切字段
-    ├── README.md            # 本文件
-    └── static/
-        ├── index.html       # 主页(不到 50 行)
-        ├── style.css        # 暗色主题 + 响应式
-        └── app.js           # 直播 + 回放 + 设置(不到 200 行)
+    ├── 入口.rs                # lib 根（pub mod 各殿 + pub use 透出 Service Definition）
+    ├── Cargo.toml             # lib=jiankong_fu，入 workspace
+    ├── monitor.rooms.json    # 9 卡片清单与关切字段（配置园资产）
+    ├── README.md             # 本文件
+    ├── 类型-定义-殿/          # HTTP / JSON / 事件契约 / 白箱六字段类型
+    ├── 数据-抓取-殿/          # 从各府 lib 根读数据（shihai_fu::/jiance_fu::/zhuangtai_fu::/rizhi_fu::）
+    ├── 视图-装配-殿/          # 组装响应（快照 / SSE 流 / 回放 / 双视图）
+    └── 输出-呈现-殿/          # HTTP 路由（axum）+ 静态资源服务（include_str!/include_bytes! 内嵌）
 
-全部代码仅依赖 Python 标准库,零第三方依赖。
+技术栈：axum（路由）+ tokio（异步）+ axum::response::sse（SSE）+ serde_json（序列化）+ include_str!/include_bytes!（内嵌静态资源）。静态资源三件套 index.html / style.css / app.js 经编译期内嵌，不落盘到生产代码目录。
 
 ---
 
@@ -62,7 +68,7 @@
       证据: ''
     }
 
-缺一即白箱泄漏 —— 本版由 server.py 的 transform 装配器守护,原始行缺字段填 0 / '',不驱回。
+缺一即白箱泄漏 —— 本版由 视图-装配-殿 的 transform 装配器守护,原始行缺字段填 0 / '',不驱回。（旧 Python server.py 实现待 Rust 重写）
 
 ---
 
@@ -157,4 +163,4 @@ data: {"source": "event|model|shihai", "ts": 1234, "ev": {六字段}}
 - `source="model"` 来自 `临时文件夹/模型流水-观测.log`(块字段 `========== 模型调用 @ 毫秒 ==========` 拆分,每行 prompt/回复/用量/成本 渲染为一条独立 ev)
 - `source="shihai"` 来自 `.上下文/记录.jsonl`(装配成六字段)
 
-缺字段填 0 / ""——本版由 server.py 的 transform 装配器守护,原始行缺字段填默认值,不驱回。
+缺字段填 0 / ""——本版由 视图-装配-殿 的 transform 装配器守护,原始行缺字段填默认值,不驱回。（旧 Python server.py 实现待 Rust 重写）
