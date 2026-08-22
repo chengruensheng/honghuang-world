@@ -25,7 +25,12 @@
 
   function 格式时刻(ts) {
     if (!ts) return "";
-    return new Date(ts).toLocaleTimeString("zh-CN", { hour12: false });
+    var d = new Date(ts);
+    var h = String(d.getHours()).padStart(2, "0");
+    var m = String(d.getMinutes()).padStart(2, "0");
+    var s = String(d.getSeconds()).padStart(2, "0");
+    var ms = String(d.getMilliseconds()).padStart(3, "0");
+    return h + ":" + m + ":" + s + "." + ms;
   }
 
   // SVG 图标构造（引用 index.html 内联 <symbol> 定义）
@@ -306,42 +311,141 @@
     return 步骤们;
   }
 
-  // ===== 渲染步骤卡片（重写 UI，保留展开/收起逻辑） =====
+  // ===== 渲染步骤卡片（卡牌式三段：主题 / 主体 / 结论） =====
+  // 主题：状态图标 + 步骤号 + 时间戳 + 线标签（行1），动作标题完整显示可换行（行2）
+  // 主体：证据全文 + 组件项，固定 max-height 内部滚动，始终显示
+  // 结论：结果摘要 + token + 耗时 + 箭头，点击切换主体展开/收起
   function 渲染步骤卡片(步, 活跃, 默认展开, 显示线标签) {
     var div = document.createElement("div");
     div.className = "步骤卡片 " + 域类(步.域, 步.标题) + (活跃 ? " 活跃" : (步.完成 ? " 完成" : ""));
     if (默认展开) div.classList.add("展开");
 
-    // 卡片头
-    var 头 = document.createElement("div");
-    头.className = "卡片头";
+    var 动作摘要 = 取步骤标题(步);
+    var 结果摘要 = 提炼证据摘要(步.证据, 步.域);
+
+    // === 主题（顶部标题栏）===
+    var 主题 = document.createElement("div");
+    主题.className = "卡片主题";
+
+    // 主题行1：状态图标 + 步骤号 + 时间戳 + 线标签
+    var 主题行1 = document.createElement("div");
+    主题行1.className = "主题行1";
 
     var 状态图标盒 = document.createElement("span");
     状态图标盒.className = "状态图标";
     状态图标盒.appendChild(图标(状态图标id(步, 活跃)));
-    头.appendChild(状态图标盒);
+    主题行1.appendChild(状态图标盒);
+
+    var 号 = document.createElement("span");
+    号.className = "号";
+    号.textContent = "步骤 " + (步.步骤号 || "·");
+    主题行1.appendChild(号);
+
+    // 卡片毫秒时间戳（瀑布式展示：每块带时刻）
+    var 时刻 = document.createElement("span");
+    时刻.className = "卡片时刻";
+    时刻.textContent = 格式时刻(步.ts);
+    主题行1.appendChild(时刻);
 
     // 任务线标签（仅在线id变化时显示，由调用方决定）
     if (显示线标签 && 步.任务线id) {
       var 线标签 = document.createElement("span");
       线标签.className = "线标签 " + 域类(步.域, 步.标题);
       线标签.textContent = "线" + 步.任务线id;
-      头.appendChild(线标签);
+      主题行1.appendChild(线标签);
     }
 
-    var 号 = document.createElement("span");
-    号.className = "号";
-    号.textContent = "步骤 " + (步.步骤号 || "·");
-    头.appendChild(号);
+    主题.appendChild(主题行1);
 
-    // 标题：动作摘要 → 结果摘要
-    var 动作摘要 = 取步骤标题(步);
-    var 结果摘要 = 提炼证据摘要(步.证据, 步.域);
-    var 标题 = document.createElement("span");
-    标题.className = "标题";
-    标题.textContent = 结果摘要 ? (动作摘要 + " → " + 结果摘要) : 动作摘要;
-    标题.title = 结果摘要 ? (动作摘要 + " → " + 结果摘要) : 动作摘要;
-    头.appendChild(标题);
+    // 主题行2：动作标题（完整显示不截断，允许换行）
+    var 主题行2 = document.createElement("div");
+    主题行2.className = "主题行2";
+    主题行2.textContent = 结果摘要 ? (动作摘要 + " → " + 结果摘要) : 动作摘要;
+    主题.appendChild(主题行2);
+
+    div.appendChild(主题);
+
+    // === 主体（中部内容区，固定高度内部滚动，始终显示）===
+    var 主体 = document.createElement("div");
+    主体.className = "卡片主体";
+
+    // 主证据：完整显示原始证据全文（pre-wrap，固定高度内部滚动）
+    if (步.证据) {
+      var 主证据 = document.createElement("div");
+      主证据.className = "主证据";
+      主证据.textContent = 步.证据;
+      主体.appendChild(主证据);
+    }
+
+    // 组件项：每个组件项也是三段式小卡牌（组件名=主题，组件证据=主体，token/耗时=结论）
+    if (步.组件 && 步.组件.length) {
+      步.组件.forEach(function (c) {
+        var 项 = document.createElement("div");
+        项.className = "组件项 " + 域类(c.域, c.名);
+
+        // 组件主题：组件图标 + 组件名
+        var 组件主题 = document.createElement("div");
+        组件主题.className = "组件主题";
+
+        var 组件图标盒 = document.createElement("span");
+        组件图标盒.className = "组件图标";
+        组件图标盒.appendChild(图标(组件图标id(c.域)));
+        组件主题.appendChild(组件图标盒);
+
+        var 组件名 = document.createElement("span");
+        组件名.className = "组件名";
+        组件名.textContent = String(c.名 || "·");
+        组件主题.appendChild(组件名);
+
+        项.appendChild(组件主题);
+
+        // 组件主体：组件证据全文（pre-wrap，可换行不截断）
+        if (c.证据) {
+          var 组件证据 = document.createElement("div");
+          组件证据.className = "组件证据";
+          组件证据.textContent = c.证据;
+          项.appendChild(组件证据);
+        }
+
+        // 组件结论：组件 token + 组件耗时
+        var 组件结论 = document.createElement("div");
+        组件结论.className = "组件结论";
+
+        var cToken = (c.token && c.token.总计) || 0;
+        if (cToken > 0) {
+          var 组件token = document.createElement("span");
+          组件token.className = "组件token";
+          组件token.textContent = "tk " + cToken;
+          组件结论.appendChild(组件token);
+        }
+
+        var c耗时 = c["耗时ms"] || 0;
+        if (c耗时 > 0) {
+          var 组件耗时 = document.createElement("span");
+          组件耗时.className = "组件耗时";
+          组件耗时.textContent = 耗时文本(c耗时);
+          组件结论.appendChild(组件耗时);
+        }
+
+        if (组件结论.childNodes.length) 项.appendChild(组件结论);
+
+        主体.appendChild(项);
+      });
+    }
+
+    div.appendChild(主体);
+
+    // === 结论（底部结果栏）===
+    var 结论 = document.createElement("div");
+    结论.className = "卡片结论";
+
+    // 结果摘要（若有）
+    if (结果摘要) {
+      var 摘要盒 = document.createElement("span");
+      摘要盒.className = "结果摘要";
+      摘要盒.textContent = 结果摘要;
+      结论.appendChild(摘要盒);
+    }
 
     // token 进度条 + 数值（仅 token.总计 > 0 时渲染）
     var token总计 = (步.token && 步.token.总计) || 0;
@@ -359,7 +463,7 @@
       token数值.className = "token数值";
       token数值.textContent = "tk " + token总计;
       token条.appendChild(token数值);
-      头.appendChild(token条);
+      结论.appendChild(token条);
     }
 
     // 耗时（仅 耗时ms > 0 时渲染）
@@ -368,81 +472,19 @@
       var 耗时 = document.createElement("span");
       耗时.className = "耗时";
       耗时.textContent = 耗时文本(耗时ms);
-      头.appendChild(耗时);
+      结论.appendChild(耗时);
     }
 
+    // 展开/收起箭头
     var 箭头盒 = document.createElement("span");
     箭头盒.className = "箭头";
     箭头盒.appendChild(图标("ic-chevron"));
-    头.appendChild(箭头盒);
+    结论.appendChild(箭头盒);
 
-    div.appendChild(头);
+    div.appendChild(结论);
 
-    // 详情区
-    var 详情 = document.createElement("div");
-    详情.className = "详情";
-
-    // 主证据：展开后显示原始证据全文（pre-wrap，最高 400px 滚动）
-    if (步.证据) {
-      var 主证据 = document.createElement("div");
-      主证据.className = "主证据";
-      主证据.textContent = 步.证据;
-      详情.appendChild(主证据);
-    }
-
-    if (步.组件 && 步.组件.length) {
-      步.组件.forEach(function (c) {
-        var 项 = document.createElement("div");
-        项.className = "组件项 " + 域类(c.域, c.名);
-        var 组件头 = document.createElement("div");
-        组件头.className = "组件头";
-
-        var 组件图标盒 = document.createElement("span");
-        组件图标盒.className = "组件图标";
-        组件图标盒.appendChild(图标(组件图标id(c.域)));
-        组件头.appendChild(组件图标盒);
-
-        var 组件名 = document.createElement("span");
-        组件名.className = "组件名";
-        组件名.textContent = String(c.名 || "·").slice(0, 48);
-        组件名.title = String(c.名 || "·");
-        组件头.appendChild(组件名);
-
-        // 组件 token（仅 > 0 时渲染）
-        var cToken = (c.token && c.token.总计) || 0;
-        if (cToken > 0) {
-          var 组件token = document.createElement("span");
-          组件token.className = "组件token";
-          组件token.textContent = "tk " + cToken;
-          组件头.appendChild(组件token);
-        }
-
-        // 组件耗时（仅 > 0 时渲染）
-        var c耗时 = c["耗时ms"] || 0;
-        if (c耗时 > 0) {
-          var 组件耗时 = document.createElement("span");
-          组件耗时.className = "组件耗时";
-          组件耗时.textContent = 耗时文本(c耗时);
-          组件头.appendChild(组件耗时);
-        }
-
-        项.appendChild(组件头);
-
-        // 组件证据：显示摘要，空则不显示
-        var c摘要 = 提炼证据摘要(c.证据, c.域);
-        if (c摘要) {
-          var 证据 = document.createElement("div");
-          证据.className = "组件证据";
-          证据.textContent = c摘要;
-          项.appendChild(证据);
-        }
-        详情.appendChild(项);
-      });
-    }
-
-    div.appendChild(详情);
-
-    头.addEventListener("click", function () {
+    // 点击结论栏切换主体展开/收起（默认 200px，展开 600px）
+    结论.addEventListener("click", function () {
       div.classList.toggle("展开");
     });
     return div;
@@ -486,6 +528,15 @@
     if (state.并行块 && state.并行块.length) {
       流div.appendChild(渲染并行块(state.并行块));
     }
+
+    // 最新块高亮（瀑布式展示：始终突出最新块）
+    var 卡片们 = 流div.querySelectorAll(".步骤.卡片");
+    if (卡片们.length > 0) {
+      var 最新 = 卡片们[卡片们.length - 1];
+      最新.classList.add("最新块");
+      setTimeout(function () { 最新.classList.remove("最新块"); }, 2000);
+    }
+
     流div.scrollTop = 流div.scrollHeight;
   }
 
@@ -512,35 +563,47 @@
     return div;
   }
 
-  // 渲染单步（任务树视图用，简化形态）
+  // 渲染单步（任务树视图用，简化形态：主题 + 结论，无主体）
   function 渲染步骤(步, 活跃) {
     var div = document.createElement("div");
     div.className = "步骤卡片 " + 域类(步.域, 步.标题) + (活跃 ? " 活跃" : (步.完成 ? " 完成" : ""));
 
-    var 头 = document.createElement("div");
-    头.className = "卡片头";
+    // 主题
+    var 主题 = document.createElement("div");
+    主题.className = "卡片主题";
+
+    var 主题行1 = document.createElement("div");
+    主题行1.className = "主题行1";
 
     var 状态图标盒 = document.createElement("span");
     状态图标盒.className = "状态图标";
     状态图标盒.appendChild(图标(状态图标id(步, 活跃)));
-    头.appendChild(状态图标盒);
+    主题行1.appendChild(状态图标盒);
 
     var 号 = document.createElement("span");
     号.className = "号";
     号.textContent = "步骤 " + (步.步骤号 || "·");
-    头.appendChild(号);
+    主题行1.appendChild(号);
 
-    var 标题 = document.createElement("span");
-    标题.className = "标题";
-    标题.textContent = (步.标题 || "").slice(0, 60);
-    头.appendChild(标题);
+    主题.appendChild(主题行1);
+
+    var 主题行2 = document.createElement("div");
+    主题行2.className = "主题行2";
+    主题行2.textContent = 步.标题 || "";
+    主题.appendChild(主题行2);
+
+    div.appendChild(主题);
+
+    // 结论：耗时
+    var 结论 = document.createElement("div");
+    结论.className = "卡片结论";
 
     var 耗时 = document.createElement("span");
     耗时.className = "耗时";
     耗时.textContent = 耗时文本(步["耗时ms"] || 0);
-    头.appendChild(耗时);
+    结论.appendChild(耗时);
 
-    div.appendChild(头);
+    div.appendChild(结论);
     return div;
   }
 

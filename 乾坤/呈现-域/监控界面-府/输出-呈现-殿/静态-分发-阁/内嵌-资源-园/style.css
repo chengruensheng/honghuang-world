@@ -354,14 +354,28 @@ html, body {
   100% { background-position: 200% 200%; }
 }
 
-.步骤卡片 .卡片头 {
+/* ============ 三段式：主题 / 主体 / 结论 ============ */
+/* 主题（顶部标题栏）*/
+.步骤卡片 .卡片主题 {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--边框);
+}
+.步骤卡片 .主题行1 {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  cursor: pointer;
-  user-select: none;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.步骤卡片 .主题行2 {
+  color: var(--字);
+  font-weight: 500;
   font-size: 13px;
+  line-height: 1.5;
+  /* 不截断，允许换行 */
+  word-break: break-all;
+  white-space: normal;
+  letter-spacing: -0.01em;
 }
 .步骤卡片 .状态图标 {
   width: 16px; height: 16px;
@@ -396,15 +410,132 @@ html, body {
   flex-shrink: 0;
   min-width: 36px;
 }
-.步骤卡片 .标题 {
+.步骤卡片 .卡片时刻 {
+  font-family: var(--等宽);
+  color: var(--弱字);
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 主体（中部内容区，固定高度内部滚动，始终显示）*/
+.步骤卡片 .卡片主体 {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--次字);
+  line-height: 1.6;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.步骤卡片.展开 .卡片主体 {
+  max-height: 600px;
+}
+/* 主证据：完整显示不截断 */
+.步骤卡片 .主证据 {
+  font-family: var(--等宽);
+  font-size: 12px;
+  color: var(--次字);
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--边框-亮);
+  border-radius: 4px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.55;
+  margin-bottom: 8px;
+}
+
+/* 子组件项：三段式小卡牌 */
+.步骤卡片 .组件项 {
+  padding: 6px 8px;
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 6px;
+  transition: background 0.12s ease;
+}
+.步骤卡片 .组件项:hover { background: rgba(255, 255, 255, 0.04); }
+.步骤卡片 .组件项:last-child { margin-bottom: 0; }
+/* 组件主题：组件图标 + 组件名 */
+.步骤卡片 .组件项 .组件主题 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.步骤卡片 .组件项 .组件图标 {
+  width: 12px; height: 12px;
+  color: var(--次字);
+  flex-shrink: 0;
+  display: inline-flex;
+}
+.步骤卡片 .组件项 .组件图标 svg { width: 12px; height: 12px; display: block; }
+.步骤卡片 .组件项 .组件名 {
   flex: 1;
   color: var(--字);
+  font-size: 12px;
   font-weight: 500;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: -0.01em;
+  /* 不截断，允许换行 */
+  word-break: break-all;
+  white-space: normal;
+  line-height: 1.4;
+}
+/* 组件主体：组件证据全文 */
+.步骤卡片 .组件项 .组件证据 {
+  font-family: var(--等宽);
+  font-size: 11px;
+  color: var(--弱字);
+  padding: 4px 0 4px 20px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+/* 组件结论：组件 token + 组件耗时 */
+.步骤卡片 .组件项 .组件结论 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 20px;
+  font-size: 10px;
+}
+.步骤卡片 .组件项 .组件token {
+  font-family: var(--等宽);
+  font-size: 10px;
+  color: var(--弱字);
+}
+.步骤卡片 .组件项 .组件耗时 {
+  font-family: var(--等宽);
+  font-size: 10px;
+  color: var(--弱字);
+  min-width: 48px;
+  text-align: right;
+}
+
+/* 结论（底部结果栏）*/
+.步骤卡片 .卡片结论 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--边框);
+  font-size: 11px;
+  color: var(--弱字);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+.步骤卡片 .卡片结论:hover { background: rgba(255, 255, 255, 0.03); }
+.步骤卡片 .结果摘要 {
+  flex: 1;
+  color: var(--次字);
+  font-size: 11px;
+  /* 不截断，允许换行 */
+  word-break: break-all;
+  white-space: normal;
+  line-height: 1.4;
 }
 .步骤卡片 .token条 {
   display: inline-flex;
@@ -453,98 +584,7 @@ html, body {
 }
 .步骤卡片 .箭头 svg { width: 14px; height: 14px; display: block; }
 .步骤卡片.展开 .箭头 { transform: rotate(180deg); color: var(--次字); }
-.步骤卡片 .卡片头:hover .箭头 { color: var(--字); }
-
-/* 详情区（max-height 过渡） */
-.步骤卡片 .详情 {
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  padding: 0 14px;
-  border-top: 1px solid transparent;
-  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.2s ease,
-              padding 0.3s ease,
-              border-color 0.2s ease;
-}
-.步骤卡片.展开 .详情 {
-  max-height: 80vh;
-  opacity: 1;
-  padding: 10px 14px 12px;
-  border-top-color: var(--边框);
-  overflow-y: auto;
-}
-
-/* 主证据 */
-.步骤卡片 .主证据 {
-  font-family: var(--等宽);
-  font-size: 12px;
-  color: var(--次字);
-  background: rgba(255, 255, 255, 0.03);
-  border-left: 2px solid var(--边框-亮);
-  border-radius: 4px;
-  padding: 8px 10px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.55;
-  margin-bottom: 8px;
-  max-height: 400px;
-  overflow: auto;
-}
-
-/* 子组件项 */
-.步骤卡片 .组件项 {
-  padding: 6px 8px;
-  border-left: 2px solid transparent;
-  border-radius: 4px;
-  font-size: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  margin-bottom: 4px;
-  transition: background 0.12s ease;
-}
-.步骤卡片 .组件项:hover { background: rgba(255, 255, 255, 0.04); }
-.步骤卡片 .组件项:last-child { margin-bottom: 0; }
-.步骤卡片 .组件项 .组件头 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.步骤卡片 .组件项 .组件图标 {
-  width: 12px; height: 12px;
-  color: var(--次字);
-  flex-shrink: 0;
-  display: inline-flex;
-}
-.步骤卡片 .组件项 .组件图标 svg { width: 12px; height: 12px; display: block; }
-.步骤卡片 .组件项 .组件名 {
-  flex: 1;
-  color: var(--字);
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.步骤卡片 .组件项 .组件token {
-  font-family: var(--等宽);
-  font-size: 10px;
-  color: var(--弱字);
-}
-.步骤卡片 .组件项 .组件耗时 {
-  font-family: var(--等宽);
-  font-size: 10px;
-  color: var(--弱字);
-  min-width: 48px;
-  text-align: right;
-}
-.步骤卡片 .组件项 .组件证据 {
-  font-family: var(--等宽);
-  font-size: 11px;
-  color: var(--弱字);
-  padding: 4px 0 0 20px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.5;
-}
+.步骤卡片 .卡片结论:hover .箭头 { color: var(--字); }
 
 /* 活跃步骤：呼吸发光 + 左边框加粗 */
 .步骤卡片.活跃 {
@@ -555,7 +595,7 @@ html, body {
   0%, 100% { box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 rgba(99, 102, 241, 0); }
   50%      { box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 14px rgba(99, 102, 241, 0.28); }
 }
-.步骤卡片.活跃 .标题 { color: var(--字); }
+.步骤卡片.活跃 .主题行2 { color: var(--字); }
 .步骤卡片.活跃 .状态图标 { color: var(--indigo); }
 .步骤卡片.活跃 .状态图标 .ic-spin { animation: 旋转 1.1s linear infinite; transform-origin: 8px 8px; }
 @keyframes 旋转 { to { transform: rotate(360deg); } }
@@ -827,4 +867,25 @@ html, body {
 @media (max-width: 768px) {
   .任务列表 { display: none; }
   .顶栏-中 { gap: 8px; }
+}
+
+/* ============ 卡片头毫秒时间戳（瀑布式展示） ============ */
+.卡片时刻 {
+  font-size: 11px;
+  color: var(--次字);
+  font-family: var(--等宽);
+  margin-left: 6px;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* ============ 最新块高亮动画（瀑布式展示：始终突出最新块） ============ */
+.步骤.卡片.最新块 {
+  animation: 最新块闪 2s ease-out;
+}
+
+@keyframes 最新块闪 {
+  0% { box-shadow: 0 0 0 2px var(--indigo), 0 0 20px rgba(99, 102, 241, 0.4); }
+  100% { box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent; }
 }
