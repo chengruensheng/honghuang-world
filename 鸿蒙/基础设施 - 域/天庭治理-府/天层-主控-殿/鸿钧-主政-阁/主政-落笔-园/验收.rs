@@ -85,6 +85,9 @@ pub fn 定档(
     // 接口契约扫描（设计稿 §4.2 规则6 配套）：定档时刷新 workspace pub API 清单入格位，
     // 供执行现状拼装注入「可用API清单」。扫描失败不阻断定档（只 warn）。
     扫描接口契约写入格位(存储);
+    // 落盘前LLM维护（设计稿 §6.6 LLM维护补充）：投递"维护API清单"想法到想法队列，
+    // 世界自转守护循环消费，LLM异步补充自动扫描遗漏的语义信息。节流30分钟防大量想法。
+    投递API清单维护想法();
     let 根 = shihai_fu::工作区::定位();
     let 根路径 = 根.根路径();
     let 生成物们 = 产物们
@@ -188,6 +191,41 @@ pub fn 扫描接口契约写入格位(存储: &shihai_fu::模型存储) {
         }
     }
     info!(crate数 = 总条数, "接口契约已扫描写入格位");
+}
+
+/// 状态目录：工作区根下的 .上下文/状态（与 建档.rs / 世界运行.rs 同款，本园复制以保持跨府引用只走 lib 根符号的边界）。
+fn 状态目录() -> std::path::PathBuf {
+    let 根 = std::env::var("WORLD_WORKSPACE_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
+    根.join(".上下文").join("状态")
+}
+
+/// 投递"维护API清单"想法到想法队列（设计稿 §6.6 LLM维护补充）。
+/// 定档后调用：自动扫描产基础清单后，让阴面LLM异步补充语义信息（跨crate re-export、宏导出API等）。
+/// 节流30分钟：距离上次投递不足30分钟则跳过，防大量维护想法污染队列。
+#[allow(non_snake_case)]
+fn 投递API清单维护想法() {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static 上次投递毫秒: AtomicU64 = AtomicU64::new(0);
+    let 现在 = shihai_fu::当前毫秒();
+    let 上次 = 上次投递毫秒.load(Ordering::Relaxed);
+    if 上次 != 0 && 现在.saturating_sub(上次) < 1_800_000 {
+        return;
+    }
+    上次投递毫秒.store(现在, Ordering::Relaxed);
+    let 想法 = 想法 {
+        id: format!("想法-{}", 现在),
+        内容: "【定档触发·API清单维护】自动扫描已写入基础pub API签名到「结构」格位。请查看workspace代码，补充自动扫描可能遗漏的语义信息（如跨crate re-export、宏导出的API、条件编译门控的pub符号），将补充信息写入「结构」格位（实体键以API·开头）。".to_string(),
+        时间: 现在,
+        状态: 想法状态::未处理,
+    };
+    let 想法路径 = 状态目录().join("想法.jsonl");
+    let 想法池 = crate::落盘队列::<想法>::打开(想法路径);
+    match 想法池.入队(&想法) {
+        Ok(()) => info!("API清单维护想法已投递"),
+        Err(错误) => warn!("API清单维护想法投递失败：{错误}"),
+    }
 }
 
 #[cfg(test)]
