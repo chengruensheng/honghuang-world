@@ -5,6 +5,7 @@ use rizhi_fu::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// 上下文目录名（工作区内的记忆数据目录，源码快照时排除）。
 pub const 上下文目录名: &str = ".上下文";
@@ -24,7 +25,14 @@ impl 工作区 {
     }
 
     /// 定位工作区根：环境变量 → 向上探测锚点 → 当前目录。
+    /// 结果用 OnceLock 缓存：首次调用计算并固化，后续直接返回克隆（热路径免重复读环境/探测锚点）。
     pub fn 定位() -> 工作区 {
+        static 缓存: OnceLock<工作区> = OnceLock::new();
+        缓存.get_or_init(工作区::定位_计算).clone()
+    }
+
+    /// 实际的定位计算（仅首次调用执行，由 `定位` 经 OnceLock 调度）。
+    fn 定位_计算() -> 工作区 {
         if let Ok(根) = std::env::var("WORLD_WORKSPACE_ROOT") {
             if !根.is_empty() {
                 return 工作区::新(根);
@@ -140,6 +148,51 @@ impl 心智模型 {
     }
 }
 
+/// 校验格位名：拒路径分隔符与 `.`/`..` 防逃逸。
+/// 格位名直接 join 到格位目录，若放行 `../` 会写出格位目录之外。
+/// 不限制字符集：项目已有 `环境·依赖`/`传承·决策`/`例外·临时` 等含中点格位名，
+/// 安全关键在路径分隔符与 `..` 段，而非字符白名单。
+fn 校验格位名(格位名: &str) -> Result<(), String> {
+    if 格位名.is_empty() {
+        return Err("格位名为空".to_string());
+    }
+    // 拒路径分隔符：含分隔符时 join 会写出格位目录之外（逃逸根因）。
+    if 格位名.contains('/') || 格位名.contains('\\') {
+        return Err(format!("格位名含路径分隔符: {格位名}"));
+    }
+    // 拒 `.` 与 `..`：作为格位名语义不清，且部分系统对它们有特殊处理。
+    if 格位名 == "." || 格位名 == ".." {
+        return Err(format!("格位名非法: {格位名}"));
+    }
+    Ok(())
+}
+
+/// 以 0o600 权限打开用于追加写入（Unix 下显式设权限，Windows 无此 API 走默认）。
+fn 打开追加(路径: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut 选项 = fs::OpenOptions::new();
+    选项.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        选项.mode(0o600);
+    }
+    选项.open(路径)
+}
+
+/// 以 0o600 权限打开用于覆写写入（Unix 下显式设权限，Windows 无此 API 走默认）。
+fn 打开覆写(路径: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut 选项 = fs::OpenOptions::new();
+    选项.create(true).write(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        选项.mode(0o600);
+    }
+    选项.open(路径)
+}
+
 /// 模型存储：格位目录下的格位文件落盘读写。
 #[derive(Clone)]
 pub struct 模型存储 {
@@ -161,17 +214,13 @@ impl 模型存储 {
 
     /// 追加写入一条记录（jsonl 一行）。
     pub fn 写记录(&self, 记录: &记录) -> Result<(), String> {
-        let 路径 = self.格位文件路径(&记录.格位名);
+        let 路径 = self.格位文件路径(&记录.格位名)?;
         let 行 = serde_json::to_string(记录).map_err(|错误| format!("序列化记录失败: {错误}"))?;
         use std::io::Write;
-        let mut 文件 = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&路径)
-            .map_err(|错误| {
-                error!(格位 = %记录.格位名, 路径 = %路径.display(), "打开格位文件失败：{错误}");
-                format!("打开格位文件失败 {}: {错误}", 路径.display())
-            })?;
+        let mut 文件 = 打开追加(&路径).map_err(|错误| {
+            error!(格位 = %记录.格位名, 路径 = %路径.display(), "打开格位文件失败：{错误}");
+            format!("打开格位文件失败 {}: {错误}", 路径.display())
+        })?;
         writeln!(文件, "{行}").map_err(|错误| {
             error!(格位 = %记录.格位名, "写记录失败：{错误}");
             format!("写记录失败: {错误}")
@@ -182,7 +231,7 @@ impl 模型存储 {
 
     /// 读某个格位的全部记录（按写入顺序）。
     pub fn 读格位(&self, 格位名: &str) -> Result<Vec<记录>, String> {
-        let 路径 = self.格位文件路径(格位名);
+        let 路径 = self.格位文件路径(格位名)?;
         if !路径.exists() {
             return Ok(Vec::new());
         }
@@ -201,9 +250,10 @@ impl 模型存储 {
         Ok(记录们)
     }
 
-    /// 格位文件路径：格位目录 / 格位名.jsonl。
-    fn 格位文件路径(&self, 格位名: &str) -> PathBuf {
-        self.格位目录.join(format!("{格位名}.jsonl"))
+    /// 格位文件路径：格位目录 / 格位名.jsonl。先校验格位名防路径逃逸。
+    fn 格位文件路径(&self, 格位名: &str) -> Result<PathBuf, String> {
+        校验格位名(格位名)?;
+        Ok(self.格位目录.join(format!("{格位名}.jsonl")))
     }
 
     /// 读某个格位的链头集：按实体键分组，每组取时间戳最新一条（默认拉最新）。
@@ -311,7 +361,7 @@ impl 模型存储 {
 
     /// 重写格位 jsonl：覆盖写入给定记录（按顺序一行一条）。
     fn 重写格位(&self, 格位名: &str, 记录们: &[记录]) -> Result<(), String> {
-        let 路径 = self.格位文件路径(格位名);
+        let 路径 = self.格位文件路径(格位名)?;
         let mut 文本 = String::new();
         for 记录 in 记录们 {
             let 行 =
@@ -319,7 +369,12 @@ impl 模型存储 {
             文本.push_str(&行);
             文本.push('\n');
         }
-        fs::write(&路径, 文本).map_err(|错误| {
+        use std::io::Write;
+        let mut 文件 = 打开覆写(&路径).map_err(|错误| {
+            error!(格位 = %格位名, 路径 = %路径.display(), "重写格位失败：{错误}");
+            format!("重写格位失败 {}: {错误}", 路径.display())
+        })?;
+        文件.write_all(文本.as_bytes()).map_err(|错误| {
             error!(格位 = %格位名, 路径 = %路径.display(), "重写格位失败：{错误}");
             format!("重写格位失败 {}: {错误}", 路径.display())
         })?;
@@ -496,6 +551,51 @@ mod 测试 {
         let 报告 = 存储.清洗格位("不存在").unwrap();
         assert_eq!(报告.原条数, 0);
         assert_eq!(报告.分组留链头数, 0);
+        let _ = std::fs::remove_dir_all(&目录);
+    }
+
+    #[test]
+    fn 格位名校验_合法名通过() {
+        assert!(校验格位名("测试格位").is_ok());
+        assert!(校验格位名("格位_1").is_ok());
+        assert!(校验格位名("甲乙丙").is_ok());
+        assert!(校验格位名("格位A1_中文").is_ok());
+        // 项目已有含中点的格位名，应通过
+        assert!(校验格位名("环境·依赖").is_ok());
+        assert!(校验格位名("传承·决策").is_ok());
+        assert!(校验格位名("例外·临时").is_ok());
+    }
+
+    #[test]
+    fn 格位名校验_空名被拒() {
+        assert!(校验格位名("").is_err(), "空格位名应被拒");
+    }
+
+    #[test]
+    fn 格位名校验_路径逃逸被拒() {
+        assert!(校验格位名("..").is_err(), ".. 应被拒");
+        assert!(校验格位名(".").is_err(), ". 应被拒");
+        assert!(校验格位名("../x").is_err(), "含路径分隔符应被拒");
+        assert!(校验格位名("a/b").is_err(), "含正斜杠应被拒");
+        assert!(校验格位名("a\\b").is_err(), "含反斜杠应被拒");
+        assert!(校验格位名("..\\逃逸").is_err(), "反斜杠逃逸应被拒");
+    }
+
+    #[test]
+    fn 写记录_非法格位名返回错误不落盘() {
+        let 目录 = 临时格位目录("非法名");
+        let 存储 = 模型存储::打开(&目录);
+        let 记录 = 造记录("甲", "内容", "证据", 100, false);
+        let 非法记录 = 记录 {
+            格位名: "../逃逸".to_string(),
+            ..记录
+        };
+        assert!(存储.写记录(&非法记录).is_err(), "非法格位名应返回错误");
+        // 确认未在格位目录之外创建文件
+        assert!(
+            !目录.parent().unwrap().join("逃逸.jsonl").exists(),
+            "不应在格位目录之外落盘"
+        );
         let _ = std::fs::remove_dir_all(&目录);
     }
 }

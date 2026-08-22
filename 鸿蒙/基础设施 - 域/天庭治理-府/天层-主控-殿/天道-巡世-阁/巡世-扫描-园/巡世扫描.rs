@@ -6,6 +6,7 @@
 use crate::类型_定义_殿::{优先级, 巡世候选, 巡世报告, 要求类别};
 use rizhi_fu::{info, warn};
 use std::collections::HashMap;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 /// 园无测试检测跳过项：证道 / 单元测试-府 本就是测试集合，不要求园内再嵌测试。
@@ -109,11 +110,29 @@ fn 收集园下rs(园路径: &Path) -> Vec<PathBuf> {
 }
 
 /// 检查 .rs 是否含测试标记：`#[test]` / `#[cfg(test)]` / `mod 测试`。
+/// 逐行扫描短路：命中即返回，无需读全文；复用行缓冲避免逐行 String 分配（热路径 IO 优化）。
+/// 等价于「前 N 行命中快速判断 + 否则读到尾部确认」，且无两次读。
 fn 含测试标记(rs: &Path) -> bool {
-    let Ok(内容) = std::fs::read_to_string(rs) else {
+    let Ok(文件) = std::fs::File::open(rs) else {
         return false;
     };
-    内容.contains("#[test]") || 内容.contains("#[cfg(test)]") || 内容.contains("mod 测试")
+    let mut 读器 = std::io::BufReader::new(文件);
+    let mut 行 = Vec::new();
+    loop {
+        行.clear();
+        match 读器.read_until(b'\n', &mut 行) {
+            Ok(0) | Err(_) => return false,
+            Ok(_) => {}
+        }
+        if let Ok(文本) = std::str::from_utf8(&行) {
+            if 文本.contains("#[test]")
+                || 文本.contains("#[cfg(test)]")
+                || 文本.contains("mod 测试")
+            {
+                return true;
+            }
+        }
+    }
 }
 
 /// 收集证道域下所有 .rs 文件路径，用于按园名匹配已有测试。

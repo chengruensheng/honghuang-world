@@ -8,7 +8,7 @@
 //! - 可维护：改类型/落盘只动本府；可扩展：加交接点 = 加枚举 + 加一行。
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 观测域：信号类别。新增交接点在此加变体。
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -124,6 +124,53 @@ fn 观测目录() -> PathBuf {
     }
 }
 
+/// 是否记录完整观测内容（默认开）。从环境变量 `观测完整记录` 读取，设为 "关" 时只记摘要。
+/// 摘要不带提示词/回复全文，仅保留前若干字符与总长，避免敏感内容落盘。
+fn 完整记录开关() -> bool {
+    match std::env::var("观测完整记录") {
+        Ok(值) => 值.trim() != "关",
+        Err(_) => true,
+    }
+}
+
+/// 摘要封顶字符数（关闭完整记录时使用，远小于 `正文_封顶`）。
+const 摘要_封顶: usize = 500;
+
+/// 取摘要：超出 `摘要_封顶` 字符时截头并标注总长，未超则原样返回。
+fn 摘要(文本: &str) -> String {
+    let 字符数 = 文本.chars().count();
+    if 字符数 <= 摘要_封顶 {
+        return 文本.to_string();
+    }
+    let 头: String = 文本.chars().take(摘要_封顶).collect();
+    format!("{头}……（共 {字符数} 字符，已截断为摘要）")
+}
+
+/// 按配置对载荷脱敏：完整记录开关关闭时仅保留内容摘要，结构化附加（工具名/退出码/用量等）照旧。
+fn 脱敏载荷(载荷: 载荷) -> 载荷 {
+    if 完整记录开关() {
+        载荷
+    } else {
+        载荷 {
+            内容: 摘要(&载荷.内容),
+            附加: 载荷.附加,
+        }
+    }
+}
+
+/// 以 0o600 权限打开用于追加写入（Unix 下显式设权限，Windows 无此 API 走默认）。
+fn 打开追加(路径: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut 选项 = std::fs::OpenOptions::new();
+    选项.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        选项.mode(0o600);
+    }
+    选项.open(路径)
+}
+
 /// 单条正文封顶字符（防暴涨；超出截头保尾）。
 const 正文_封顶: usize = 200_000;
 
@@ -155,19 +202,19 @@ fn 当前毫秒() -> u64 {
 }
 
 /// 统一入库入口：append 一条 观测记录 到 `.上下文/观测/记录.jsonl`。
-/// 落盘失败静默（可观测性不阻断业务）。
+/// 落盘失败静默（可观测性不阻断业务）。完整内容受 `观测完整记录` 开关控制。
 pub fn 落(记录: 观测记录) {
+    let 记录 = 观测记录 {
+        载荷: 脱敏载荷(记录.载荷),
+        ..记录
+    };
     let 目录 = 观测目录();
     if std::fs::create_dir_all(&目录).is_err() {
         return;
     }
     let 路径 = 目录.join("记录.jsonl");
     if let Ok(行) = serde_json::to_string(&记录) {
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&路径)
-        {
+        if let Ok(mut f) = 打开追加(&路径) {
             let _ = writeln!(f, "{行}");
         }
     }
@@ -410,5 +457,23 @@ mod 测试 {
             // 便捷函数等价
             assert_eq!(当前关联().要求.as_deref(), Some("要求-9"));
         }
+    }
+
+    #[test]
+    fn 摘要_未超封顶原样返回() {
+        assert_eq!(摘要("短文本"), "短文本");
+        let 边界 = "甲".repeat(摘要_封顶);
+        assert_eq!(摘要(&边界), 边界, "等于封顶不截断");
+    }
+
+    #[test]
+    fn 摘要_超封顶截头标注总长() {
+        let 长文本 = "甲".repeat(摘要_封顶 + 100);
+        let 摘要结果 = 摘要(&长文本);
+        assert!(
+            摘要结果.starts_with(&"甲".repeat(摘要_封顶)),
+            "摘要应保留封顶前原文"
+        );
+        assert!(摘要结果.contains("已截断为摘要"), "摘要应标注截断");
     }
 }

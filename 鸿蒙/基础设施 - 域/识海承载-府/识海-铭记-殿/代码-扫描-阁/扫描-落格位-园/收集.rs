@@ -109,9 +109,10 @@ pub(crate) fn 找crate目录(文件: &Path) -> Option<PathBuf> {
 }
 
 /// 计算相对根目录的路径（含文件名）。
+/// 统一正斜杠：依赖图路径归一源头，避免 Windows 反斜杠流入档案.文件/波及，查询免 replace。
 pub(crate) fn 相对路径(根目录: &Path, 文件: &Path) -> String {
     文件
         .strip_prefix(根目录)
-        .map(|相对| 相对.display().to_string())
-        .unwrap_or_else(|_| 文件.display().to_string())
+        .map(|相对| 相对.display().to_string().replace('\\', "/"))
+        .unwrap_or_else(|_| 文件.display().to_string().replace('\\', "/"))
 }

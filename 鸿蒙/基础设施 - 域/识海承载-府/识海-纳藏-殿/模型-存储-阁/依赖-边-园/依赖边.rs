@@ -24,6 +24,7 @@ impl 依赖图 {
     }
 
     /// 从指定路径加载（不存在则返回空图）。
+    /// 加载后归一化路径字段为正斜杠：兼容旧 json 反斜杠存储，归一后查询免 replace。
     pub fn 加载(路径: impl AsRef<Path>) -> Result<依赖图, String> {
         let 路径 = 路径.as_ref();
         if !路径.exists() {
@@ -31,7 +32,10 @@ impl 依赖图 {
         }
         let 文本 =
             std::fs::read_to_string(路径).map_err(|错误| format!("读取依赖图失败: {错误}"))?;
-        serde_json::from_str(&文本).map_err(|错误| format!("解析依赖图失败: {错误}"))
+        let mut 图: 依赖图 =
+            serde_json::from_str(&文本).map_err(|错误| format!("解析依赖图失败: {错误}"))?;
+        图.归一();
+        Ok(图)
     }
 }
 

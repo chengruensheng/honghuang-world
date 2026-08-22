@@ -15,6 +15,8 @@ use crate::{
 use rizhi_fu::{debug, info};
 use std::path::Path;
 
+use super::读workspace成员缓存在;
+
 /// 元数据层化初始背景：先拼最前+最后档（首因+近因），按较紧的首屏预算；
 /// 中间档不直接喂，在末尾注脚列出名字供模型按需调用 读格位/查格位历史 工具展开。
 ///
@@ -46,103 +48,31 @@ fn 规则级别对调用方可见(
 /// 从根 Cargo.toml 读 workspace members，再读各府 Cargo.toml 的 [lib] name 与 [dependencies]，
 /// 构造「府→lib名→依赖列表」映射注入项目背景——让模型知道 shihai_fu 是哪个府的 lib 名、
 /// tianting_fu 依赖 shihai_fu 等府间关系，不硬编码。
+/// 读盘解析经 workspace成员缓存（OnceLock + 文件指纹），与模板生成共用，避免重复读盘。
 fn 读workspace成员() -> Option<String> {
     读workspace成员在(&工作区::定位())
 }
 
 /// 在指定工作区读 workspace members + 府间依赖映射（供测试注入临时工作区）。
+/// 经 workspace成员缓存 读结构化摘要后格式化为文本段。
 fn 读workspace成员在(工作区: &工作区) -> Option<String> {
-    let 根 = 工作区.根路径();
-    let 内容 = std::fs::read_to_string(根.join("Cargo.toml")).ok()?;
-    let members: Vec<String> = 内容
-        .lines()
-        .filter(|行| 行.contains("-府\""))
-        .map(|行| {
-            行.trim()
-                .trim_start_matches('"')
-                .trim_end_matches(',')
-                .trim_end_matches('"')
-                .to_string()
-        })
-        .collect();
-    if members.is_empty() {
-        return None;
-    }
-    let mut 段 = format!("\n【workspace members】{}\n", members.join("、"));
-    // 府间依赖映射：读各府 Cargo.toml 的 [lib] name 与 [dependencies]。
-    let mut 依赖映射 = String::from("【府间依赖】\n");
-    let mut 有映射 = false;
-    for member in &members {
-        let 府cargo = 根.join(member).join("Cargo.toml");
-        let Ok(府内容) = std::fs::read_to_string(&府cargo) else {
-            continue;
-        };
-        let 府名 = Path::new(member)
-            .file_name()
-            .map(|名| 名.to_string_lossy().to_string())
-            .unwrap_or_else(|| member.clone());
-        let lib名 = 解析lib名(&府内容).unwrap_or_else(|| 府名.clone());
-        let 依赖们 = 解析依赖段(&府内容);
-        依赖映射.push_str(&format!(
-            "{府名}: lib={lib名}, 依赖=[{}]\n",
-            依赖们.join("、")
-        ));
-        有映射 = true;
-    }
-    if 有映射 {
+    let 摘要 = 读workspace成员缓存在(工作区)?;
+    let mut 段 = format!("\n【workspace members】{}\n", 摘要.成员们.join("、"));
+    if !摘要.府间依赖.is_empty() {
+        let mut 依赖映射 = String::from("【府间依赖】\n");
+        for 府 in &摘要.府间依赖 {
+            // lib 名未声明时回退用府名（与原逻辑一致）。
+            let lib名 = 府.lib名.as_deref().unwrap_or(&府.府名);
+            依赖映射.push_str(&format!(
+                "{府名}: lib={lib名}, 依赖=[{}]\n",
+                府.依赖们.join("、"),
+                府名 = 府.府名,
+            ));
+        }
         段.push_str(&依赖映射);
-        debug!(府数 = members.len(), "府间依赖映射已注入");
+        debug!(府数 = 摘要.府间依赖.len(), "府间依赖映射已注入");
     }
     Some(段)
-}
-
-/// 解析 Cargo.toml 的 [lib] name。
-fn 解析lib名(内容: &str) -> Option<String> {
-    let mut 在lib段 = false;
-    for 行 in 内容.lines() {
-        let 行 = 行.trim();
-        if 行.starts_with('[') {
-            在lib段 = 行 == "[lib]";
-            continue;
-        }
-        if 在lib段 {
-            if let Some(值) = 行.strip_prefix("name") {
-                let 值 = 值.trim_start();
-                if 值.starts_with('=') {
-                    let 值 = 值.trim_start_matches('=').trim().trim_matches('"');
-                    if !值.is_empty() {
-                        return Some(值.to_string());
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// 解析 Cargo.toml 的 [dependencies] 段依赖名列表。
-fn 解析依赖段(内容: &str) -> Vec<String> {
-    let mut 依赖们 = Vec::new();
-    let mut 在依赖段 = false;
-    for 行 in 内容.lines() {
-        let 行 = 行.trim();
-        if 行.starts_with('[') {
-            在依赖段 = 行 == "[dependencies]";
-            continue;
-        }
-        if 在依赖段 && !行.is_empty() && !行.starts_with('#') {
-            if let Some(名) = 行
-                .split(|字符: char| ['=', ' ', '{'].contains(&字符))
-                .next()
-            {
-                let 名 = 名.trim();
-                if !名.is_empty() {
-                    依赖们.push(名.to_string());
-                }
-            }
-        }
-    }
-    依赖们
 }
 
 /// 结构树摘要注入（执行背景注入结构树，2026-08-20 入稿）：

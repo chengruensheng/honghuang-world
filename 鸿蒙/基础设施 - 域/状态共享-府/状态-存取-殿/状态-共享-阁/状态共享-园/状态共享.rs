@@ -22,22 +22,22 @@ impl 状态共享 {
 
     /// 写入状态：按类型 ID 覆盖（后写覆盖先写）。
     pub fn 写入<T: Any + Send + Sync>(&self, 状态: T) -> Result<(), String> {
-        let mut 表 = self.状态表.write().unwrap();
+        let mut 表 = self.状态表.write().unwrap_or_else(|毒| 毒.into_inner());
         表.insert(TypeId::of::<T>(), Arc::new(状态));
         Ok(())
     }
 
     /// 读取状态：按类型 ID 查找 + 向下转型 + Clone 返回。
     pub fn 读取<T: Any + Send + Sync + Clone>(&self) -> Option<T> {
-        let 表 = self.状态表.read().unwrap();
+        let 表 = self.状态表.read().unwrap_or_else(|毒| 毒.into_inner());
         表.get(&TypeId::of::<T>())
             .and_then(|弧| 弧.downcast_ref::<T>())
             .cloned()
     }
 
-    /// 移除状态：按类型 ID 移除。
+    /// 移除状态：按类型 ID 积除。
     pub fn 移除<T: Any + Send + Sync>(&self) -> Result<(), String> {
-        let mut 表 = self.状态表.write().unwrap();
+        let mut 表 = self.状态表.write().unwrap_or_else(|毒| 毒.into_inner());
         表.remove(&TypeId::of::<T>());
         Ok(())
     }

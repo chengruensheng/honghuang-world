@@ -4,6 +4,13 @@
 //! 事件流记细粒度事实，事件格位记粗粒度语义。对齐 DeepSeek「Every run is traceable」。
 
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+/// 批量刷盘阈值：累积达此条数触发一次落盘（热路径 IO 优化，省锁/开文件/关文件开销）。
+const 批量阈值: usize = 10;
+/// 定时刷盘间隔：距上次刷盘超过此时长，下次追加即触发落盘，防缓冲长滞。
+const 刷盘间隔: Duration = Duration::from_secs(5);
 
 /// 事件类型（本质：任何项目的通用状态变更类别）。
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -39,9 +46,26 @@ impl 事件 {
 }
 
 /// 事件流：append-only 落盘读写（.上下文/事件流.jsonl）。
-#[derive(Clone)]
+/// 批量缓冲刷盘：追加先进 Arc<Mutex> 缓冲，达阈值/定时触发批量写，省每条抢锁开文件开销。
+/// Clone 共享缓冲（Arc）；Drop 独占时 flush 剩余，保证进程退出落盘。
 pub struct 事件流 {
     路径: std::path::PathBuf,
+    缓冲: Arc<Mutex<缓冲状态>>,
+}
+
+/// 缓冲状态：待写行集合 + 上次刷盘时刻。
+struct 缓冲状态 {
+    行们: Vec<String>,
+    上次刷盘: Instant,
+}
+
+impl Clone for 事件流 {
+    fn clone(&self) -> Self {
+        事件流 {
+            路径: self.路径.clone(),
+            缓冲: Arc::clone(&self.缓冲),
+        }
+    }
 }
 
 impl 事件流 {
@@ -49,39 +73,83 @@ impl 事件流 {
     pub fn 在工作区(工作区: &crate::工作区) -> 事件流 {
         事件流 {
             路径: 工作区.上下文目录().join("事件流.jsonl"),
+            缓冲: Arc::new(Mutex::new(缓冲状态 {
+                行们: Vec::new(),
+                上次刷盘: Instant::now(),
+            })),
         }
     }
 
     /// 追加一条事件（jsonl 一行，只追加不改写）。
-    /// 进程级互斥锁：防并发写者行交错（2026-08-17 体检实锤：两进程 append 交错，
-    /// 一条物理行拼入两个事件 JSON 致事件流损坏）。锁文件 create_new 原子抢锁，
-    /// 陈旧锁（>30 秒）视为崩溃残留自动清理；最长等待 5 秒，仍失败则放弃本事件（可接受，不阻塞主流程）。
+    /// 批量缓冲：序列化后入缓冲，达阈值/定时触发刷盘；锁超时放弃本批（不阻塞主流程）。
     pub fn 追加事件(
         &self, 类型: 事件类型, 载荷: serde_json::Value
     ) -> Result<事件, String> {
         let 事件 = 事件::新(类型, 载荷);
         let 行 = serde_json::to_string(&事件).map_err(|错误| format!("序列化事件失败: {错误}"))?;
+        let 该刷 = {
+            let mut 状态 = self.缓冲.lock().expect("事件流缓冲锁 poisoned");
+            状态.行们.push(行);
+            状态.行们.len() >= 批量阈值 || 状态.上次刷盘.elapsed() >= 刷盘间隔
+        };
+        if 该刷 {
+            self.刷盘()?;
+        }
+        Ok(事件)
+    }
+
+    /// 刷盘：把缓冲行批量写入文件，清缓冲并重置刷盘时刻。
+    /// 读事件流前与 Drop 时调用，保证落盘一致；空缓冲时仅重置时刻。
+    pub fn 刷盘(&self) -> Result<(), String> {
+        let 行们 = {
+            let mut 状态 = self.缓冲.lock().expect("事件流缓冲锁 poisoned");
+            if 状态.行们.is_empty() {
+                状态.上次刷盘 = Instant::now();
+                return Ok(());
+            }
+            std::mem::take(&mut 状态.行们)
+        };
+        self.批量写(行们)?;
+        let mut 状态 = self.缓冲.lock().expect("事件流缓冲锁 poisoned");
+        状态.上次刷盘 = Instant::now();
+        Ok(())
+    }
+
+    /// 批量写：抢文件锁，append 多行，关文件删锁。
+    /// 进程级互斥锁：防并发写者行交错（2026-08-17 体检实锤）；陈旧锁>30 秒自动清理，最长等 5 秒。
+    fn 批量写(&self, 行们: Vec<String>) -> Result<(), String> {
+        if 行们.is_empty() {
+            return Ok(());
+        }
         use std::io::Write;
         let 锁路径 = self.路径.with_extension("jsonl.lock");
         let _锁 = 抢事件流锁(&锁路径);
         let Some(锁) = _锁 else {
-            rizhi_fu::warn!(路径 = %self.路径.display(), "事件流锁等待超时，放弃本事件（并发写者持续占用）");
-            return Ok(事件);
+            rizhi_fu::warn!(
+                路径 = %self.路径.display(),
+                条数 = 行们.len(),
+                "事件流锁等待超时，放弃本批事件（并发写者持续占用）"
+            );
+            return Ok(());
         };
         let mut 文件 = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.路径)
             .map_err(|错误| format!("打开事件流失败: {错误}"))?;
-        writeln!(文件, "{行}").map_err(|错误| format!("写事件流失败: {错误}"))?;
+        for 行 in &行们 {
+            writeln!(文件, "{行}").map_err(|错误| format!("写事件流失败: {错误}"))?;
+        }
         drop(文件);
         drop(锁);
         let _ = std::fs::remove_file(&锁路径);
-        Ok(事件)
+        Ok(())
     }
 
     /// 读事件流（从起点下标起，返回后续全部事件）。
+    /// 读前先刷盘，保证缓冲内待写事件也可见。
     pub fn 读事件流(&self, 起点: usize) -> Result<Vec<事件>, String> {
+        self.刷盘()?;
         if !self.路径.exists() {
             return Ok(Vec::new());
         }
@@ -95,6 +163,15 @@ impl 事件流 {
                 serde_json::from_str::<事件>(行).map_err(|错误| format!("解析事件失败: {错误}"))
             })
             .collect()
+    }
+}
+
+impl Drop for 事件流 {
+    fn drop(&mut self) {
+        // 仅当独占（无其他克隆）时 flush，避免多实例重复刷盘；保证进程退出落盘。
+        if Arc::strong_count(&self.缓冲) == 1 {
+            let _ = self.刷盘();
+        }
     }
 }
 
@@ -269,6 +346,8 @@ mod 测试 {
         for 线程 in 线程们 {
             线程.join().unwrap();
         }
+        // 批量缓冲下未满阈值的事件可能仍在缓冲，读前显式刷盘保证全部落盘。
+        流.刷盘().unwrap();
         // 逐行校验：全部 100 行可独立解析（无拼接行）。
         let 内容 = std::fs::read_to_string(工作区.上下文目录().join("事件流.jsonl")).unwrap();
         let 行们: Vec<&str> = 内容.lines().filter(|行| !行.trim().is_empty()).collect();

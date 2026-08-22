@@ -21,6 +21,7 @@ pub struct 符号档案 {
 
 impl 符号档案 {
     /// 构造符号档案（波及初始为空，扫引用后回填）。
+    /// 路径归一：文件、模块写入时统一正斜杠，查询时直接比较无需 replace（热路径优化）。
     pub fn 新(
         项目: &str,
         模块: &str,
@@ -32,13 +33,29 @@ impl 符号档案 {
     ) -> 符号档案 {
         符号档案 {
             项目: 项目.to_string(),
-            模块: 模块.to_string(),
-            文件: 文件.to_string(),
+            模块: 模块.replace('\\', "/"),
+            文件: 文件.replace('\\', "/"),
             符号: 符号.to_string(),
             代码: 代码.to_string(),
             签名: 签名.to_string(),
             解释: 解释.to_string(),
             波及: Vec::new(),
+        }
+    }
+
+    /// 原地归一化路径字段（文件、模块、波及）为正斜杠。
+    /// 用于加载旧 json 兼容：旧档案可能存反斜杠，加载后调一次归一，后续查询免 replace。
+    pub fn 归一路径(&mut self) {
+        if self.文件.contains('\\') {
+            self.文件 = self.文件.replace('\\', "/");
+        }
+        if self.模块.contains('\\') {
+            self.模块 = self.模块.replace('\\', "/");
+        }
+        for 波 in &mut self.波及 {
+            if 波.contains('\\') {
+                *波 = 波.replace('\\', "/");
+            }
         }
     }
 }
@@ -62,6 +79,14 @@ impl 依赖图 {
         "乾坤/呈现-域/命令操作-府/观览-查询-殿/世界-观览-阁/缓存-读取-园/缓存读取.rs",
         "乾坤/呈现-域/命令操作-府/命令-解析-殿/命令-入口-阁/兜底-入口-园/入口执行.rs",
     ];
+
+    /// 原地归一化全部档案路径字段为正斜杠。
+    /// 加载旧 json 后调用一次：旧档案可能存反斜杠，归一后所有查询免 replace（热路径优化）。
+    pub fn 归一(&mut self) {
+        for 档案 in &mut self.档案们 {
+            档案.归一路径();
+        }
+    }
 
     /// 按符号名查档案（512→64 追溯）。
     pub fn 查符号(&self, 符号名: &str) -> Vec<&符号档案> {
@@ -92,14 +117,12 @@ impl 依赖图 {
     pub fn 查涉及文件(&self, 涉及路径们: &[String]) -> Vec<String> {
         let mut 文件集 = HashSet::new();
         for 涉及 in 涉及路径们 {
-            // 统一分隔符：依赖图路径存反斜杠，LLM 填的涉及路径常用正斜杠，不一致会漏匹配。
             let 涉及 = 涉及.trim().replace('\\', "/");
             if 涉及.is_empty() {
                 continue;
             }
             for 档案 in &self.档案们 {
-                let 文件 = 档案.文件.replace('\\', "/");
-                if 档案.符号 == 涉及 || 档案.符号.contains(&涉及) || 文件.contains(&涉及)
+                if 档案.符号 == 涉及 || 档案.符号.contains(&涉及) || 档案.文件.contains(&涉及)
                 {
                     文件集.insert(档案.文件.clone());
                     for 波及 in &档案.波及 {
@@ -123,11 +146,7 @@ impl 依赖图 {
         // 只在档案确有此文件时兜底，硬编码路径失效则自然退回空。
         Self::命令接线文件
             .iter()
-            .filter(|文件| {
-                self.档案们
-                    .iter()
-                    .any(|档案| 档案.文件.replace('\\', "/") == **文件)
-            })
+            .filter(|文件| self.档案们.iter().any(|档案| 档案.文件 == **文件))
             .map(|文件| 文件.to_string())
             .collect()
     }
@@ -140,7 +159,7 @@ impl 依赖图 {
         for 文件 in 文件们 {
             let 文件归一 = 文件.replace('\\', "/");
             for 档案 in &self.档案们 {
-                if 档案.波及.iter().any(|波| 波.replace('\\', "/") == 文件归一) {
+                if 档案.波及.contains(&文件归一) {
                     文件集.insert(档案.文件.clone());
                 }
             }
@@ -161,7 +180,7 @@ impl 依赖图 {
                 continue;
             };
             for 档案 in &self.档案们 {
-                if 档案.文件.replace('\\', "/").starts_with(&父) {
+                if 档案.文件.starts_with(&父) {
                     文件集.insert(档案.文件.clone());
                 }
             }
@@ -204,8 +223,7 @@ impl 依赖图 {
                 continue;
             }
             for 档案 in &self.档案们 {
-                let 文件 = 档案.文件.replace('\\', "/");
-                if 文件.contains(&涉及) {
+                if 档案.文件.contains(&涉及) {
                     if let Some(crate名) = 档案.模块.split('/').next_back() {
                         if !crate名.is_empty() {
                             crate名集.insert(crate名.to_string());
@@ -219,7 +237,7 @@ impl 依赖图 {
             for 涉及 in 涉及路径们 {
                 let 涉及 = 涉及.trim();
                 for 档案 in &self.档案们 {
-                    if 档案.模块.replace('\\', "/").ends_with(涉及) {
+                    if 档案.模块.ends_with(涉及) {
                         if let Some(crate名) = 档案.模块.split('/').next_back() {
                             crate名集.insert(crate名.to_string());
                         }
@@ -259,7 +277,7 @@ impl 依赖图 {
             for 涉及 in 涉及路径们 {
                 let 涉及 = 涉及.trim().replace('\\', "/");
                 for 档案 in &self.档案们 {
-                    if 档案.文件.replace('\\', "/").contains(&涉及) {
+                    if 档案.文件.contains(&涉及) {
                         if let Some(crate名) = 档案.模块.split('/').next_back() {
                             集合.insert(crate名.to_string());
                         }
@@ -312,16 +330,15 @@ impl 依赖图 {
 
     /// 清理文件：移除该文件的符号档案 + 从其他档案.波及 中移除该文件（入边清理）。
     /// 用于增量检测识别删除后同步清理陈旧边（设计稿 §14.20.6）。
-    /// 路径分隔符归一：依赖图内可能存反斜杠，调用方可能传正斜杠，统一按正斜杠比较。
+    /// 路径归一：档案.文件/波及 已在写入时归一为正斜杠，此处仅归一入参一次，内循环免 replace。
     /// 返回移除档案条数（不含波及清理数）。
     pub fn 清理文件(&mut self, 路径: &str) -> usize {
         let 路径归一 = 路径.replace('\\', "/");
         let 原数 = self.档案们.len();
-        self.档案们
-            .retain(|档案| 档案.文件.replace('\\', "/") != 路径归一);
+        self.档案们.retain(|档案| 档案.文件 != 路径归一);
         let 移除数 = 原数 - self.档案们.len();
         for 档案 in &mut self.档案们 {
-            档案.波及.retain(|波| 波.replace('\\', "/") != 路径归一);
+            档案.波及.retain(|波| *波 != 路径归一);
         }
         移除数
     }
@@ -663,9 +680,9 @@ mod 测试 {
             )],
             结构树: 结构节点::新("根结构"),
         };
-        // 依赖图内反斜杠，调用方正斜杠 → 归一比较应命中。
+        // 构造时已归一为正斜杠，正斜杠调用应命中。
         let 移除数 = 图.清理文件("乾坤/甲府/甲.rs");
-        assert_eq!(移除数, 1, "正斜杠调用应清理反斜杠档案");
+        assert_eq!(移除数, 1, "正斜杠调用应清理归一化后的档案");
         assert!(图.档案们.is_empty());
     }
 

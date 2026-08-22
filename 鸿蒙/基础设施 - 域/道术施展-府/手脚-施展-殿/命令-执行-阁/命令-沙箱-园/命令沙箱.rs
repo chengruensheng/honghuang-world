@@ -92,63 +92,62 @@ impl 沙箱视图 {
         沙箱视图::打开(工作区根, &取当前任务())
     }
 
-    /// 物化：工作区源码 → 视图硬链接镜像（增量：同指纹不动，跨卷降级复制）。
-    fn 物化(&self) -> Result<(), String> {
+    /// 物化 + 备份 + 前真实快照合并遍历（C3 优化，2026-08-22 入稿）：
+    /// 原物化、备份、前真实快照各遍历一次工作区源码树（3 次），合并为 1 次遍历同时完成——
+    /// 对每个源文件取一次指纹存前真实表、硬链接到视图、复制到备份。
+    /// 命令前遍历从 4 次（物化+备份+前视图+前真实）减到 2 次（本合并遍历+前视图快照）。
+    /// 前视图快照必须独立遍历视图（视图可能有真实区已删除的残留文件，物化增量只新增不清理）。
+    fn 物化备份快照(&self) -> Result<HashMap<String, 指纹>, String> {
         fs::create_dir_all(&self.视图根)
             .map_err(|错误| format!("物化创建视图根失败：{}：{错误}", self.视图根.display()))?;
         let 来源们 = 遍历源码(&self.工作区根)?;
         let mut 新建 = 0u32;
-        for 相对 in 来源们 {
-            let 源 = self.工作区根.join(&相对);
-            let 目标 = self.视图根.join(&相对);
-            if 同指纹(&源, &目标) {
-                continue;
-            }
-            if let Some(父) = 目标.parent() {
-                fs::create_dir_all(父)
-                    .map_err(|错误| format!("物化创建目录失败：{}：{错误}", 父.display()))?;
-            }
-            if 目标.exists() {
-                let _ = fs::remove_file(&目标);
-            }
-            if fs::hard_link(&源, &目标).is_err() {
-                // 跨卷/权限不支持硬链接：降级为真实复制（内容一致，仅不再共享 inode）。
-                fs::copy(&源, &目标)
-                    .map_err(|错误| format!("物化复制失败：{}：{错误}", 源.display()))?;
-            }
-            新建 += 1;
-        }
-        debug!(新建, "视图物化完成");
-
-        Ok(())
-    }
-
-    /// 备份：命令前把源码内容快照进备份区（增量：同指纹不动），供越界后恢复。
-    fn 备份(&self) -> Result<(), String> {
-        let 来源们 = 遍历源码(&self.工作区根)?;
         let mut 备份数 = 0u32;
+        let mut 前真实 = HashMap::with_capacity(来源们.len());
         for 相对 in 来源们 {
             let 源 = self.工作区根.join(&相对);
-            let 目标 = self.备份根.join(&相对);
-            if 同指纹(&源, &目标) {
-                continue;
+            // 取源指纹存前真实表（与原快照逻辑一致：非文件不插入）。
+            let 源指纹 = 取指纹(&源);
+            if let Some(指纹) = 源指纹 {
+                前真实.insert(相对.to_string_lossy().into_owned(), 指纹);
             }
-            if let Some(父) = 目标.parent() {
-                fs::create_dir_all(父)
-                    .map_err(|错误| format!("备份创建目录失败：{}：{错误}", 父.display()))?;
+            // 物化：硬链接到视图（增量：同指纹跳过，跨卷降级复制）。
+            let 视图目标 = self.视图根.join(&相对);
+            if !同指纹源(源指纹, &视图目标) {
+                if let Some(父) = 视图目标.parent() {
+                    fs::create_dir_all(父)
+                        .map_err(|错误| format!("物化创建目录失败：{}：{错误}", 父.display()))?;
+                }
+                if 视图目标.exists() {
+                    let _ = fs::remove_file(&视图目标);
+                }
+                if fs::hard_link(&源, &视图目标).is_err() {
+                    // 跨卷/权限不支持硬链接：降级为真实复制（内容一致，仅不再共享 inode）。
+                    fs::copy(&源, &视图目标)
+                        .map_err(|错误| format!("物化复制失败：{}：{错误}", 源.display()))?;
+                }
+                新建 += 1;
             }
-            if 目标.exists() {
-                let _ = fs::remove_file(&目标);
+            // 备份：复制到备份区（增量：同指纹跳过）。
+            let 备份目标 = self.备份根.join(&相对);
+            if !同指纹源(源指纹, &备份目标) {
+                if let Some(父) = 备份目标.parent() {
+                    fs::create_dir_all(父)
+                        .map_err(|错误| format!("备份创建目录失败：{}：{错误}", 父.display()))?;
+                }
+                if 备份目标.exists() {
+                    let _ = fs::remove_file(&备份目标);
+                }
+                if let Err(错误) = fs::copy(&源, &备份目标) {
+                    // 设计稿 §4.3 规则 4：单文件被占用/不可达 → 跳过，不阻断整条命令（防运行时锁文件卡死循环）。
+                    warn!(相对 = %相对.display(), "备份跳过（文件被占用或不可达）：{错误}");
+                    continue;
+                }
+                备份数 += 1;
             }
-            if let Err(错误) = fs::copy(&源, &目标) {
-                // 设计稿 §4.3 规则 4：单文件被占用/不可达 → 跳过，不阻断整条命令（防运行时锁文件卡死循环）。
-                warn!(相对 = %相对.display(), "备份跳过（文件被占用或不可达）：{错误}");
-                continue;
-            }
-            备份数 += 1;
         }
-        debug!(备份数, "命令前快照完成");
-        Ok(())
+        debug!(新建, 备份数, "物化+备份+前真实快照合并完成");
+        Ok(前真实)
     }
 
     /// 源码区指纹快照：路径(相对) → 指纹。
@@ -164,7 +163,7 @@ impl 沙箱视图 {
         表
     }
 
-    /// 运行命令：原子事务（物化 → 备份 → 快照 → 命令 → 越界检测回滚），全程加锁串行。
+    /// 运行命令：原子事务（物化备份快照 → 前视图快照 → 命令 → 越界检测回滚），全程加锁串行。
     /// `超时毫秒` 可选：None 走 默认超时毫秒（10 分钟）；超时后子进程被强杀并返回超时错误。
     pub fn 运行(
         &self,
@@ -174,10 +173,10 @@ impl 沙箱视图 {
         超时毫秒: Option<u64>,
     ) -> Result<沙箱结果, String> {
         let _锁 = self.锁.lock().map_err(|_| "沙箱锁中毒".to_string())?;
-        self.物化()?;
-        self.备份()?;
+        // 物化+备份+前真实快照合并遍历（C3）：一次遍历工作区同时完成三事，返回前真实指纹表。
+        let 前真实 = self.物化备份快照()?;
+        // 前视图快照独立遍历视图（视图可能有残留文件，必须独立扫）。
         let 前视图 = self.快照(&self.视图根);
-        let 前真实 = self.快照(&self.工作区根);
         let 视图cwd = match 工作目录 {
             Some(相对) => self.视图根.join(相对).to_string_lossy().into_owned(),
             None => self.视图根.to_string_lossy().into_owned(),
@@ -408,10 +407,10 @@ fn 取指纹(路径: &Path) -> Option<指纹> {
     })
 }
 
-/// 两文件是否同指纹（都存在且一致）。
-fn 同指纹(甲: &Path, 乙: &Path) -> bool {
-    match (取指纹(甲), 取指纹(乙)) {
-        (Some(甲指纹), Some(乙指纹)) => 甲指纹 == 乙指纹,
+/// 同指纹的源指纹已知变体（C3 合并遍历用）：源指纹已取，只取目标指纹比对，省一次源 metadata。
+fn 同指纹源(源指纹: Option<指纹>, 目标: &Path) -> bool {
+    match (源指纹, 取指纹(目标)) {
+        (Some(甲), Some(乙)) => 甲 == 乙,
         _ => false,
     }
 }

@@ -75,11 +75,39 @@ fn 读可操作规则() -> String {
     shihai_fu::注入规则(&存储, "细则·解读")
 }
 
+/// 读府依赖：解析 Cargo.toml [dependencies] 段，返回依赖名清单（每行一个）；无段或空返回 None。
+#[allow(dead_code)]
+fn 读府依赖(根: impl AsRef<std::path::Path>) -> Option<String> {
+    let 内容 = std::fs::read_to_string(根.as_ref().join("Cargo.toml")).ok()?;
+    let mut 在依赖段 = false;
+    let mut 行们 = Vec::new();
+    for 行 in 内容.lines() {
+        let 行 = 行.trim();
+        if 行.starts_with('[') {
+            在依赖段 = 行 == "[dependencies]";
+            continue;
+        }
+        if 在依赖段 && !行.is_empty() && !行.starts_with('#') {
+            if let Some(名) = 行.split('=').next() {
+                let 名 = 名.trim();
+                if !名.is_empty() {
+                    行们.push(名.to_string());
+                }
+            }
+        }
+    }
+    if 行们.is_empty() {
+        None
+    } else {
+        Some(行们.join("\n"))
+    }
+}
+
 /// 读项目结构摘要（设计稿 §11.2 设计阶段加固）：结构树 + workspace members + 府间依赖。
 /// 助设计主笔落位正确——看到项目骨架，不臆造不存在的府殿阁园。
 /// 结构树从依赖图加载（`依赖图::下探` 空关键词 → 渲染全部 crate 树）；
-/// workspace members 从根 Cargo.toml 读取（参考三档拼装.rs 读workspace成员）；
-/// 府间依赖读各府 Cargo.toml [dependencies] 段，注入「府 → 依赖列表」映射。
+/// workspace members + 府间依赖经 shihai_fu::读workspace成员缓存 读结构化摘要（带缓存），
+/// 与三档拼装共用同一份读盘解析结果，避免重复读各府 Cargo.toml。
 fn 读项目结构() -> String {
     let mut 段 = String::new();
     let 工作区 = shihai_fu::工作区::定位();
@@ -92,67 +120,30 @@ fn 读项目结构() -> String {
             段.push('\n');
         }
     }
-    // workspace members + 府间依赖：从根 Cargo.toml 读 members，再读各府 Cargo.toml [dependencies]。
-    let 根路径 = 工作区.根路径();
-    let Some(内容) = std::fs::read_to_string(根路径.join("Cargo.toml")).ok() else {
+    // workspace members + 府间依赖：经缓存读结构化摘要后格式化。
+    let Some(摘要) = shihai_fu::读workspace成员缓存() else {
         return 段;
     };
-    let members: Vec<String> = 内容
-        .lines()
-        .filter(|行| 行.contains("-府\""))
-        .map(|行| {
-            行.trim()
-                .trim_start_matches('"')
-                .trim_end_matches(',')
-                .trim_end_matches('"')
-                .to_string()
-        })
-        .collect();
-    if members.is_empty() {
+    if 摘要.成员们.is_empty() {
         return 段;
     }
     段.push_str("【workspace members】");
-    段.push_str(&members.join("、"));
+    段.push_str(&摘要.成员们.join("、"));
     段.push('\n');
-    // 府间依赖：读各府 Cargo.toml [dependencies]，注入「府 → 依赖列表」映射。
+    // 府间依赖：注入「府 → 依赖列表」映射（与三档拼装格式不同，只取依赖不取 lib 名）。
     let mut 依赖段 = String::from("【府间依赖】\n");
     let mut 有依赖 = false;
-    for 府 in &members {
-        if let Some(行) = 读府依赖(根路径.join(府)) {
-            依赖段.push_str(&行);
-            有依赖 = true;
+    for 府 in &摘要.府间依赖 {
+        if 府.依赖们.is_empty() {
+            continue;
         }
+        依赖段.push_str(&format!("{} → {}\n", 府.府名, 府.依赖们.join("、")));
+        有依赖 = true;
     }
     if 有依赖 {
         段.push_str(&依赖段);
     }
     段
-}
-
-/// 读单个府 Cargo.toml 的 [dependencies] 段，返回「府名 → 依赖列表」一行文本。
-fn 读府依赖(府路径: std::path::PathBuf) -> Option<String> {
-    let 内容 = std::fs::read_to_string(府路径.join("Cargo.toml")).ok()?;
-    let 府名 = 府路径.file_name()?.to_string_lossy().to_string();
-    let mut 依赖们: Vec<String> = Vec::new();
-    let mut 在依赖段 = false;
-    for 行 in 内容.lines() {
-        let 去空白 = 行.trim();
-        if 去空白.starts_with('[') {
-            在依赖段 = 去空白 == "[dependencies]";
-            continue;
-        }
-        if 在依赖段 {
-            if let Some(名) = 去空白.split_once('=').map(|(名, _)| 名.trim()) {
-                if !名.is_empty() {
-                    依赖们.push(名.to_string());
-                }
-            }
-        }
-    }
-    if 依赖们.is_empty() {
-        return None;
-    }
-    Some(format!("{府名} → {}\n", 依赖们.join("、")))
 }
 
 /// 模型设计（设计稿 §12 P2-9）：提示模型按 方向/类别/验收标准/涉及路径
@@ -514,7 +505,7 @@ fn 解析设计方案(要求id: &str, 回复: &str) -> Option<设计方案> {
 #[cfg(test)]
 mod 测试 {
     use super::{
-        提取_json候选们, 是复杂任务, 解析设计方案, 解析评审意见, 读府依赖, 读项目结构
+        提取_json候选们, 是复杂任务, 解析设计方案, 解析评审意见, 读项目结构
     };
 
     #[test]
@@ -770,43 +761,6 @@ mod 测试 {
             方案.设计,
             方案.拆解.len()
         );
-    }
-
-    /// 读府依赖：解析 [dependencies] 段，提取依赖名清单。
-    #[test]
-    fn 读府依赖_解析依赖段() {
-        let 根 = std::env::temp_dir().join(format!(
-            "读府依赖测试-{}-{}",
-            std::process::id(),
-            shihai_fu::当前毫秒()
-        ));
-        std::fs::create_dir_all(&根).unwrap();
-        std::fs::write(
-            根.join("Cargo.toml"),
-            "[package]\nname = \"x\"\n\n[dependencies]\nserde = \"1\"\nshihai_fu = { path = \"../识海承载-府\" }\n",
-        )
-        .unwrap();
-        let 行 = 读府依赖(根.clone()).expect("应解析出依赖");
-        assert!(行.contains("serde"), "应含 serde 依赖：{行}");
-        assert!(行.contains("shihai_fu"), "应含 shihai_fu 依赖：{行}");
-        let _ = std::fs::remove_dir_all(&根);
-    }
-
-    /// 读府依赖：无 [dependencies] 段返回 None。
-    #[test]
-    fn 读府依赖_无依赖段返回none() {
-        let 根 = std::env::temp_dir().join(format!(
-            "读府依赖测试空-{}-{}",
-            std::process::id(),
-            shihai_fu::当前毫秒()
-        ));
-        std::fs::create_dir_all(&根).unwrap();
-        std::fs::write(根.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
-        assert!(
-            读府依赖(根.clone()).is_none(),
-            "无 [dependencies] 段应返回 None"
-        );
-        let _ = std::fs::remove_dir_all(&根);
     }
 
     /// 读项目结构：在真实工作区跑应含 workspace members 段。

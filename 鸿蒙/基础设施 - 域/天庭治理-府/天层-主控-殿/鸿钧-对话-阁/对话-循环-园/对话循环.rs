@@ -136,19 +136,20 @@ fn 追问进度回复(消息: &str) -> String {
 }
 
 /// 从追问文本提取「要求-N」（数字序号）。
+/// 用 find 定位「要求-」后取数字尾，替代逐字符 collect（O(n²)→O(n)，且修掉原 take(3) 比较多字符致恒 None 的 bug）。
 fn 提取要求id(消息: &str) -> Option<String> {
-    let 字符们: Vec<char> = 消息.chars().collect();
-    for 起点 in 0..字符们.len() {
-        if 字符们[起点..].iter().take(3).collect::<String>() == "要求" {
-            // 要求 后须跟 -数字
-            let 剩余: String = 字符们[起点 + 2..].iter().collect();
-            if let Some(尾) = 剩余.strip_prefix('-') {
-                let 数字: String = 尾.chars().take_while(|字| 字.is_ascii_digit()).collect();
-                if !数字.is_empty() {
-                    return Some(format!("要求-{数字}"));
-                }
-            }
+    let mut 余 = 消息;
+    while let Some(起点) = 余.find("要求-") {
+        let 数字尾 = &余[起点 + "要求-".len()..];
+        let 数字: String = 数字尾
+            .chars()
+            .take_while(|字| 字.is_ascii_digit())
+            .collect();
+        if !数字.is_empty() {
+            return Some(format!("要求-{数字}"));
         }
+        // 此处「要求-」后无数字，跳过继续找下一个
+        余 = 数字尾;
     }
     None
 }
