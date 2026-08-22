@@ -142,7 +142,7 @@ impl 心智模型 {
         心智模型 {
             工作区,
             工具清单: 工具清单::全部(),
-            格位们: 全部格位(),
+            格位们: 全部格位().to_vec(),
             会话记录: Vec::new(),
         }
     }
@@ -362,11 +362,20 @@ impl 模型存储 {
     /// 重写格位 jsonl：覆盖写入给定记录（按顺序一行一条）。
     fn 重写格位(&self, 格位名: &str, 记录们: &[记录]) -> Result<(), String> {
         let 路径 = self.格位文件路径(格位名)?;
-        let mut 文本 = String::new();
+        // 预分配容量：先序列化所有行收集到 Vec，按总字节数（含换行）精确预分配 String，
+        // 消除 push_str 多次重分配（性能报告 M2）。Vec 一次分配 + String 一次精确分配，
+        // 比原 String::new + 多次 push_str 触发 2 倍扩容更省。
+        let mut 行们 = Vec::with_capacity(记录们.len());
+        let mut 总字节 = 0usize;
         for 记录 in 记录们 {
             let 行 =
                 serde_json::to_string(记录).map_err(|错误| format!("序列化记录失败: {错误}"))?;
-            文本.push_str(&行);
+            总字节 += 行.len() + 1; // +1 为换行符
+            行们.push(行);
+        }
+        let mut 文本 = String::with_capacity(总字节);
+        for 行 in &行们 {
+            文本.push_str(行);
             文本.push('\n');
         }
         use std::io::Write;

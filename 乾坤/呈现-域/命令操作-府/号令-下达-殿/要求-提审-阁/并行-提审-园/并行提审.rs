@@ -22,7 +22,7 @@ pub fn 化为要求(想法id: &str) -> String {
     };
     let 配置 = 读模型配置();
     let 存储 = 打开存储();
-    let 背景 = shihai_fu::拼装投影(&存储, "鸿钧", &shihai_fu::全部格位(), 8000).unwrap_or_default();
+    let 背景 = shihai_fu::拼装投影(&存储, "鸿钧", shihai_fu::全部格位(), 8000).unwrap_or_default();
     match tianting_fu::解析想法(&想法.id, &想法.内容, &背景, &配置) {
         Ok((要求, 用量)) => {
             let 队列 = tianting_fu::落盘队列::<tianting_fu::要求书>::打开(

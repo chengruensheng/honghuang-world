@@ -18,6 +18,19 @@ use std::time::Duration;
 /// 默认超时上限（毫秒）：10 分钟。模型未指定时兜底，防任务无限挂起。
 pub const 默认超时毫秒: u64 = 600_000;
 
+/// 检测参数是否含 cmd.exe 元字符（&、|、>、<、^、%），防 cat/ls 翻译时命令注入（安全报告 L6）。
+/// Rust 的 Command::new 已对参数做引号转义（防空格分割），但 cmd.exe /C 后的字符串仍由 cmd 解析，
+/// 元字符会被当管道/重定向执行。含元字符时拒绝执行而非尝试转义——避免与 Rust 自动引号叠加。
+#[cfg(windows)]
+fn 含cmd元字符(参数: &str) -> bool {
+    参数.contains('&')
+        || 参数.contains('|')
+        || 参数.contains('>')
+        || 参数.contains('<')
+        || 参数.contains('^')
+        || 参数.contains('%')
+}
+
 /// 等待线程轮询 try_wait 的间隔：50ms，平衡响应速度与 CPU 占用。
 const 轮询间隔: Duration = Duration::from_millis(50);
 
@@ -52,16 +65,24 @@ pub fn 运行命令超时(
     // 不识别（不会去 shell 解析），LLM 跑 `cat <file>` 撞「program not found」。
     // 走 cmd.exe /C 包装，让 shell 解析内建命令。
     // 实测：让世界产出复杂任务（要求-36 全链路验收）时 LLM 用了 `cat` 撞错。
+    // 安全：cat/ls 翻译时检查参数是否含 cmd 元字符（&、|、>、<、^、%），含则拒绝执行（安全报告 L6）。
+    // Rust 的 Command::new 已对参数做引号转义，手动加引号会叠加导致路径解析错误。
     // （2026-08-18 DSH 兜底补齐：仅 Windows 平台；不重定向/不组合命令以免破坏现有超时/管道语义。）
     #[cfg(windows)]
     let (真命令, 真参数们_owned): (String, Vec<String>) = {
         match 命令 {
             "cat" => {
+                if 参数们.iter().any(|s| 含cmd元字符(s)) {
+                    return Err("cat 参数含命令注入风险字符（&、|、>、<、^、%）".to_string());
+                }
                 let mut p = vec!["/C".to_string(), "type".to_string()];
                 p.extend(参数们.iter().map(|s| s.to_string()));
                 ("cmd.exe".to_string(), p)
             }
             "ls" => {
+                if 参数们.iter().any(|s| 含cmd元字符(s)) {
+                    return Err("ls 参数含命令注入风险字符（&、|、>、<、^、%）".to_string());
+                }
                 let mut p = vec!["/C".to_string(), "dir".to_string()];
                 p.extend(参数们.iter().map(|s| s.to_string()));
                 ("cmd.exe".to_string(), p)

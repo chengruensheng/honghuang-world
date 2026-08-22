@@ -63,12 +63,17 @@ pub fn 呈现版本历史() -> String {
                 warn!("版本历史为空");
                 return "版本历史\n（暂无，用「版本 存档」创建）".to_string();
             }
-            let mut 行 = format!("版本历史（{} 条）\n", 记录们.len());
+            // 预分配 + write! 直接写入：消除循环内 push_str(&format!(...)) 每次分配临时 String
+            //（性能报告：缓存读取多次 format!）。预估每行约 80 字符 + 源码快照路径长度。
+            use std::fmt::Write;
+            let mut 行 = String::with_capacity(记录们.len() * 128 + 32);
+            let _ = writeln!(行, "版本历史（{} 条）", 记录们.len());
             for 记录 in 记录们.iter().rev() {
-                行.push_str(&format!(
-                    "{} 阶段={:?} 时间={} 改了什么={}\n  源码快照：{}\n",
+                let _ = writeln!(
+                    行,
+                    "{} 阶段={:?} 时间={} 改了什么={}\n  源码快照：{}",
                     记录.版本号, 记录.阶段, 记录.时间, 记录.改了什么, 记录.源码快照路径
-                ));
+                );
             }
             行
         }

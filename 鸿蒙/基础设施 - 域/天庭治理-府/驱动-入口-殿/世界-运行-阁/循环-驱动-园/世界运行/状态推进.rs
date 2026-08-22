@@ -11,7 +11,7 @@
 //!
 //! 持久化经 `super::持久化` 调用，避免与本模块耦合。
 
-use super::持久化::{持久化任务线们, 持久化要求们};
+use super::持久化::{持久化任务线们, 持久化列表, 持久化要求们};
 use crate::类型_定义_殿::{
     任务线, 任务线状态, 想法, 想法状态, 要求书, 要求状态
 };
@@ -171,19 +171,8 @@ pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> Result<(),
     if !命中 {
         return Err(format!("未找到目标想法：{目标id}"));
     }
-    let 临时路径 = 想法路径.with_extension("jsonl.tmp");
-    let mut 行们 = Vec::with_capacity(项们.len());
-    for 项 in &项们 {
-        let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化想法失败: {错误}"))?;
-        行们.push(行);
-    }
-    let 内容 = if 行们.is_empty() {
-        String::new()
-    } else {
-        format!("{}\n", 行们.join("\n"))
-    };
-    std::fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
-    std::fs::rename(&临时路径, &想法路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
+    // 复用 持久化列表 泛型原子落盘（消除内联 join+format 两次分配，与要求/任务线同款）。
+    持久化列表(&想法路径, &项们, "想法")?;
     drop(锁);
     info!(目标id, 新状态 = ?新状态, "想法状态已推进");
     Ok(())

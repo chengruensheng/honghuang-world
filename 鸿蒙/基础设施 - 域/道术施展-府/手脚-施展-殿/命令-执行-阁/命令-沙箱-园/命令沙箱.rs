@@ -33,15 +33,12 @@ const 排除目录们: [&str; 6] = [
 
 /// sccache 可用性缓存：首次检查后复用，避免每次物化都 spawn 子进程探测。
 /// sccache 不在 PATH 时返回 false，沙箱运行不注入 RUSTC_WRAPPER，不影响现有功能。
+/// 探测带 5 秒超时（安全报告 L11）：超时视为不可用，防 sccache --version 挂死物化流程。
 fn sccache可用() -> bool {
     static 缓存: OnceLock<bool> = OnceLock::new();
     *缓存.get_or_init(|| {
-        std::process::Command::new("sccache")
-            .arg("--version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok()
+        // 用 运行命令超时 带 5 秒超时探测，超时或失败均视为 sccache 不可用。
+        运行命令超时("sccache", &["--version"], None, 5_000, &[]).is_ok()
     })
 }
 

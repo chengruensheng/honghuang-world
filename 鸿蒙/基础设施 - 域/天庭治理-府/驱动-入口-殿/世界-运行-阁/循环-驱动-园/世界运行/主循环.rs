@@ -105,6 +105,15 @@ pub fn 主政一轮(
     配置: &模型配置,
     存储: &shihai_fu::模型存储,
 ) -> Result<主政回执, String> {
+    // 鸿钧单一意志线守护：同一时刻仅允许一条主政意志线运行，防并发任务线互相覆盖状态
+    //（架构报告 2.10.3 运行时守护缺口）。进程级互斥锁（OnceLock<Mutex>），多线程并发调
+    // 主政一轮 时串行化，确保状态推进/产物落盘/依赖图重建不竞态。Mutex poison 容错取数据
+    // 避免级联 panic（与项目其他锁同款）。
+    static 单一意志线锁: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    let _意志线守卫 = 单一意志线锁
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|毒| 毒.into_inner());
     // 状态共享：写入当前想法id（供观览查询读取，全局状态未初始化时不阻断主循环）
     if let Some(状态) = zhuangtai_fu::取全局状态() {
         let _ = 状态.写入(zhuangtai_fu::当前想法id(想法.id.clone()));
@@ -126,7 +135,7 @@ pub fn 主政一轮(
     let 背景 = 识海服务
         .回想(
             "多宝",
-            &shihai_fu::全部格位(),
+            shihai_fu::全部格位(),
             3_000,
             shihai_fu::调用方层级::设计,
         )
@@ -236,7 +245,7 @@ pub fn 运行一轮(
     let 背景 = 识海服务
         .回想(
             "多宝",
-            &shihai_fu::全部格位(),
+            shihai_fu::全部格位(),
             3_000,
             shihai_fu::调用方层级::执行,
         )

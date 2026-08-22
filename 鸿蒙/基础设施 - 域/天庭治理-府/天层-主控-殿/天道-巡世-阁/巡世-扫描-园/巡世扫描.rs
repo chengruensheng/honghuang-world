@@ -179,28 +179,25 @@ fn 证道已测(园名: &str, 证道测试们: &[PathBuf]) -> bool {
 
 /// ② clippy 警告检测：跑 cargo clippy，有警告 → 产候选，优先级=中。
 /// 仅在 cargo workspace 根（含 Cargo.toml）才跑，避免在临时目录或非 workspace 路径误调。
+/// 带超时（60 秒）与 --offline，防 clippy 挂死巡世线程、减少外部依赖执行（安全报告 L5）。
 fn 检clippy警告(根目录: &Path) -> Vec<巡世候选> {
     if !根目录.join("Cargo.toml").exists() {
         return Vec::new();
     }
-    let 输出 = std::process::Command::new("cargo")
-        .args([
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--message-format=short",
-        ])
-        .current_dir(根目录)
-        .output();
-    let Ok(输出) = 输出 else {
-        warn!("clippy 调用失败，跳过 clippy 警告检测");
+    let 参数们 = [
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--message-format=short",
+        "--offline",
+    ];
+    let 工作目录 = 根目录.to_str().unwrap_or(".");
+    let 输出 = daoshu_fu::运行命令超时("cargo", &参数们, Some(工作目录), 60_000, &[]);
+    let Ok(结果) = 输出 else {
+        warn!("clippy 调用失败或超时，跳过 clippy 警告检测");
         return Vec::new();
     };
-    let 合并 = format!(
-        "{}\n{}",
-        String::from_utf8_lossy(&输出.stdout),
-        String::from_utf8_lossy(&输出.stderr)
-    );
+    let 合并 = format!("{}\n{}", 结果.标准输出, 结果.标准错误);
     let 警告数 = 合并.lines().filter(|行| 行.contains("warning:")).count();
     if 警告数 > 0 {
         info!(警告数, "clippy 警告检测完成");

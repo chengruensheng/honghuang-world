@@ -335,10 +335,32 @@ mod 测试 {
     #[test]
     #[ignore = "需真实工作区"]
     fn 兼容_真实验收jsonl全量可解析() {
-        std::env::set_var("WORLD_WORKSPACE_ROOT", "D:\\洪荒 - 世界");
+        // 用 CARGO_MANIFEST_DIR 推导工作区根，不硬编码绝对路径（安全报告 L4）。
+        // 天庭治理-府 Cargo.toml 在 鸿蒙/基础设施 - 域/天庭治理-府/，往上找含 [workspace] 的根。
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR 应由 cargo 注入");
+        let 工作区根 = 寻工作区根(std::path::Path::new(&manifest_dir))
+            .expect("应能从 CARGO_MANIFEST_DIR 向上找到 workspace 根");
+        std::env::set_var(
+            "WORLD_WORKSPACE_ROOT",
+            工作区根.to_string_lossy().to_string(),
+        );
         let 目录 = 状态目录();
         let 队列 = crate::落盘队列::<crate::终裁回执>::打开(目录.join("验收.jsonl"));
         let 回执们 = 队列.读全部().expect("历史验收记录（含旧六维）应全量可解析");
         assert!(!回执们.is_empty(), "真实验收.jsonl 不应为空");
+    }
+
+    /// 从给定目录向上找 workspace 根（含 `[workspace]` 的 Cargo.toml 的目录）。
+    fn 寻工作区根(起: &std::path::Path) -> Option<std::path::PathBuf> {
+        for 祖先 in 起.ancestors() {
+            let cargo = 祖先.join("Cargo.toml");
+            if let Ok(文本) = std::fs::read_to_string(&cargo) {
+                if 文本.contains("[workspace]") {
+                    return Some(祖先.to_path_buf());
+                }
+            }
+        }
+        None
     }
 }
