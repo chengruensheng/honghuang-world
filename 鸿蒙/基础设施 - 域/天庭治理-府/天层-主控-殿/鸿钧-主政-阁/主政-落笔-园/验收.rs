@@ -127,9 +127,10 @@ pub fn 定档(
 
 /// 扫描 workspace 全部 crate 的库根 pub API 签名，写入「结构」格位（设计稿 §4.2 规则6 配套）。
 /// 定档环节调用：每次定档时刷新一次 workspace pub API 清单，供执行现状拼装注入「可用API清单」。
+/// 亦供构造现状冷启动调用：首次执行时「结构」格位无 API 契约记录，先扫描一次打破死循环。
 /// 每个crate一条记录，实体键=API·{lib名}（前缀区分结构格位中其他记录），内容=该crate的pub符号签名清单。
 /// 跨府只经 shihai_fu lib 根：读workspace成员缓存在 / 依赖图::加载自工作区 / 记录::新 / 存储.写记录。
-fn 扫描接口契约写入格位(存储: &shihai_fu::模型存储) {
+pub fn 扫描接口契约写入格位(存储: &shihai_fu::模型存储) {
     let 工作区 = shihai_fu::工作区::定位();
     let 图 = shihai_fu::依赖图::加载自工作区(&工作区).unwrap_or_default();
     let Some(摘要) = shihai_fu::读workspace成员缓存在(&工作区) else {
