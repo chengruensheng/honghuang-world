@@ -165,7 +165,9 @@ pub(super) fn 构造现状(
         }
     }
     // 教训注入：上轮失败经验（地道归因写入）跨轮复用——本轮执行前垫进现状，边际文本只对症困难任务。
-    if let Ok(教训) = shihai_fu::注入教训(存储, 3) {
+    // 取最近 10 条（2026-08-22 修复：原 3 条太少，LLM 看不到相关失败模式重复编译失败；
+    // 10 条约 1500 字符，不挤占预算，覆盖最近多轮失败经验）。
+    if let Ok(教训) = shihai_fu::注入教训(存储, 10) {
         if !教训.is_empty() {
             现状.push_str(&教训);
         }
@@ -180,6 +182,13 @@ pub(super) fn 构造现状(
         现状.push_str(&图谱契约);
         现状.push_str(&测试样例);
         现状.push('\n');
+    }
+
+    // 接口契约注入（设计稿 §4.2 规则6 配套）：读「结构」格位中实体键以 API· 开头的记录，
+    // 格式化为【接口·契约·可用API清单】注入现状。独立预算约3000字符，超限按涉及路径相关crate优先保留。
+    let 接口契约块 = 注入接口契约(存储, &要求.约束.涉及路径);
+    if !接口契约块.is_empty() {
+        现状.push_str(&接口契约块);
     }
 
     // 阴·事前推演（§14.18.2）：图谱算影响面 → 三类指令前置注入现状——
@@ -233,6 +242,81 @@ pub(super) fn 红线文件清单(工作区: &shihai_fu::工作区) -> Vec<String
     红线.sort();
     红线.dedup();
     红线
+}
+
+/// 接口契约注入（设计稿 §4.2 规则6 配套）：读「结构」格位中实体键以 API· 开头的记录，
+/// 格式化为【接口·契约·可用API清单】注入现状。独立预算约3000字符，超限时按涉及路径相关crate优先保留。
+/// 每条记录的内容已是 `[lib名] 库根=...\n  签名...` 格式（定档扫描写入），按实体键取链头避免重复堆积。
+fn 注入接口契约(存储: &shihai_fu::模型存储, 涉及路径: &[String]) -> String {
+    const 预算: usize = 3_000;
+    let Ok(记录们) = 存储.读格位("结构") else {
+        return String::new();
+    };
+    // 只取实体键以 API· 开头的记录（定档扫描写入的接口契约）
+    let 记录们: Vec<_> = 记录们
+        .iter()
+        .filter(|r| r.实体键.starts_with("API·"))
+        .collect();
+    if 记录们.is_empty() {
+        return String::new();
+    }
+    // 涉及路径相关lib名集合：涉及路径含的crate目录名 → lib名（无lib名用目录名兜底）
+    let 工作区 = shihai_fu::工作区::定位();
+    let 目录到lib: std::collections::HashMap<String, String> =
+        shihai_fu::读workspace成员缓存在(&工作区)
+            .map(|摘要| {
+                摘要
+                    .府间依赖
+                    .iter()
+                    .map(|府| {
+                        (
+                            府.府名.clone(),
+                            府.lib名.clone().unwrap_or_else(|| 府.府名.clone()),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+    let 涉及lib们: std::collections::HashSet<String> = {
+        let mut 集 = std::collections::HashSet::new();
+        for 涉及 in 涉及路径 {
+            for (目录名, lib名) in &目录到lib {
+                if 涉及.contains(目录名) {
+                    集.insert(format!("API·{}", lib名));
+                }
+            }
+        }
+        集
+    };
+    // 按实体键（lib名）分组取链头（最新一条），相关优先
+    let mut 已见 = std::collections::HashSet::new();
+    let mut 相关: Vec<&shihai_fu::记录> = Vec::new();
+    let mut 其余: Vec<&shihai_fu::记录> = Vec::new();
+    for 记录 in 记录们.iter().rev() {
+        if !已见.insert(记录.实体键.clone()) {
+            continue;
+        }
+        if 涉及lib们.contains(&记录.实体键) {
+            相关.push(记录);
+        } else {
+            其余.push(记录);
+        }
+    }
+    let mut 输出 = String::from("【接口·契约·可用API清单】\n");
+    let mut 已用 = 输出.chars().count();
+    for (入选数, 记录) in 相关.iter().chain(其余.iter()).enumerate() {
+        let 块 = format!("{}\n", 记录.内容);
+        let 块字符 = 块.chars().count();
+        if 已用 + 块字符 > 预算 && 入选数 > 0 {
+            输出.push_str(
+                "（其余crate API清单因预算省略，可用 读格位 工具读取「结构」格位中 API· 开头记录展开）\n",
+            );
+            break;
+        }
+        输出.push_str(&块);
+        已用 += 块字符;
+    }
+    输出
 }
 
 #[cfg(test)]

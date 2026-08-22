@@ -82,6 +82,9 @@ pub fn 定档(
     产物们: &[产物条目],
     用量: &用量,
 ) -> Result<(), String> {
+    // 接口契约扫描（设计稿 §4.2 规则6 配套）：定档时刷新 workspace pub API 清单入格位，
+    // 供执行现状拼装注入「可用API清单」。扫描失败不阻断定档（只 warn）。
+    扫描接口契约写入格位(存储);
     let 根 = shihai_fu::工作区::定位();
     let 根路径 = 根.根路径();
     let 生成物们 = 产物们
@@ -120,6 +123,70 @@ pub fn 定档(
         Err(错误) => warn!(要求 = %回执.要求id, "定档失败：{错误}"),
     }
     结果
+}
+
+/// 扫描 workspace 全部 crate 的库根 pub API 签名，写入「结构」格位（设计稿 §4.2 规则6 配套）。
+/// 定档环节调用：每次定档时刷新一次 workspace pub API 清单，供执行现状拼装注入「可用API清单」。
+/// 每个crate一条记录，实体键=API·{lib名}（前缀区分结构格位中其他记录），内容=该crate的pub符号签名清单。
+/// 跨府只经 shihai_fu lib 根：读workspace成员缓存在 / 依赖图::加载自工作区 / 记录::新 / 存储.写记录。
+fn 扫描接口契约写入格位(存储: &shihai_fu::模型存储) {
+    let 工作区 = shihai_fu::工作区::定位();
+    let 图 = shihai_fu::依赖图::加载自工作区(&工作区).unwrap_or_default();
+    let Some(摘要) = shihai_fu::读workspace成员缓存在(&工作区) else {
+        warn!("workspace 成员摘要未就绪，跳过接口契约扫描");
+        return;
+    };
+    // crate目录名 → lib名 映射（无lib名用crate目录名兜底）
+    let 目录到lib: std::collections::HashMap<String, String> = 摘要
+        .府间依赖
+        .iter()
+        .map(|府| {
+            (
+                府.府名.clone(),
+                府.lib名.clone().unwrap_or_else(|| 府.府名.clone()),
+            )
+        })
+        .collect();
+    // 按crate目录名（档案.模块）分组，每组收集签名清单；同时记库根文件名（lib.rs/入口.rs/main.rs）
+    let mut 按crate分组: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    let mut crate库根: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for 档案 in &图.档案们 {
+        if 档案.签名.is_empty() {
+            continue;
+        }
+        let 模块 = &档案.模块;
+        按crate分组
+            .entry(模块.clone())
+            .or_default()
+            .push(档案.签名.clone());
+        let 文件名 = 档案.文件.split('/').next_back().unwrap_or("");
+        if !crate库根.contains_key(模块) && matches!(文件名, "lib.rs" | "入口.rs" | "main.rs")
+        {
+            crate库根.insert(模块.clone(), 文件名.to_string());
+        }
+    }
+    let mut 总条数 = 0usize;
+    for (crate目录名, 签名们) in &按crate分组 {
+        let lib名 = 目录到lib
+            .get(crate目录名)
+            .cloned()
+            .unwrap_or_else(|| crate目录名.clone());
+        let 库根 = crate库根
+            .get(crate目录名)
+            .cloned()
+            .unwrap_or_else(|| "（未找到）".to_string());
+        let 内容 = format!("[{}] 库根={}\n  {}", lib名, 库根, 签名们.join("\n  "));
+        let mut 记录 =
+            shihai_fu::记录::新("结构", &内容, &format!("定档扫描·{}", lib名), "代码");
+        记录.实体键 = format!("API·{}", lib名);
+        if let Err(错误) = 存储.写记录(&记录) {
+            warn!(crate = %lib名, 错误 = %错误, "接口契约写入失败");
+        } else {
+            总条数 += 1;
+        }
+    }
+    info!(crate数 = 总条数, "接口契约已扫描写入格位");
 }
 
 #[cfg(test)]
