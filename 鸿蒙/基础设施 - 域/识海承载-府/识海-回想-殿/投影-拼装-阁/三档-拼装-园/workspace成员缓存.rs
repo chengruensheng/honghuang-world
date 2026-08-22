@@ -17,9 +17,9 @@ use std::time::SystemTime;
 /// workspace 成员摘要——members 列表 + 各府依赖信息，供调用方各自格式化。
 #[derive(Clone)]
 pub struct 工作区成员摘要 {
-    /// workspace members 中以 `-府` 结尾的成员相对路径列表。
+    /// workspace members 的成员相对路径列表（项目无关，不筛选命名后缀）。
     pub 成员们: Vec<String>,
-    /// 各府的依赖信息（府名 / lib 名 / 依赖列表）。
+    /// 各府的依赖信息（府名 / lib 名 / 依赖列表 / 库根文件名）。
     pub 府间依赖: Vec<府依赖>,
 }
 
@@ -32,6 +32,8 @@ pub struct 府依赖 {
     pub lib名: Option<String>,
     /// [dependencies] 段的依赖名列表。
     pub 依赖们: Vec<String>,
+    /// 库根文件名（从 [lib] path 获取，未声明用 Cargo 默认 lib.rs）。
+    pub 库根文件名: String,
 }
 
 /// 缓存项——记录指纹与摘要，指纹匹配则复用摘要。
@@ -89,17 +91,7 @@ pub fn 读workspace成员缓存在(工作区: &工作区) -> Option<工作区成
 /// 解析 workspace 成员摘要——读根 Cargo.toml 取 members，再读各府 Cargo.toml 取 lib 名与依赖。
 fn 解析工作区成员摘要(根: &Path) -> Option<工作区成员摘要> {
     let 内容 = std::fs::read_to_string(根.join("Cargo.toml")).ok()?;
-    let 成员们: Vec<String> = 内容
-        .lines()
-        .filter(|行| 行.contains("-府\""))
-        .map(|行| {
-            行.trim()
-                .trim_start_matches('"')
-                .trim_end_matches(',')
-                .trim_end_matches('"')
-                .to_string()
-        })
-        .collect();
+    let 成员们 = 解析workspace成员(&内容);
     if 成员们.is_empty() {
         return None;
     }
@@ -115,16 +107,68 @@ fn 解析工作区成员摘要(根: &Path) -> Option<工作区成员摘要> {
             .unwrap_or_else(|| member.clone());
         let lib名 = 解析lib名(&府内容);
         let 依赖们 = 解析依赖段(&府内容);
+        let 库根文件名 = 解析库根文件名(&府内容);
         府间依赖.push(府依赖 {
             府名,
             lib名,
             依赖们,
+            库根文件名,
         });
     }
     debug!(府数 = 府间依赖.len(), "workspace 成员摘要已解析");
     Some(工作区成员摘要 {
         成员们, 府间依赖
     })
+}
+
+/// 解析 Cargo.toml 的 workspace members 列表（项目无关，不筛选命名后缀）。
+/// 精确定位 `members = [...]` 段，提取段内所有引号内的路径。
+fn 解析workspace成员(内容: &str) -> Vec<String> {
+    let mut 在members段 = false;
+    let mut 成员们 = Vec::new();
+    for 行 in 内容.lines() {
+        let 行 = 行.trim();
+        if 行.starts_with("members") && 行.contains('[') {
+            在members段 = true;
+            continue;
+        }
+        if 在members段 {
+            if 行.starts_with(']') {
+                break;
+            }
+            if let Some(开始) = 行.find('"') {
+                if let Some(结束) = 行[开始 + 1..].find('"') {
+                    成员们.push(行[开始 + 1..开始 + 1 + 结束].to_string());
+                }
+            }
+        }
+    }
+    成员们
+}
+
+/// 解析 Cargo.toml 的 [lib] path 获取库根文件名（项目无关，不硬编码文件名）。
+/// 未声明 [lib] path 时用 Cargo 默认 src/lib.rs → lib.rs。
+fn 解析库根文件名(内容: &str) -> String {
+    let mut 在lib段 = false;
+    for 行 in 内容.lines() {
+        let 行 = 行.trim();
+        if 行.starts_with('[') {
+            在lib段 = 行 == "[lib]";
+            continue;
+        }
+        if 在lib段 {
+            if let Some(值) = 行.strip_prefix("path") {
+                let 值 = 值.trim_start();
+                if 值.starts_with('=') {
+                    let 值 = 值.trim_start_matches('=').trim().trim_matches('"');
+                    if !值.is_empty() {
+                        return 值.split('/').next_back().unwrap_or(值).to_string();
+                    }
+                }
+            }
+        }
+    }
+    "lib.rs".to_string()
 }
 
 /// 解析 Cargo.toml 的 [lib] name。

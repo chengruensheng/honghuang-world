@@ -148,10 +148,15 @@ pub fn 扫描接口契约写入格位(存储: &shihai_fu::模型存储) {
             )
         })
         .collect();
-    // 按crate目录名（档案.模块）分组，每组收集签名清单；同时记库根文件名（lib.rs/入口.rs/main.rs）
+    // crate目录名 → 库根文件名 映射（从Cargo.toml [lib] path获取，不硬编码文件名）
+    let 目录到库根: std::collections::HashMap<String, String> = 摘要
+        .府间依赖
+        .iter()
+        .map(|府| (府.府名.clone(), 府.库根文件名.clone()))
+        .collect();
+    // 按crate目录名（档案.模块）分组，每组收集签名清单；库根文件名从workspace成员摘要获取（项目无关）
     let mut 按crate分组: std::collections::BTreeMap<String, Vec<String>> =
         std::collections::BTreeMap::new();
-    let mut crate库根: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for 档案 in &图.档案们 {
         if 档案.签名.is_empty() {
             continue;
@@ -161,11 +166,6 @@ pub fn 扫描接口契约写入格位(存储: &shihai_fu::模型存储) {
             .entry(模块.clone())
             .or_default()
             .push(档案.签名.clone());
-        let 文件名 = 档案.文件.split('/').next_back().unwrap_or("");
-        if !crate库根.contains_key(模块) && matches!(文件名, "lib.rs" | "入口.rs" | "main.rs")
-        {
-            crate库根.insert(模块.clone(), 文件名.to_string());
-        }
     }
     let mut 总条数 = 0usize;
     for (crate目录名, 签名们) in &按crate分组 {
@@ -173,7 +173,7 @@ pub fn 扫描接口契约写入格位(存储: &shihai_fu::模型存储) {
             .get(crate目录名)
             .cloned()
             .unwrap_or_else(|| crate目录名.clone());
-        let 库根 = crate库根
+        let 库根 = 目录到库根
             .get(crate目录名)
             .cloned()
             .unwrap_or_else(|| "（未找到）".to_string());
