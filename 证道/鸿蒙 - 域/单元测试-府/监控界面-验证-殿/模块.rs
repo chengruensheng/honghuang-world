@@ -13,3 +13,5 @@ pub mod 异常_兼容_阁;
 pub mod 性能_并发_阁;
 #[path = "数据-完整性-阁/模块.rs"]
 pub mod 数据_完整性_阁;
+#[path = "端点-e2e-阁/模块.rs"]
+pub mod 端点_e2e_阁;

@@ -1460,8 +1460,10 @@ dependencies = [
 name = "zhengdao_fu"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "chajian_fu",
  "daoshu_fu",
+ "http-body-util",
  "jiankong_fu",
  "mingling_fu",
  "moxing_fu",
@@ -1471,6 +1473,8 @@ dependencies = [
  "serde_json",
  "shihai_fu",
  "tianting_fu",
+ "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]
