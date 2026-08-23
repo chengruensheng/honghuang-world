@@ -77,7 +77,7 @@ async fn 推送批次(
             Ok(s) => s,
             Err(_) => continue,
         };
-        let event = Event::default().data(json);
+        let event = Event::default().event("tick_event").data(json);
         if tx.send(Ok(event)).await.is_err() {
             return Err(());
         }

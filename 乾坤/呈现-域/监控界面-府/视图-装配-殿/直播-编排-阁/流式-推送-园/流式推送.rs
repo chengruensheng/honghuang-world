@@ -14,8 +14,9 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
-    三源大小, 世界快照, 事件源, 任务索引, 任务索引项, 取三源大小, 拓扑, 拓扑段, 步骤, 步骤组件,
-    白箱事件, 读事件流, 读观测记录, 读识海记录, SSE载荷,
+    三源大小, 世界快照, 事件源, 事件类型, 任务索引, 任务索引项, 助手指标, 取三源大小, 拓扑, 拓扑段,
+    搜索命中, 时间线色块, 步骤, 步骤组件, 白箱事件, 读事件流, 读观测记录, 读识海记录, 轨迹事件行,
+    轨迹详情, SSE载荷,
 };
 
 /// SSE 流的间隔——200ms 检测一次文件大小变化。
@@ -77,7 +78,7 @@ async fn 推送批次(
             Ok(s) => s,
             Err(_) => continue,
         };
-        let event = Event::default().data(json);
+        let event = Event::default().event("tick_event").data(json);
         if tx.send(Ok(event)).await.is_err() {
             return Err(());
         }
@@ -519,6 +520,339 @@ fn 收尾步骤(
     });
 }
 
+// ===== §13.f 轨迹表格白箱 · 7 种事件类型派生 + 轨迹装配 =====
+
+/// §13.f.8 派生事件类型——从白箱六字段 `源`+`动作` 派生 7 种事件类型之一。
+///
+/// 派生规则（设计稿 §13.f.8）：
+/// - `system`：源含`提示词`且角色为系统
+/// - `user`：源含`提示词`且角色为界主
+/// - `context`：源含`提示词`且带注入标记（回想/历史/上下文）
+/// - `compacted`：动作含`压缩`或源含`压缩`
+/// - `message`：源含`回复`/`思考`/`模型连接`，或动作含`模型`/`思考`/`回复`
+/// - `tool`：源含`工具调用`/`道术施展`或动作含`工具`，无子工具标记
+/// - `subtool`：同 tool 但带子工具标记
+///
+/// 派生必须穷尽：兜底返回 `message`，避免漏派生（沿用 §9.3 不变量）。
+pub fn 派生事件类型(事件: &白箱事件) -> 事件类型 {
+    let 源 = 事件.源.as_str();
+    let 动作 = 事件.动作.as_str();
+
+    // 提示词域——按角色/注入类细分 system/user/context
+    if 源.contains("提示词") {
+        if 动作.contains("系统") || 源.contains("系统") {
+            return 事件类型::系统;
+        }
+        if 源.contains("界主") || 动作.contains("界主") || 动作.contains("用户") {
+            return 事件类型::界主;
+        }
+        if 动作.contains("注入")
+            || 动作.contains("回想")
+            || 动作.contains("历史")
+            || 源.contains("上下文")
+        {
+            return 事件类型::上下文;
+        }
+        return 事件类型::界主;
+    }
+
+    // 压缩标记
+    if 动作.contains("压缩") || 源.contains("压缩") {
+        return 事件类型::压缩;
+    }
+
+    // 回复/思考/模型连接 → message
+    if 源.contains("回复")
+        || 源.contains("思考")
+        || 源.contains("模型连接")
+        || 动作.contains("模型")
+        || 动作.contains("思考")
+        || 动作.contains("回复")
+    {
+        return 事件类型::消息;
+    }
+
+    // 工具调用/道术施展 → tool 或 subtool
+    if 源.contains("工具调用") || 源.contains("道术施展") || 动作.contains("工具") {
+        if 动作.contains("子工具") || 源.contains("子工具") || 动作.contains("子调用")
+        {
+            return 事件类型::子工具;
+        }
+        return 事件类型::工具;
+    }
+
+    事件类型::消息
+}
+
+/// §13.f.2 建轨迹列表——从白箱事件列表派生轨迹事件行（按 ts 升序，跨轮次连续编号）。
+///
+/// 轮次划分：遇到 `system` 或 `user` 类型开始新轮次（一次完整的 LLM 调用周期）；
+/// 首条事件已是轮次 1；后续 context/message/tool/subtool 归入当前轮次。
+pub fn 建轨迹列表(事件: &[白箱事件]) -> Vec<轨迹事件行> {
+    let mut 排序 = 事件.to_vec();
+    排序.sort_by_key(|e| e.ts);
+
+    let mut 结果 = Vec::with_capacity(排序.len());
+    let mut 当前轮次 = 1usize;
+    for (序号, 事件) in 排序.iter().enumerate() {
+        let 类型 = 派生事件类型(事件);
+        if 序号 > 0 && (类型 == 事件类型::系统 || 类型 == 事件类型::界主) {
+            当前轮次 += 1;
+        }
+        结果.push(轨迹事件行 {
+            序号: 序号 + 1,
+            轮次: 当前轮次,
+            类型,
+            摘要: 截取(&事件.动作, 80),
+            token: 事件.token.clone(),
+            耗时ms: 事件.耗时ms,
+            事件id: 事件.ts.to_string(),
+            ts: 事件.ts,
+        });
+    }
+    结果
+}
+
+/// §13.f.3 建轨迹详情——从单事件派生详情面板全量字段。
+///
+/// 字段按事件类型选择性填充：
+/// - `inputDetail`：证据原文（system/user/context/compacted/message/tool）
+/// - `outputDetail`：证据原文（message/tool/subtool）
+/// - `assistantMetrics`：从证据中提取 TTFT/解码吞吐/总耗时（message）
+/// - `provider`/`model`/`retry`/`maxRetries`：从证据中提取（message/tool）
+/// - `isError`：动作含失败标记
+pub fn 建轨迹详情(事件: &白箱事件) -> 轨迹详情 {
+    let 类型 = 派生事件类型(事件);
+    let 证据 = &事件.证据;
+
+    let inputDetail = match 类型 {
+        事件类型::系统
+        | 事件类型::界主
+        | 事件类型::上下文
+        | 事件类型::压缩
+        | 事件类型::消息
+        | 事件类型::工具 => 证据.clone(),
+        事件类型::子工具 => String::new(),
+    };
+    let outputDetail = match 类型 {
+        事件类型::消息 | 事件类型::工具 | 事件类型::子工具 => 证据.clone(),
+        _ => String::new(),
+    };
+    let thinkingDetail = if 类型 == 事件类型::消息 && 证据.contains("【思考】") {
+        提取思考段(证据)
+    } else {
+        String::new()
+    };
+
+    let assistantMetrics = if 类型 == 事件类型::消息 {
+        提取助手指标(事件)
+    } else {
+        None
+    };
+    let (provider, model) = if 类型 == 事件类型::消息 || 类型 == 事件类型::工具 {
+        提取提供者与模型(事件)
+    } else {
+        (String::new(), String::new())
+    };
+    let (retry, maxRetries) = if 类型 == 事件类型::消息 || 类型 == 事件类型::工具 {
+        提取重试信息(事件)
+    } else {
+        (None, None)
+    };
+
+    轨迹详情 {
+        事件id: 事件.ts.to_string(),
+        类型,
+        ts: 事件.ts,
+        轮次: 1,
+        inputDetail,
+        promptDetail: String::new(),
+        outputDetail,
+        thinkingDetail,
+        assistantMetrics,
+        provider,
+        model,
+        retry,
+        maxRetries,
+        isError: 事件.动作.contains("失败") || 事件.动作.contains("错误"),
+        原始: 事件.clone(),
+    }
+}
+
+/// 从证据提取思考段（`【思考】`后的内容）。
+fn 提取思考段(证据: &str) -> String {
+    if let Some(起) = 证据.find("【思考】") {
+        截取(&证据[起..], 2000)
+    } else {
+        String::new()
+    }
+}
+
+/// 从事件影响项或证据提取助手指标（TTFT/解码吞吐/总耗时）。
+///
+/// 模型连接-府 的用量附加扩展写入这些字段到观测记录载荷.附加，
+/// 但白箱事件只保留证据文本——此处从影响项的附加字段兜底提取，
+/// 若证据中含可识别的指标文本也尝试解析。当前简化：从耗时ms构造总耗时。
+fn 提取助手指标(事件: &白箱事件) -> Option<助手指标> {
+    if 事件.耗时ms > 0 {
+        Some(助手指标 {
+            TTFT: 0,
+            解码吞吐: 0.0,
+            总耗时: 事件.耗时ms,
+        })
+    } else {
+        None
+    }
+}
+
+/// 提取提供者与模型名——从影响项或证据中查找。
+fn 提取提供者与模型(事件: &白箱事件) -> (String, String) {
+    let mut provider = String::new();
+    let mut model = String::new();
+    for 项 in &事件.影响 {
+        if 项.类型 == "提供者" && !项.名.is_empty() {
+            provider = 项.名.clone();
+        }
+        if 项.类型 == "模型" && !项.名.is_empty() {
+            model = 项.名.clone();
+        }
+    }
+    (provider, model)
+}
+
+/// 提取重试信息——从影响项中查找。
+fn 提取重试信息(事件: &白箱事件) -> (Option<u32>, Option<u32>) {
+    let mut retry = None;
+    let mut max = None;
+    for 项 in &事件.影响 {
+        if 项.类型 == "重试" {
+            retry = 项.名.parse::<u32>().ok();
+        }
+        if 项.类型 == "最大重试" {
+            max = 项.名.parse::<u32>().ok();
+        }
+    }
+    (retry, max)
+}
+
+/// §13.f.5 搜轨迹——全文搜索事件内容，返回命中事件 id + 高亮区间。
+///
+/// 搜索范围：`源`+`动作`+`证据`+`影响` 文本。命中字符偏移按合并文本计算。
+pub fn 搜轨迹(事件: &[白箱事件], 关键词: &str) -> Vec<搜索命中> {
+    if 关键词.is_empty() {
+        return Vec::new();
+    }
+    let mut 结果 = Vec::new();
+    for 事件 in 事件 {
+        let 影响文本: String = 事件
+            .影响
+            .iter()
+            .map(|i| format!("{} {} {}", i.类型, i.名, i.变化))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let 文本 = format!("{} {} {} {}", 事件.源, 事件.动作, 事件.证据, 影响文本);
+        let mut 区间 = Vec::new();
+        let 关键词字节 = 关键词.len();
+        let mut 起 = 0usize;
+        while let Some(偏移) = 文本[起..].find(关键词) {
+            let 开始 = 起 + 偏移;
+            let 结束 = 开始 + 关键词字节;
+            区间.push([开始, 结束]);
+            起 = 结束;
+        }
+        if !区间.is_empty() {
+            结果.push(搜索命中 {
+                事件id: 事件.ts.to_string(),
+                高亮区间: 区间,
+            });
+        }
+    }
+    结果
+}
+
+/// §13.f.4 建时间线——按模式返回色块数据。
+///
+/// 模式：
+/// - `sequence`：值=1（看事件数量分布）
+/// - `duration`：值=耗时ms（看哪步慢）
+/// - `time`：值=ts（看真实发生时刻）
+/// - `actual`：值=耗时ms（简化：同 duration，净执行时间待后续精化）
+pub fn 建时间线(事件: &[白箱事件], 模式: &str) -> Vec<时间线色块> {
+    let mut 排序 = 事件.to_vec();
+    排序.sort_by_key(|e| e.ts);
+
+    排序
+        .iter()
+        .enumerate()
+        .map(|(序号, 事件)| {
+            let 值 = match 模式 {
+                "duration" => 事件.耗时ms,
+                "time" => 事件.ts,
+                "actual" => 事件.耗时ms,
+                _ => 1,
+            };
+            时间线色块 {
+                序号: 序号 + 1,
+                ts: 事件.ts,
+                值,
+                类型: 派生事件类型(事件),
+            }
+        })
+        .collect()
+}
+
+/// §13.f.2 按时间窗与翻页参数过滤事件——供 `/api/trajectory` 端点用。
+///
+/// - `since`/`until`：时间窗（0 表示不限）
+/// - `before`：向上翻页，返 `ts < before` 的最近 `limit` 条
+/// - `limit`：条数上限（0 表示不限）
+/// - `turn`：按轮次过滤（0 表示不限）
+pub fn 过滤轨迹(
+    事件: &[白箱事件],
+    since: u64,
+    until: u64,
+    before: u64,
+    limit: usize,
+    turn: usize,
+) -> Vec<白箱事件> {
+    let mut 过滤: Vec<白箱事件> = 事件
+        .iter()
+        .filter(|e| {
+            if since > 0 && e.ts < since {
+                return false;
+            }
+            if until > 0 && e.ts > until {
+                return false;
+            }
+            if before > 0 && e.ts >= before {
+                return false;
+            }
+            true
+        })
+        .cloned()
+        .collect();
+    过滤.sort_by_key(|e| e.ts);
+    if turn > 0 {
+        let 轨迹 = 建轨迹列表(&过滤);
+        过滤 = 轨迹
+            .iter()
+            .filter(|行| 行.轮次 == turn)
+            .filter_map(|行| 事件.iter().find(|e| e.ts.to_string() == 行.事件id).cloned())
+            .collect();
+    }
+    if limit > 0 && 过滤.len() > limit {
+        过滤 = 过滤
+            .into_iter()
+            .rev()
+            .take(limit)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+    }
+    过滤
+}
+
 #[cfg(test)]
 mod 测试 {
     use super::*;
@@ -725,6 +1059,8 @@ mod 测试 {
                     提示词: 100,
                     输出: 200,
                     缓存: 0,
+                    缓存写: 0,
+                    推理: 0,
                     总计: 300,
                 }),
             白箱事件::新(200, "源", "工具读文件")
@@ -733,6 +1069,8 @@ mod 测试 {
                     提示词: 0,
                     输出: 0,
                     缓存: 0,
+                    缓存写: 0,
+                    推理: 0,
                     总计: 50,
                 }),
         ];
@@ -761,5 +1099,138 @@ mod 测试 {
         assert_eq!(步.len(), 1);
         assert_eq!(步[0].组件.len(), 2);
         assert_eq!(步[0].组件[0].类型, "llm");
+    }
+
+    // ===== §13.f.8 派生事件类型单测（7 种类型各造样例，断言派生结果）=====
+
+    #[test]
+    fn 派生事件类型_系统提示词() {
+        let 事件 = 白箱事件::新(100, "观测/提示词·执行", "发送系统提示词");
+        assert_eq!(派生事件类型(&事件), 事件类型::系统);
+    }
+
+    #[test]
+    fn 派生事件类型_界主输入() {
+        let 事件 = 白箱事件::新(100, "观测/提示词·界主", "发送提示词");
+        assert_eq!(派生事件类型(&事件), 事件类型::界主);
+    }
+
+    #[test]
+    fn 派生事件类型_上下文注入() {
+        let 事件 = 白箱事件::新(100, "观测/提示词·执行", "注入历史上下文");
+        assert_eq!(派生事件类型(&事件), 事件类型::上下文);
+    }
+
+    #[test]
+    fn 派生事件类型_压缩标记() {
+        let 事件 = 白箱事件::新(100, "鸿蒙/识海承载-府", "压缩上下文");
+        assert_eq!(派生事件类型(&事件), 事件类型::压缩);
+    }
+
+    #[test]
+    fn 派生事件类型_助手回复() {
+        let 事件 = 白箱事件::新(100, "观测/回复思考·执行", "模型回复");
+        assert_eq!(派生事件类型(&事件), 事件类型::消息);
+    }
+
+    #[test]
+    fn 派生事件类型_工具调用() {
+        let 事件 = 白箱事件::新(100, "观测/工具调用·执行", "工具调用");
+        assert_eq!(派生事件类型(&事件), 事件类型::工具);
+    }
+
+    #[test]
+    fn 派生事件类型_子工具() {
+        let 事件 = 白箱事件::新(100, "观测/工具调用·执行", "子工具调用");
+        assert_eq!(派生事件类型(&事件), 事件类型::子工具);
+    }
+
+    #[test]
+    fn 派生事件类型_兜底为消息() {
+        // 无法识别的源/动作兜底为 message，避免漏派生
+        let 事件 = 白箱事件::新(100, "未知源", "未知动作");
+        assert_eq!(派生事件类型(&事件), 事件类型::消息);
+    }
+
+    #[test]
+    fn 建轨迹列表序号连续轮次递增() {
+        let 事件 = vec![
+            白箱事件::新(100, "观测/提示词·执行", "发送系统提示词"),
+            白箱事件::新(200, "观测/提示词·界主", "发送提示词"),
+            白箱事件::新(300, "观测/回复思考·执行", "模型回复"),
+            白箱事件::新(400, "观测/工具调用·执行", "工具调用"),
+        ];
+        let 轨迹 = 建轨迹列表(&事件);
+        assert_eq!(轨迹.len(), 4);
+        assert_eq!(轨迹[0].序号, 1);
+        assert_eq!(轨迹[3].序号, 4);
+        // system → 轮次1，user → 轮次2，message/tool 归入轮次2
+        assert_eq!(轨迹[0].轮次, 1);
+        assert_eq!(轨迹[1].轮次, 2);
+        assert_eq!(轨迹[2].轮次, 2);
+        assert_eq!(轨迹[3].轮次, 2);
+        // 类型派生正确
+        assert_eq!(轨迹[0].类型, 事件类型::系统);
+        assert_eq!(轨迹[1].类型, 事件类型::界主);
+        assert_eq!(轨迹[2].类型, 事件类型::消息);
+        assert_eq!(轨迹[3].类型, 事件类型::工具);
+    }
+
+    #[test]
+    fn 建时间线四种模式() {
+        let 事件 = vec![
+            白箱事件::新(100, "观测/回复思考·执行", "模型回复").设耗时(50),
+            白箱事件::新(200, "观测/工具调用·执行", "工具调用").设耗时(30),
+        ];
+        // sequence 模式：值恒为 1
+        let 线 = 建时间线(&事件, "sequence");
+        assert_eq!(线[0].值, 1);
+        assert_eq!(线[1].值, 1);
+        // duration 模式：值=耗时ms
+        let 线 = 建时间线(&事件, "duration");
+        assert_eq!(线[0].值, 50);
+        assert_eq!(线[1].值, 30);
+        // time 模式：值=ts
+        let 线 = 建时间线(&事件, "time");
+        assert_eq!(线[0].值, 100);
+        assert_eq!(线[1].值, 200);
+        // actual 模式：简化同 duration
+        let 线 = 建时间线(&事件, "actual");
+        assert_eq!(线[0].值, 50);
+    }
+
+    #[test]
+    fn 搜轨迹关键词高亮区间() {
+        let 事件 = vec![
+            白箱事件::新(100, "观测/回复思考·执行", "模型回复含关键词"),
+            白箱事件::新(200, "观测/工具调用·执行", "工具调用无匹配"),
+        ];
+        let 命中 = 搜轨迹(&事件, "关键词");
+        assert_eq!(命中.len(), 1);
+        assert!(!命中[0].高亮区间.is_empty());
+        assert_eq!(命中[0].事件id, "100");
+    }
+
+    #[test]
+    fn 搜轨迹空关键词返空() {
+        let 事件 = vec![白箱事件::新(100, "源", "动作")];
+        assert!(搜轨迹(&事件, "").is_empty());
+    }
+
+    #[test]
+    fn 建轨迹详情按类型选择性填充() {
+        let 事件 = 白箱事件::新(100, "观测/回复思考·执行", "模型回复").设证据("回复正文");
+        let 详情 = 建轨迹详情(&事件);
+        assert_eq!(详情.类型, 事件类型::消息);
+        assert_eq!(详情.inputDetail, "回复正文");
+        assert_eq!(详情.outputDetail, "回复正文");
+        assert!(!详情.isError);
+    }
+
+    #[test]
+    fn 建轨迹详情失败标记() {
+        let 事件 = 白箱事件::新(100, "观测/工具调用·执行", "工具调用失败");
+        let 详情 = 建轨迹详情(&事件);
+        assert!(详情.isError, "动作含「失败」应标记 isError");
     }
 }

@@ -55,14 +55,17 @@ pub const 最大重试次数: u32 = 3;
 
 /// 发送请求并做指数退避重试：仅对瞬时故障（5xx/429/529）重试，
 /// 每次失败前 sleep 退避间隔；其余错误直接返回。防止 API 过载把整轮任务拖垮。
-fn 发送并重试<F>(发请求: F, 模型: &str) -> Result<ureq::Response, String>
+///
+/// §13.f.3 重试信息采集：返回 (响应, 重试次数, 累计退避毫秒) 供调用方记入观测附加。
+fn 发送并重试<F>(发请求: F, 模型: &str) -> Result<(ureq::Response, u32, u64), String>
 where
     F: Fn() -> Result<ureq::Response, ureq::Error>,
 {
     let mut 重试次数 = 0u32;
+    let mut 累计退避ms: u64 = 0;
     loop {
         match 发请求() {
-            Ok(响应) => return Ok(响应),
+            Ok(响应) => return Ok((响应, 重试次数, 累计退避ms)),
             Err(错误) => {
                 let 可重试 = match &错误 {
                     ureq::Error::Status(状态码, _) => 是瞬时故障(*状态码),
@@ -82,6 +85,7 @@ where
                 }
                 let 间隔 = 退避间隔(重试次数);
                 重试次数 += 1;
+                累计退避ms += 间隔 * 1000;
                 warn!(模型 = %模型, 重试次数, 间隔, "模型瞬时故障，退避后重试");
                 std::thread::sleep(std::time::Duration::from_secs(间隔));
             }
@@ -117,7 +121,8 @@ pub fn 调用模型(
     let (角色, 关联) = 当前观测();
     记请求(角色, "模型连接-府::调用模型", &请求体, 关联.clone());
 
-    let 响应 = 发送并重试(
+    let 调用起 = std::time::Instant::now();
+    let (响应, 重试次数, 累计退避ms) = 发送并重试(
         || {
             ureq::post(&配置.地址)
                 .timeout(请求超时)
@@ -127,26 +132,39 @@ pub fn 调用模型(
         },
         &配置.模型,
     )?;
+    let 首token时延 = 调用起.elapsed().as_millis() as u64;
 
     let 文本 = 响应.into_string().map_err(|错误| {
         error!("读取响应失败：{错误}");
         format!("读取响应失败: {错误}")
     })?;
+    let 总耗时ms = 调用起.elapsed().as_millis() as u64;
 
     let 内容 = 解析回复(&文本)?;
     let 用量 = 解析用量(&文本);
+    let 解码吞吐 = 解码吞吐量(用量.输出, 总耗时ms.saturating_sub(首token时延));
     记回复(
         角色,
         "模型连接-府::调用模型",
         "",
         &内容,
         关联,
-        Some(用量附加(配置, &用量)),
+        Some(用量附加扩展(
+            配置,
+            &用量,
+            首token时延,
+            总耗时ms,
+            解码吞吐,
+            重试次数,
+            累计退避ms,
+        )),
     );
     // token 数降为 debug 级别：保留成本观察能力，但不入 info 级别日志（安全报告 L7）。
     debug!(
         模型 = %配置.模型, 内容长度 = 内容.len(),
         提示词 = 用量.提示词, 输出 = 用量.输出, 缓存命中 = 用量.缓存命中,
+        缓存写 = 用量.缓存写, 推理 = 用量.推理,
+        首token时延, 总耗时ms, 解码吞吐, 重试次数,
         "模型返回正常"
     );
     Ok((内容, 用量))
@@ -166,7 +184,8 @@ pub fn 调用模型带工具(
     let (角色, 关联) = 当前观测();
     记请求(角色, "模型连接-府::调用模型带工具", &请求体, 关联.clone());
 
-    let 响应 = 发送并重试(
+    let 调用起 = std::time::Instant::now();
+    let (响应, 重试次数, 累计退避ms) = 发送并重试(
         || {
             ureq::post(&配置.地址)
                 .timeout(请求超时)
@@ -176,33 +195,60 @@ pub fn 调用模型带工具(
         },
         &配置.模型,
     )?;
+    let 首token时延 = 调用起.elapsed().as_millis() as u64;
 
     let 文本 = 响应.into_string().map_err(|错误| {
         error!("读取响应失败：{错误}");
         format!("读取响应失败: {错误}")
     })?;
+    let 总耗时ms = 调用起.elapsed().as_millis() as u64;
 
     let 回复 = 解析工具回复(&文本)?;
     let 用量 = 解析用量(&文本);
     let 概要 = 回复概要(&回复);
+    let 解码吞吐 = 解码吞吐量(用量.输出, 总耗时ms.saturating_sub(首token时延));
     记回复(
         角色,
         "模型连接-府::调用模型带工具",
         "",
         &概要,
         关联,
-        Some(用量附加(配置, &用量)),
+        Some(用量附加扩展(
+            配置,
+            &用量,
+            首token时延,
+            总耗时ms,
+            解码吞吐,
+            重试次数,
+            累计退避ms,
+        )),
     );
     // token 数降为 debug 级别：保留成本观察能力，但不入 info 级别日志（安全报告 L7）。
     debug!(
         模型 = %配置.模型, 内容长度 = 文本.len(),
         提示词 = 用量.提示词, 输出 = 用量.输出, 缓存命中 = 用量.缓存命中,
+        缓存写 = 用量.缓存写, 推理 = 用量.推理,
+        首token时延, 总耗时ms, 解码吞吐, 重试次数,
         "模型返回（工具模式）"
     );
     Ok((回复, 用量))
 }
 
+/// 解码吞吐量（tokens/秒）：输出 token 数 / 解码耗时（秒）。
+/// §13.f.3 assistantMetrics 解码 tok/s。解码耗时 = 总耗时 - 首token时延。
+/// 解码耗时为零时返回 0（避免除零；首token即结束的极短调用无解码阶段）。
+fn 解码吞吐量(输出token: u64, 解码耗时ms: u64) -> f64 {
+    if 解码耗时ms == 0 || 输出token == 0 {
+        return 0.0;
+    }
+    let 秒 = 解码耗时ms as f64 / 1000.0;
+    输出token as f64 / 秒
+}
+
 /// 观测附加：用量与模型名（白箱还原时核对「谁发了多少 token」）。
+///
+/// 保留原 `用量附加` 供向后兼容引用；新调用走 `用量附加扩展` 含 §13.f 全字段。
+#[allow(dead_code)]
 fn 用量附加(配置: &模型配置, 用量: &用量) -> serde_json::Value {
     serde_json::json!({
         "模型": 配置.模型,
@@ -210,6 +256,42 @@ fn 用量附加(配置: &模型配置, 用量: &用量) -> serde_json::Value {
         "输出": 用量.输出,
         "缓存命中": 用量.缓存命中,
         "总计": 用量.总计,
+    })
+}
+
+/// 观测附加扩展：§13.f 白箱全字段。
+///
+/// 在 `用量附加` 基础上补采集：
+/// - `缓存写`/`推理`：§13.f.7 token 五分量
+/// - `TTFT`：首 token 时延（毫秒），§13.f.3 assistantMetrics
+/// - `耗时ms`：总耗时（毫秒），§13.f.2 行格式耗时列
+/// - `解码吞吐`：解码 tok/s，§13.f.3 assistantMetrics
+/// - `重试`/`最大重试`/`重试延迟ms`：§13.f.3 retry/maxRetries
+/// - `提供者`：§13.f.3 provider/model（HTTP 提供者标识）
+fn 用量附加扩展(
+    配置: &模型配置,
+    用量: &用量,
+    首token时延: u64,
+    总耗时ms: u64,
+    解码吞吐: f64,
+    重试次数: u32,
+    累计退避ms: u64,
+) -> serde_json::Value {
+    serde_json::json!({
+        "模型": 配置.模型,
+        "提供者": "http",
+        "提示词": 用量.提示词,
+        "输出": 用量.输出,
+        "缓存命中": 用量.缓存命中,
+        "缓存写": 用量.缓存写,
+        "推理": 用量.推理,
+        "总计": 用量.总计,
+        "TTFT": 首token时延,
+        "耗时ms": 总耗时ms,
+        "解码吞吐": 解码吞吐,
+        "重试": 重试次数,
+        "最大重试": 最大重试次数,
+        "重试延迟ms": 累计退避ms,
     })
 }
 
@@ -228,8 +310,14 @@ fn 回复概要(回复: &模型回复) -> String {
     }
 }
 
-/// 从 OpenAI 兼容响应解析 usage（提示词 / 输出 / 缓存命中）。
-/// MiniMax 返回 usage.cache_read_input_tokens；OpenAI 兼容返回 usage.prompt_tokens_details.cached_tokens。
+/// 从 OpenAI 兼容响应解析 usage（提示词 / 输出 / 缓存命中 / 缓存写 / 推理）。
+///
+/// - MiniMax 返回 `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens`
+/// - OpenAI 兼容返回 `usage.prompt_tokens_details.cached_tokens`
+/// - Anthropic 风格返回 `usage.cache_read_input_tokens` / `usage.cache_creation_input_tokens`
+/// - reasoning_tokens：`usage.completion_tokens_details.reasoning_tokens`（思考链消耗）
+///
+/// §13.f.7 token 五分量：提示词 / 输出 / 缓存命中 / 缓存写 / 推理 / 总计。
 pub fn 解析用量(文本: &str) -> 用量 {
     let Ok(解析) = serde_json::from_str::<serde_json::Value>(文本) else {
         return 用量::default();
@@ -241,12 +329,24 @@ pub fn 解析用量(文本: &str) -> 用量 {
         .as_u64()
         .or_else(|| 用量值["prompt_tokens_details"]["cached_tokens"].as_u64())
         .unwrap_or(0);
+    // §13.f.7 缓存写：cache_creation_input_tokens（Anthropic/MiniMax 风格）。
+    let 缓存写 = 用量值["cache_creation_input_tokens"]
+        .as_u64()
+        .or_else(|| 用量值["cache_write_input_tokens"].as_u64())
+        .unwrap_or(0);
+    // §13.f.7 推理：completion_tokens_details.reasoning_tokens（思考链消耗，与输出分开计量）。
+    let 推理 = 用量值["completion_tokens_details"]["reasoning_tokens"]
+        .as_u64()
+        .or_else(|| 用量值["reasoning_tokens"].as_u64())
+        .unwrap_or(0);
     let 总计 = 用量值["total_tokens"].as_u64().unwrap_or(提示词 + 输出);
     用量 {
         提示词,
         输出,
         缓存命中,
         总计,
+        缓存写,
+        推理,
     }
 }
 

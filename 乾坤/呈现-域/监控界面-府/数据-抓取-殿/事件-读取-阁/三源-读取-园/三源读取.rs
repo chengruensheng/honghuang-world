@@ -11,13 +11,28 @@ use std::path::PathBuf;
 
 use crate::{token用量, 事件源, 影响项, 白箱事件};
 
-/// 三源路径根——优先读环境 `WORLD_WORKSPACE_ROOT`，否则用当前目录。
+/// 三源路径根——按优先级解析：
+/// 1. 环境变量 `WORLD_WORKSPACE_ROOT`（部署时显式注入，优先级最高）
+/// 2. 可执行文件路径上溯四层，验证含 Cargo.toml 即项目根
+/// 3. 当前目录（兜底）
 fn 上下文根() -> PathBuf {
     if let Ok(根) = std::env::var("WORLD_WORKSPACE_ROOT") {
-        PathBuf::from(根).join(".上下文")
-    } else {
-        PathBuf::from(".上下文")
+        return PathBuf::from(根).join(".上下文");
     }
+    if let Ok(exe) = std::env::current_exe() {
+        let mut p = exe.as_path();
+        for _ in 0..6 {
+            if let Some(父) = p.parent() {
+                p = 父;
+            } else {
+                break;
+            }
+        }
+        if p.join("Cargo.toml").exists() {
+            return p.join(".上下文");
+        }
+    }
+    PathBuf::from(".上下文")
 }
 
 /// 事件流文件路径：`.上下文/事件流.jsonl`。
@@ -163,6 +178,10 @@ fn 装配事件流(值: serde_json::Value) -> 白箱事件 {
         .or_else(|| 取u64(&值, "耗时"))
         .unwrap_or(0);
     let 证据 = 取字符串(&值, "证据").unwrap_or_default();
+    let 任务线id = 取字符串(&值, "任务线id")
+        .or_else(|| 取字符串(&值, "任务线"))
+        .unwrap_or_default();
+    let 轮次 = 值.get("载荷").and_then(|p| p.get("轮次")).and_then(|v| v.as_u64());
     白箱事件 {
         ts,
         源,
@@ -171,6 +190,8 @@ fn 装配事件流(值: serde_json::Value) -> 白箱事件 {
         token,
         耗时ms,
         证据,
+        任务线id,
+        轮次,
     }
 }
 
@@ -186,12 +207,14 @@ fn 装配观测记录(值: serde_json::Value) -> 白箱事件 {
     let 源 = format!("观测/{}·{}", 域, 角色);
     let 动作 = 接口;
     let mut 影响 = Vec::new();
+    let mut 任务线id = String::new();
     if let Some(关联) = 值.get("关联").and_then(|v| v.as_object()) {
         if let Some(要求) = 关联.get("要求").and_then(|v| v.as_str()) {
             影响.push(影响项::新("要求", 要求));
         }
         if let Some(任务线) = 关联.get("任务线").and_then(|v| v.as_str()) {
             影响.push(影响项::新("任务线", 任务线));
+            任务线id = 任务线.to_string();
         }
     }
     let token = 取token(&值);
@@ -203,6 +226,7 @@ fn 装配观测记录(值: serde_json::Value) -> 白箱事件 {
                 .map(|s| s.to_string())
         })
         .unwrap_or_default();
+    let 轮次 = 值.get("载荷").and_then(|p| p.get("轮次")).and_then(|v| v.as_u64());
     白箱事件 {
         ts,
         源,
@@ -211,6 +235,8 @@ fn 装配观测记录(值: serde_json::Value) -> 白箱事件 {
         token,
         耗时ms: 0,
         证据,
+        任务线id,
+        轮次,
     }
 }
 
@@ -236,6 +262,10 @@ fn 装配识海记录(值: serde_json::Value) -> 白箱事件 {
     let 证据 = 取字符串(&值, "证据")
         .or_else(|| 取字符串(&值, "内容"))
         .unwrap_or_default();
+    let 任务线id = 取字符串(&值, "任务线id")
+        .or_else(|| 取字符串(&值, "任务线"))
+        .unwrap_or_default();
+    let 轮次 = 值.get("载荷").and_then(|p| p.get("轮次")).and_then(|v| v.as_u64());
     白箱事件 {
         ts,
         源,
@@ -244,6 +274,8 @@ fn 装配识海记录(值: serde_json::Value) -> 白箱事件 {
         token,
         耗时ms,
         证据,
+        任务线id,
+        轮次,
     }
 }
 
@@ -276,6 +308,8 @@ fn 取token(值: &serde_json::Value) -> token用量 {
             提示词: 取u64对象(对象, "提示词"),
             输出: 取u64对象(对象, "输出"),
             缓存: 取u64对象(对象, "缓存"),
+            缓存写: 取u64对象(对象, "缓存写"),
+            推理: 取u64对象(对象, "推理"),
             总计: 取u64对象(对象, "总计"),
         }
     } else {

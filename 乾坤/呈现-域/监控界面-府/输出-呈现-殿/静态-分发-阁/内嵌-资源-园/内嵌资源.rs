@@ -35,20 +35,25 @@ mod 测试 {
 
     #[test]
     fn html含挂载点() {
-        assert!(主页HTML.contains("id=\"app\""));
-        assert!(主页HTML.contains("id=\"事件流\""));
+        // §13.f 轨迹表格白箱界面：id="应用" 根挂载 + id="时间线" 时间线色块 + id="三栏" 三栏布局
+        assert!(主页HTML.contains("id=\"应用\""));
+        assert!(主页HTML.contains("id=\"时间线\""));
+        assert!(主页HTML.contains("id=\"三栏\""));
     }
 
     #[test]
     fn css含状态色变量() {
-        assert!(样式CSS.contains("--ok"));
-        assert!(样式CSS.contains("--warn"));
-        assert!(样式CSS.contains("--err"));
+        // 新调色板：洪荒青绿 + 琥珀 + 警示红 + 冷蓝 + 弱字层级
+        assert!(样式CSS.contains("--活"));
+        assert!(样式CSS.contains("--警"));
+        assert!(样式CSS.contains("--败"));
+        assert!(样式CSS.contains("--弱"));
     }
 
     #[test]
     fn js含sse订阅() {
+        // §13.f.11 轨迹 SSE 端点：/api/trajectory/stream
         assert!(脚本JS.contains("EventSource"));
-        assert!(脚本JS.contains("/api/events/stream"));
+        assert!(脚本JS.contains("/api/trajectory/stream"));
     }
 }

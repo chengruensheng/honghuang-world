@@ -1,0 +1,4 @@
+# 局部覆盖：强制 LF 行尾，禁止 CRLF 污染（验收-裁决-验证-园范围）
+*.rs text eol=lf
+*.md text eol=lf
+*.toml text eol=lf

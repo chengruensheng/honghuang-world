@@ -32,6 +32,9 @@ pub struct 白箱事件 {
     /// 任务线id——分裂流的分流键。空串表示主线/未分组。
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub 任务线id: String,
+    /// 轮次（从载荷.轮次提取，可空）。
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "轮次")]
+    pub 轮次: Option<u64>,
 }
 
 /// 影响项——白箱影响清单的一条。
@@ -49,7 +52,10 @@ pub struct 影响项 {
     pub 字节: Option<u64>,
 }
 
-/// token 用量四档。
+/// token 用量六档（§13.f.7 token 五分量：提示词/输出/缓存读/缓存写/推理/总计）。
+///
+/// 原 `提示词/输出/缓存/总计` 四档保留（向后兼容）；新增 `缓存写`/`推理` 两档，
+/// 零值不序列化（旧消费方无此字段默认零）。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct token用量 {
     /// 提示词 token。
@@ -58,12 +64,163 @@ pub struct token用量 {
     /// 输出 token。
     #[serde(default)]
     pub 输出: u64,
-    /// 缓存 token。
+    /// 缓存读 token（cache_read）。
     #[serde(default)]
     pub 缓存: u64,
+    /// §13.f.7 缓存写分量（cache_write）。
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub 缓存写: u64,
+    /// §13.f.7 推理分量（reasoning_tokens，思考链消耗）。
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub 推理: u64,
     /// 总计 token。
     #[serde(default)]
     pub 总计: u64,
+}
+
+/// u64 为零时不序列化（向后兼容：旧记录无此字段反序列化默认零）。
+fn is_zero(值: &u64) -> bool {
+    *值 == 0
+}
+
+/// §13.f.2 轨迹事件类型——7 种之一，由白箱六字段 `源`+`动作` 派生（§13.f.8）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum 事件类型 {
+    /// 系统提示词。
+    #[serde(rename = "system")]
+    系统,
+    /// 用户消息（界主输入）。
+    #[serde(rename = "user")]
+    界主,
+    /// 上下文注入（格位回想/历史灌入）。
+    #[serde(rename = "context")]
+    上下文,
+    /// 压缩记录（上下文压缩后的摘要标记）。
+    #[serde(rename = "compacted")]
+    压缩,
+    /// 助手回复（LLM 输出）。
+    #[serde(rename = "message")]
+    消息,
+    /// 工具调用。
+    #[serde(rename = "tool")]
+    工具,
+    /// 子工具（工具内嵌套调用的子工具）。
+    #[serde(rename = "subtool")]
+    子工具,
+}
+
+impl 事件类型 {
+    /// 字面标识（用于前端类型标签渲染）。
+    pub fn 字面(self) -> &'static str {
+        match self {
+            事件类型::系统 => "system",
+            事件类型::界主 => "user",
+            事件类型::上下文 => "context",
+            事件类型::压缩 => "compacted",
+            事件类型::消息 => "message",
+            事件类型::工具 => "tool",
+            事件类型::子工具 => "subtool",
+        }
+    }
+}
+
+/// §13.f.2 轨迹事件行——表格的一行（L0 一行重点）。
+#[derive(Debug, Clone, Serialize)]
+pub struct 轨迹事件行 {
+    /// 全局事件序号（从 1 起，跨轮次连续）。
+    pub 序号: usize,
+    /// 轮次号（从 1 起）。
+    pub 轮次: usize,
+    /// 事件类型（7 种之一）。
+    pub 类型: 事件类型,
+    /// 一行可读摘要（≤80 字，去标记）。
+    pub 摘要: String,
+    /// token 用量六档。
+    pub token: token用量,
+    /// 耗时（毫秒）。
+    #[serde(rename = "耗时ms")]
+    pub 耗时ms: u64,
+    /// 事件 id（ts 字符串，用于详情端点取单事件）。
+    pub 事件id: String,
+    /// 时刻（毫秒）。
+    pub ts: u64,
+}
+
+/// §13.f.3 助手指标——TTFT/解码吞吐/总耗时。
+#[derive(Debug, Clone, Serialize)]
+pub struct 助手指标 {
+    /// 首 token 时延（毫秒）。
+    pub TTFT: u64,
+    /// 解码吞吐量（tok/s）。
+    pub 解码吞吐: f64,
+    /// 总耗时（毫秒）。
+    pub 总耗时: u64,
+}
+
+/// §13.f.3 详情面板——单事件全量字段（按类型选择性展示）。
+#[derive(Debug, Clone, Serialize)]
+pub struct 轨迹详情 {
+    /// 事件 id。
+    pub 事件id: String,
+    /// 事件类型。
+    pub 类型: 事件类型,
+    /// 时刻（毫秒）。
+    pub ts: u64,
+    /// 轮次号。
+    pub 轮次: usize,
+    /// 完整请求/消息原文。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub inputDetail: String,
+    /// 完整系统提示词 + 工具目录。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub promptDetail: String,
+    /// 完整助手/工具结果原文。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub outputDetail: String,
+    /// 完整推理过程（思考链）。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub thinkingDetail: String,
+    /// 指标小卡：TTFT/解码吞吐/总耗时。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assistantMetrics: Option<助手指标>,
+    /// 模型提供者。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub provider: String,
+    /// 模型名。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub model: String,
+    /// 重试次数。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry: Option<u32>,
+    /// 最大重试次数。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maxRetries: Option<u32>,
+    /// 是否失败。
+    pub isError: bool,
+    /// 原始白箱事件（L2 全量载荷）。
+    pub 原始: 白箱事件,
+}
+
+/// §13.f.4 时间线色块。
+#[derive(Debug, Clone, Serialize)]
+pub struct 时间线色块 {
+    /// 序号。
+    pub 序号: usize,
+    /// 时刻（毫秒）。
+    pub ts: u64,
+    /// 该模式下的值（sequence=1/duration=耗时ms/time=ts/actual=耗时ms）。
+    pub 值: u64,
+    /// 事件类型。
+    pub 类型: 事件类型,
+}
+
+/// §13.f.5 搜索命中——事件 id + 高亮区间。
+#[derive(Debug, Clone, Serialize)]
+pub struct 搜索命中 {
+    /// 事件 id。
+    pub 事件id: String,
+    /// 高亮区间（起止字符偏移）。
+    pub 高亮区间: Vec<[usize; 2]>,
 }
 
 /// 事件来源——三源白箱。
@@ -240,6 +397,7 @@ impl 白箱事件 {
             耗时ms: 0,
             证据: String::new(),
             任务线id: String::new(),
+            轮次: None,
         }
     }
 
@@ -310,6 +468,8 @@ mod 测试 {
                 提示词: 1234,
                 输出: 567,
                 缓存: 89,
+                缓存写: 0,
+                推理: 0,
                 总计: 1890,
             })
             .设耗时(2103)

@@ -177,6 +177,10 @@ fn 装配事件流(值: serde_json::Value) -> 白箱事件 {
     let 任务线id = 取字符串(&值, "任务线id")
         .or_else(|| 取字符串(&值, "任务线"))
         .unwrap_or_default();
+    let 轮次 = 值
+        .get("载荷")
+        .and_then(|p| p.get("轮次"))
+        .and_then(|v| v.as_u64());
     白箱事件 {
         ts,
         源,
@@ -186,6 +190,7 @@ fn 装配事件流(值: serde_json::Value) -> 白箱事件 {
         耗时ms,
         证据,
         任务线id,
+        轮次,
     }
 }
 
@@ -230,6 +235,10 @@ fn 装配观测记录(值: serde_json::Value) -> 白箱事件 {
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
     let 证据 = 截断证据(提取可读证据(&值, &域));
+    let 轮次 = 值
+        .get("载荷")
+        .and_then(|p| p.get("轮次"))
+        .and_then(|v| v.as_u64());
     白箱事件 {
         ts,
         源,
@@ -239,17 +248,21 @@ fn 装配观测记录(值: serde_json::Value) -> 白箱事件 {
         耗时ms,
         证据,
         任务线id,
+        轮次,
     }
 }
 
-/// 从载荷.附加提取 token 用量——附加平铺"总计/提示词/缓存命中/输出"四档。
+/// 从载荷.附加提取 token 用量——附加平铺"总计/提示词/缓存命中/输出/缓存写/推理"六档。
 /// 字段名与白箱 token用量 不同（"缓存命中"对应"缓存"），此处做映射。
+/// §13.f.7 补采集缓存写/推理两档（模型连接-府 用量附加扩展写入）。
 fn 取附加token(附加: &serde_json::Value) -> token用量 {
     if let Some(对象) = 附加.as_object() {
         token用量 {
             提示词: 取u64对象(对象, "提示词"),
             输出: 取u64对象(对象, "输出"),
             缓存: 取u64对象(对象, "缓存命中"),
+            缓存写: 取u64对象(对象, "缓存写"),
+            推理: 取u64对象(对象, "推理"),
             总计: 取u64对象(对象, "总计"),
         }
     } else {
@@ -365,6 +378,10 @@ fn 装配识海记录(值: serde_json::Value) -> 白箱事件 {
     let 任务线id = 取字符串(&值, "任务线id")
         .or_else(|| 取字符串(&值, "任务线"))
         .unwrap_or_default();
+    let 轮次 = 值
+        .get("载荷")
+        .and_then(|p| p.get("轮次"))
+        .and_then(|v| v.as_u64());
     白箱事件 {
         ts,
         源,
@@ -374,6 +391,7 @@ fn 装配识海记录(值: serde_json::Value) -> 白箱事件 {
         耗时ms,
         证据,
         任务线id,
+        轮次,
     }
 }
 
@@ -399,13 +417,16 @@ fn 取影响(值: &serde_json::Value) -> Vec<影响项> {
     结果
 }
 
-/// 装配 token 用量——从 JSON 值的 "token" 对象取四档。
+/// 装配 token 用量——从 JSON 值的 "token" 对象取六档。
+/// §13.f.7 补采集缓存写/推理两档。
 fn 取token(值: &serde_json::Value) -> token用量 {
     if let Some(对象) = 值.get("token").and_then(|v| v.as_object()) {
         token用量 {
             提示词: 取u64对象(对象, "提示词"),
             输出: 取u64对象(对象, "输出"),
             缓存: 取u64对象(对象, "缓存"),
+            缓存写: 取u64对象(对象, "缓存写"),
+            推理: 取u64对象(对象, "推理"),
             总计: 取u64对象(对象, "总计"),
         }
     } else {

@@ -14,8 +14,8 @@ use axum::Router;
 use serde::Deserialize;
 
 use crate::{
-    三源就绪, 三源就绪 as 三源, 任务树视图, 健康状态, 历史回放, 取世界快照, 建拓扑, 建步骤流,
-    建直播流,
+    三源就绪, 三源就绪 as 三源, 任务树视图, 健康状态, 历史回放, 取世界快照, 建拓扑, 建时间线,
+    建步骤流, 建直播流, 建轨迹列表, 建轨迹详情, 搜轨迹, 过滤轨迹,
 };
 
 /// 共享状态——启动时刻（毫秒），经 axum State 注入各 handler。
@@ -32,7 +32,7 @@ fn 当前毫秒() -> u64 {
         .unwrap_or(0)
 }
 
-/// 构造监控界面路由——10 个端点（含分裂流拓扑/步骤流）。
+/// 构造监控界面路由——15 个端点（含分裂流拓扑/步骤流 + §13.f 轨迹表格白箱）。
 pub fn 建路由() -> Router {
     let 状态 = 共享状态 {
         启动时刻: 当前毫秒(),
@@ -49,26 +49,44 @@ pub fn 建路由() -> Router {
         .route("/api/topology", get(拓扑视图))
         .route("/api/lines/:id/steps", get(任务线步骤))
         .route("/api/health", get(健康))
+        // §13.f.11 轨迹表格白箱端点
+        .route("/api/trajectory", get(轨迹列表))
+        .route("/api/trajectory/event/:id", get(轨迹详情端点))
+        .route("/api/trajectory/search", get(轨迹搜索))
+        .route("/api/trajectory/timeline", get(轨迹时间线))
+        .route("/api/trajectory/stream", get(轨迹直播))
         .with_state(状态)
 }
 
 /// 启动监控 HTTP 服务——透出到 lib 根，供外部调用。
 ///
-/// 默认端口 8080；绑定失败 panic（启动期错误不应静默）。
-pub async fn 启动监控(端口: u16) {
+/// 默认端口 8080。返回 Result 让 bin 入口能区分"绑定失败"与"服务异常"：
+/// - 绑定失败 → `Err(String)`，调用方应 eprintln + 非零退码
+/// - 服务运行中 → 持续监听 Ctrl+C（由 bin 入口的 select 处理）
+///
+/// 错误日志同时写 rizhi_fu（订阅器已初始化场景）与 eprintln（无订阅器场景）双通道。
+pub async fn 启动监控(端口: u16) -> Result<(), String> {
     let 监听地址 = format!("0.0.0.0:{端口}");
     rizhi_fu::info!("监控界面启动于 {监听地址}");
+    eprintln!("监控界面启动于 http://{监听地址}");
+
     let 监听器 = match tokio::net::TcpListener::bind(&监听地址).await {
         Ok(l) => l,
         Err(e) => {
-            rizhi_fu::error!("监控界面绑定 {监听地址} 失败: {e}");
-            return;
+            let 消息 = format!("绑定 {监听地址} 失败: {e}");
+            rizhi_fu::error!("{}", 消息);
+            eprintln!("错误：{消息}");
+            return Err(消息);
         }
     };
     let 路由 = 建路由();
     if let Err(e) = axum::serve(监听器, 路由).await {
-        rizhi_fu::error!("监控界面服务异常: {e}");
+        let 消息 = format!("服务异常: {e}");
+        rizhi_fu::error!("{}", 消息);
+        eprintln!("错误：{消息}");
+        return Err(消息);
     }
+    Ok(())
 }
 
 // ===== handlers =====
@@ -182,6 +200,122 @@ async fn 健康(State(状态): State<共享状态>) -> impl IntoResponse {
         运行秒,
         三源就绪: 就绪,
     })
+}
+
+// ===== §13.f.11 轨迹表格白箱端点 =====
+
+/// GET /api/trajectory?since=&until=&before=&limit=&turn= —— 轨迹事件列表。
+///
+/// 依据：融合蓝图-设计稿.md §13.f.11。返回 `[{序号, 轮次, 类型, 摘要, token, 耗时ms, 事件id}]`。
+/// - `since`/`until`：时间窗（0 表示不限）
+/// - `before`：向上翻页，返 `ts < before` 的最近 `limit` 条
+/// - `limit`：条数上限（默认 200，最大 1000）
+/// - `turn`：按轮次过滤（0 表示不限）
+async fn 轨迹列表(Query(参数): Query<轨迹列表参数>) -> impl IntoResponse {
+    let 条数 = 参数.limit.unwrap_or(200).min(1000);
+    let 全部 = crate::读全部();
+    let 过滤 = 过滤轨迹(
+        &全部,
+        参数.since.unwrap_or(0),
+        参数.until.unwrap_or(0),
+        参数.before.unwrap_or(0),
+        条数,
+        参数.turn.unwrap_or(0),
+    );
+    Json(建轨迹列表(&过滤))
+}
+
+#[derive(Deserialize)]
+struct 轨迹列表参数 {
+    since: Option<u64>,
+    until: Option<u64>,
+    before: Option<u64>,
+    limit: Option<usize>,
+    turn: Option<usize>,
+}
+
+/// GET /api/trajectory/event/{id} —— 单事件详情面板全量（§13.f.3 字段全集）。
+///
+/// `id` 为事件 ts 字符串。返回该事件的完整详情，含 inputDetail/outputDetail/thinkingDetail 等。
+async fn 轨迹详情端点(Path(id): Path<String>) -> impl IntoResponse {
+    let 全部 = crate::读全部();
+    // 按 ts 字符串匹配；ts 重复时返回第一条
+    let 命中 = 全部.iter().find(|e| e.ts.to_string() == id);
+    Json(命中.map(建轨迹详情))
+}
+
+/// GET /api/trajectory/search?q=&since=&until= —— 全文搜索（§13.f.5）。
+///
+/// 返回 `[{事件id, 高亮区间[]}]`。搜索范围：源+动作+证据+影响文本。
+async fn 轨迹搜索(Query(参数): Query<轨迹搜索参数>) -> impl IntoResponse {
+    let 关键词 = 参数.q.unwrap_or_default();
+    let 全部 = crate::读全部();
+    let 过滤: Vec<_> = 全部
+        .iter()
+        .filter(|e| {
+            if let Some(since) = 参数.since {
+                if e.ts < since {
+                    return false;
+                }
+            }
+            if let Some(until) = 参数.until {
+                if e.ts > until {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect();
+    Json(搜轨迹(&过滤, &关键词))
+}
+
+#[derive(Deserialize)]
+struct 轨迹搜索参数 {
+    q: Option<String>,
+    since: Option<u64>,
+    until: Option<u64>,
+}
+
+/// GET /api/trajectory/timeline?mode=&since=&until= —— 时间线色块数据（§13.f.4）。
+///
+/// 返回 `[{序号, ts, 值, 类型}]`。模式：sequence/duration/time/actual。
+async fn 轨迹时间线(Query(参数): Query<轨迹时间线参数>) -> impl IntoResponse {
+    let 模式 = 参数.mode.as_deref().unwrap_or("sequence");
+    let 全部 = crate::读全部();
+    let 过滤: Vec<_> = 全部
+        .iter()
+        .filter(|e| {
+            if let Some(since) = 参数.since {
+                if e.ts < since {
+                    return false;
+                }
+            }
+            if let Some(until) = 参数.until {
+                if e.ts > until {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect();
+    Json(建时间线(&过滤, 模式))
+}
+
+#[derive(Deserialize)]
+struct 轨迹时间线参数 {
+    mode: Option<String>,
+    since: Option<u64>,
+    until: Option<u64>,
+}
+
+/// GET /api/trajectory/stream —— SSE 直播（复用 §9.1 主链路）。
+///
+/// 与 `/api/events/stream` 同源，payload 加 `序号/轮次/类型` 由前端从白箱事件派生。
+async fn 轨迹直播() -> impl IntoResponse {
+    rizhi_fu::info!("轨迹 SSE 直播连接建立");
+    建直播流()
 }
 
 // 抑制未使用警告——三源类型仅在健康检查中通过 三源就绪() 间接使用

@@ -1,0 +1,67 @@
+{
+  "scan_stage": "L1_qa",
+  "scanned_module_path": "乾坤/呈现-域/命令操作-府/号令-下达-殿/要求-提审-阁/并行-提审-园",
+  "scanned_files": [
+    {"file": "并行提审.rs", "role": "主实现", "bytes": 2168},
+    {"file": "模块.rs", "role": "模块声明与 re-export", "bytes": 75}
+  ],
+  "pub_fns": [
+    {
+      "function_name": "化为要求",
+      "signature": "pub fn 化为要求(想法id: &str) -> String",
+      "async": false,
+      "param_types": [
+        {"name": "想法id", "type_str": "&str", "enum_name": null, "fields": null}
+      ],
+      "return_kind": "raw",
+      "return_type": "String",
+      "err_variant": null,
+      "send_static": false,
+      "shared_mut": false,
+      "cancel_point": false,
+      "runtime_need": "current_thread",
+      "timeout_injectable": false,
+      "is_reexport": false,
+      "defined_in": "并行提审.rs",
+      "evidence_signature_line": "pub fn 化为要求(想法id: &str) -> String"
+    }
+  ],
+  "reexports_in_mod_rs": ["化为要求"],
+  "total_pub_fns": 1,
+  "total_async_pub_fns": 0,
+  "total_result_returning_pub_fns": 0,
+  "total_option_returning_pub_fns": 0,
+  "uses_tokio_runtime_directly": false,
+  "internal_dependencies_observed": [
+    "tianting_fu::落盘队列::<tianting_fu::想法>",
+    "tianting_fu::想法",
+    "tianting_fu::解析想法",
+    "tianting_fu::要求书",
+    "shihai_fu::拼装投影",
+    "shihai_fu::全部格位",
+    "shihai_fu::模型存储",
+    "mingling_fu::状态目录",
+    "mingling_fu::读模型配置",
+    "mingling_fu::打开存储",
+    "moxing_fu::模型配置",
+    "peizhi_fu::读模型配置",
+    "tracing::error",
+    "tracing::warn",
+    "tracing::info"
+  ],
+  "error_string_prefixes_observed": [
+    "读想法池失败：",
+    "想法 {想法id} 不在池中",
+    "要求入队失败：",
+    "化为要求失败："
+  ],
+  "warnings": [],
+  "follow_up_for_L2": [
+    "send_static=false 二次自证：参数 &str + 返回 String 均非 Future 类型；L2 须进一步审验 tianting_fu::解析想法 内部 Future 的 Send 标记，以决定 L4 测试的 runtime flavor。",
+    "runtime_need=current_thread 二次自证：本函数本体同步阻塞，不创建 tokio Runtime；L4 测试侧需显式选择 flavor；若上游解析涉及 multi_thread 才能调度，须升 multi_thread。",
+    "shared_mut=false 二次自证：每次调用 落盘队列::打开 重建句柄，未持有全局可变状态；但 落盘队列 内部若含 Mutex<File> 等共享态，L2 须审验其 Send+Sync 标记后再决定。",
+    "cancel_point=false 二次自证：本函数无 await，物理上无取消点；L4 模拟中断须在调用前/调用中注入 panic、文件锁或进程信号。",
+    "timeout_injectable=false 二次自证：本函数无超时入口且无内部 timeout 包裹；L4 模拟超时建议改为断言 4 类错误字符串前缀（如「读想法池失败：」），或对底层 IO 文件加独占锁模拟卡死，而非真超时。",
+    "return_kind=raw 与 err_variant=null 二次自证：签名明确 String（非 Result/Option）；错误处理采用错误字符串内联模式而非 thiserror 枚举，L4 测试须覆盖 4 类错误字符串前缀以验证分支覆盖（而非 match Err 模式）。"
+  ]
+}

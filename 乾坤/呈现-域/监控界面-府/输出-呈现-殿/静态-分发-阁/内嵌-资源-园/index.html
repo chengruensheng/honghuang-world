@@ -1,126 +1,287 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>洪荒 · 分裂流</title>
-<link rel="stylesheet" href="/static/style.css?v=8">
+<title>洪荒 · 运行观</title>
+<link rel="stylesheet" href="/static/style.css?v=132">
 </head>
 <body>
-<!-- 内联 SVG 图标定义（离线运行，不依赖外部 CDN） -->
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
-  <defs>
-    <!-- 提示词：文档图标 -->
-    <symbol id="ic-prompt" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 2h6l3 3v9H3z"/><path d="M9 2v3h3"/><path d="M5 8h6M5 11h4"/>
-    </symbol>
-    <!-- 思考：火花图标 -->
-    <symbol id="ic-think" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l2 2M10 10l2 2M12 4l-2 2M6 10l-2 2"/>
-      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/>
-    </symbol>
-    <!-- 工具：扳手图标 -->
-    <symbol id="ic-tool" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M11 2a2.5 2.5 0 0 0-3 3L3 10l3 3 5-5a2.5 2.5 0 0 0 3-3l-2 2-2-2 2-2z"/>
-    </symbol>
-    <!-- 返回：箭头返回图标 -->
-    <symbol id="ic-return" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M9 3L4 8l5 5"/><path d="M4 8h9"/>
-    </symbol>
-    <!-- 回复：对话气泡图标 -->
-    <symbol id="ic-reply" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M2 3h12v8H6l-3 3v-3H2z"/><path d="M5 7h2M9 7h2"/>
-    </symbol>
-    <!-- 完成：勾选图标 -->
-    <symbol id="ic-done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 8l3 3 7-7"/>
-    </symbol>
-    <!-- 活跃：加载旋转图标 -->
-    <symbol id="ic-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-      <path d="M8 2a6 6 0 1 0 6 6" />
-    </symbol>
-    <!-- 分裂：分叉图标 -->
-    <symbol id="ic-fork" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="4" cy="4" r="1.2" fill="currentColor" stroke="none"/>
-      <circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/>
-      <circle cx="12" cy="8" r="1.2" fill="currentColor" stroke="none"/>
-      <path d="M5 4h2a2 2 0 0 1 2 2M5 12h2a2 2 0 0 0 2-2"/>
-    </symbol>
-    <!-- 合流：合并图标 -->
-    <symbol id="ic-merge" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="4" r="1.2" fill="currentColor" stroke="none"/>
-      <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>
-      <circle cx="4" cy="8" r="1.2" fill="currentColor" stroke="none"/>
-      <path d="M11 4H9a2 2 0 0 0-2 2M11 12H9a2 2 0 0 1-2-2"/>
-    </symbol>
-    <!-- chevron-down：展开/收起箭头 -->
-    <symbol id="ic-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 6l5 4 5-4"/>
-    </symbol>
-    <!-- 事件：时钟图标（页脚统计） -->
-    <symbol id="ic-events" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/>
-    </symbol>
-    <!-- token：芯片图标 -->
-    <symbol id="ic-token" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="4" y="4" width="8" height="8" rx="1"/><path d="M2 6h2M2 10h2M12 6h2M12 10h2M6 2v2M10 2v2M6 12v2M10 12v2"/>
-    </symbol>
-    <!-- 耗时：沙漏图标 -->
-    <symbol id="ic-clock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4 2h8M4 14h8M5 2c0 4 6 4 6 6s-6 2-6 6M11 2c0 4-6 4-6 6s6 2 6 6"/>
-    </symbol>
-    <!-- 活跃线：分支图标 -->
-    <symbol id="ic-lines" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="3" cy="8" r="1.2" fill="currentColor" stroke="none"/>
-      <circle cx="13" cy="4" r="1.2" fill="currentColor" stroke="none"/>
-      <circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/>
-      <path d="M4 8h2a2 2 0 0 1 2 2M4 8h2a2 2 0 0 0 2-2"/>
-    </symbol>
-    <!-- 阴脑：月亮图标 -->
-    <symbol id="ic-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 9a5 5 0 1 1-5-7 4 4 0 0 0 5 7z"/>
-    </symbol>
-    <!-- 矛盾：对峙图标 -->
-    <symbol id="ic-conflict" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 8h10"/><path d="M5 5l-2 3 2 3M11 5l2 3-2 3"/>
-    </symbol>
-  </defs>
-</svg>
+<!-- 深空背景星点层（全屏 fixed，z-index:-1，不挡交互） -->
+<canvas id="深空背景" aria-hidden="true"></canvas>
+<div id="应用">
 
-<div id="app">
-  <header class="顶栏">
-    <div class="顶栏-左">
-      <span class="世界名">洪荒 · 分裂流</span>
+  <!-- 顶栏：世界名 + 视图切换 + 连接状态 + 工具按钮 + 本地时刻 -->
+  <header id="顶栏">
+    <div id="世界名">洪荒</div>
+    <!-- 四视图切换：星系（诸圣放射·日常观看）/ 星图（世界星图）/ 私聊 / 时序（历史回溯） -->
+    <nav id="视图切换" class="视图切换" aria-label="视图切换">
+      <button class="视图标签 激活" data-视图="群聊" type="button" role="radio" aria-checked="true">群聊</button>
+      <button class="视图标签" data-视图="星图" type="button" role="radio" aria-checked="false">星图</button>
+      <button class="视图标签" data-视图="私聊" type="button" role="radio" aria-checked="false">私聊</button>
+      <button class="视图标签" data-视图="时序" type="button" role="radio" aria-checked="false">时序·历史</button>
+    </nav>
+    <div id="状态行">
+      <span id="状态点" aria-hidden="true"></span>
+      <span id="状态文">接通天道中……</span>
+      <span id="运行时长" class="运行时长" aria-label="服务运行时长"></span>
     </div>
-    <div class="顶栏-中">
-      <span class="阶段" id="阶段"></span>
-      <span class="想法" id="当前想法"></span>
-      <span class="要求" id="当前要求"></span>
-    </div>
-    <div class="顶栏-右">
-      <span class="时刻" id="时刻"></span>
-      <span class="状态点" id="状态点"></span>
-      <span class="并发度" id="并发度" title="活跃任务线数">线 0</span>
-    </div>
+    <nav id="顶工具" aria-label="顶工具栏">
+      <button id="暂停信源" class="工具按钮" type="button" title="暂停 / 继续 信源 实时流（快捷键 P）">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <rect x="4" y="3" width="3" height="10" rx="0.6"/>
+          <rect x="9" y="3" width="3" height="10" rx="0.6"/>
+        </svg>
+        <span class="工具文">暂停</span>
+      </button>
+      <button id="折叠按钮" class="工具按钮" type="button" title="折叠模式切换（快捷键 F）">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 4h10M3 8h7M3 12h4"/>
+        </svg>
+        <span class="工具文">折叠</span>
+      </button>
+      <button id="搜索按钮" class="工具按钮" type="button" title="搜索事件（快捷键 / ）">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <circle cx="7" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button id="快捷键按钮" class="工具按钮" type="button" title="显示快捷键（快捷键 ?）">?</button>
+    </nav>
+    <div id="时刻" aria-label="本地时刻"></div>
   </header>
 
-  <nav class="段头">
-    <div class="段头-容器">
-      <button data-view="步骤流" class="激活">步骤流</button>
-      <button data-view="任务树">任务树</button>
+  <!-- 搜索条（默认 hidden，点搜索按钮展开；仅时序视图用） -->
+  <div id="搜索条" class="搜索条" hidden>
+    <span class="搜索标" aria-hidden="true">/</span>
+    <input id="搜索输入" type="text" placeholder="搜事件摘要、证据、源流……" autocomplete="off" spellcheck="false" />
+    <span class="搜索计数" id="搜索计数"></span>
+    <button id="搜索关闭" type="button" aria-label="关闭搜索">×</button>
+  </div>
+
+  <!-- 视图区：四视图切换容器，占满剩余空间 -->
+  <div id="视图区">
+
+    <!-- ===== 时序视图：原有三栏可拖拽布局（保留不动） ===== -->
+    <div data-视图="时序" class="视图页" hidden>
+      <!-- 三栏可拖拽布局：左栏(房间/历史) | 中栏(轨迹表格) | 右栏(详情) -->
+      <!-- grid-template-columns 由 app.js 拖拽时动态写入 -->
+      <main id="三栏" data-dragging="false">
+        <!-- 左栏：房间列表 / 历史会话 -->
+        <aside id="左栏" class="栏" data-栏="左">
+          <div class="栏头">
+            <span class="栏标题">界·房</span>
+            <button id="左栏收起" class="栏收起" type="button" title="收起左栏" aria-label="收起左栏">‹</button>
+          </div>
+          <!-- 诸圣在位：角色体系（鸿钧/女娲/多宝/红云/玄天 等） -->
+          <div id="诸圣区" class="诸圣区">
+            <div class="诸圣头">诸圣在位</div>
+            <div id="诸圣列表" class="诸圣列表" role="list">
+              <!-- 角色条由 app.js 注入 -->
+            </div>
+          </div>
+          <div id="房间列表" class="房间列表" role="list">
+            <!-- 房间条由 app.js 注入 -->
+          </div>
+        </aside>
+
+        <!-- 左分隔条（pointer capture 拖拽） -->
+        <div id="左分隔" class="分隔条" data-侧="左" role="separator" aria-orientation="vertical" aria-label="拖拽调整左栏宽度" tabindex="0"></div>
+
+        <!-- 中栏：轨迹表格（账本视角主体） -->
+        <section id="中栏" class="栏" data-栏="中">
+          <!-- 表格上方：时间线概览（4 模式切换） -->
+          <div id="时间线" class="时间线">
+            <div id="时间线色块" class="时间线色块" aria-label="事件时间线概览"></div>
+            <div id="时间线模式" class="时间线模式" role="radiogroup" aria-label="时间线模式">
+              <button data-模式="sequence" class="激活" type="button" role="radio" aria-checked="true">序号</button>
+              <button data-模式="duration" type="button" role="radio" aria-checked="false">耗时</button>
+              <button data-模式="time" type="button" role="radio" aria-checked="false">时刻</button>
+              <button data-模式="actual" type="button" role="radio" aria-checked="false">净耗</button>
+            </div>
+            <button id="清除范围" class="清除范围" type="button" hidden>清除范围</button>
+          </div>
+
+          <!-- 轨迹表格主体（虚拟滚动容器） -->
+          <div id="表格容器" class="表格容器" data-trajectory-scroll="">
+            <!-- 历史加载指示器（顶部） -->
+            <div id="历史加载" class="历史加载" hidden role="status" aria-live="polite">
+              <span class="加载星系" aria-hidden="true"></span>
+              <span>演化更早事件……</span>
+            </div>
+            <div id="已到最早" class="已到最早" hidden>已至天地初开</div>
+
+            <!-- 表格本体（按轮次分组，虚拟滚动只渲染可视行） -->
+            <div id="表格本体" class="表格本体" role="table" aria-label="轨迹事件账本">
+              <!-- 顶部虚拟占位（虚拟滚动时撑开高度） -->
+              <div id="虚拟顶" class="虚拟占位" data-位="顶" aria-hidden="true"></div>
+              <!-- 行由 app.js 注入：轮次组头 + 事件行 -->
+              <div id="行区" class="行区"></div>
+              <!-- 底部虚拟占位 -->
+              <div id="虚拟底" class="虚拟占位" data-位="底" aria-hidden="true"></div>
+            </div>
+
+            <!-- 脱离最新提示（用户上滚时显示） -->
+            <div id="脱离最新" class="脱离最新" hidden>
+              <span>已脱离当下</span>
+              <button id="回最新" type="button">回当下 ↓</button>
+            </div>
+          </div>
+
+          <!-- 表格底部：token 累计汇总条（sticky） -->
+          <div id="汇总条" class="汇总条" role="status" aria-label="token 累计">
+            <span class="汇总项" data-项="输入"><span class="汇总标">输入</span><span class="汇总数" id="累计输入">0</span></span>
+            <span class="汇总项" data-项="输出"><span class="汇总标">输出</span><span class="汇总数" id="累计输出">0</span></span>
+            <span class="汇总项" data-项="缓存读"><span class="汇总标">缓存读</span><span class="汇总数" id="累计缓存读">0</span></span>
+            <span class="汇总项" data-项="缓存写"><span class="汇总标">缓存写</span><span class="汇总数" id="累计缓存写">0</span></span>
+            <span class="汇总项" data-项="推理"><span class="汇总标">推理</span><span class="汇总数" id="累计推理">0</span></span>
+            <span class="汇总项 汇总总" data-项="总计"><span class="汇总标">总计</span><span class="汇总数" id="累计总计">0</span></span>
+          </div>
+        </section>
+
+        <!-- 右分隔条 -->
+        <div id="右分隔" class="分隔条" data-侧="右" role="separator" aria-orientation="vertical" aria-label="拖拽调整右栏宽度" tabindex="0"></div>
+
+        <!-- 右栏：详情面板（任务131实现，此处先占位） -->
+        <aside id="右栏" class="栏" data-栏="右">
+          <div class="栏头">
+            <span class="栏标题">原委</span>
+            <button id="右栏收起" class="栏收起" type="button" title="收起右栏" aria-label="收起右栏">›</button>
+          </div>
+          <div id="详情面板" class="详情面板">
+            <div id="详情占位" class="详情占位">
+              <p>点任一事件</p>
+              <p>观原委始末</p>
+            </div>
+            <!-- 详情内容由 app.js 注入（任务131） -->
+          </div>
+        </aside>
+      </main>
     </div>
-  </nav>
 
-  <main class="主体">
-    <aside class="任务列表" id="任务列表"></aside>
-    <section class="步骤面板">
-      <div class="事件流" id="事件流"></div>
-    </section>
-    <aside class="旁路栏" id="旁路栏"></aside>
-  </main>
+    <!-- ===== 群聊视图：所有agent对话流+内心世界 ===== -->
+    <div data-视图="群聊" class="视图页 激活">
+      <!-- 群聊流：所有agent的对话消息按时间排列 -->
+      <div id="群聊流" class="群聊流">
+        <div class="群聊占位">诸圣交流中……</div>
+      </div>
+      <!-- 内心世界：点击角色头像打开，显示该角色全量记录 -->
+      <div id="内心世界" class="内心世界" hidden>
+        <div class="内心世界头">
+          <span class="内心世界色点" id="内心世界色点"></span>
+          <span class="内心世界角色名" id="内心世界角色名"></span>
+          <span class="内心世界职能" id="内心世界职能"></span>
+          <button class="内心世界关闭" id="内心世界关闭" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="内心世界体" id="内心世界体"></div>
+      </div>
+    </div>
 
-  <footer class="页脚" id="页脚"></footer>
+    <!-- ===== 星图视图：世界星图（指标卡 + 格位星云/想法星座/事件流星/要求推进） ===== -->
+    <div data-视图="星图" class="视图页" hidden>
+      <!-- 指标卡顶栏：想法数 / 要求数 / 智能体数 / 事件数 -->
+      <div class="星图顶">
+        <div class="指标卡-星图" id="指标卡-想法">
+          <div class="指标值-星图" id="指标-想法数">--</div>
+          <div class="指标名-星图">想法</div>
+          <div class="指标副-星图" id="指标-未处理想法">未处理 --</div>
+        </div>
+        <div class="指标卡-星图" id="指标卡-要求">
+          <div class="指标值-星图" id="指标-要求数">--</div>
+          <div class="指标名-星图">要求</div>
+          <div class="指标副-星图" id="指标-要求细分">实现中 -- / 待实现 --</div>
+        </div>
+        <div class="指标卡-星图" id="指标卡-智能体">
+          <div class="指标值-星图" id="指标-智能体数">--</div>
+          <div class="指标名-星图">智能体</div>
+          <div class="指标副-星图" id="指标-运转中">运转中 --</div>
+        </div>
+        <div class="指标卡-星图" id="指标卡-事件">
+          <div class="指标值-星图" id="指标-事件数">--</div>
+          <div class="指标名-星图">最近事件</div>
+          <div class="指标副-星图" id="指标-最近时刻">--</div>
+        </div>
+      </div>
+      <!-- 星图主体：世界星图SVG + 想法星座 + 要求推进 + 事件流星 + 格位星云 -->
+      <div class="星图身">
+        <div class="星图面板">
+          <div class="面板题">
+            <span class="题星">✧</span>世界星图
+            <span class="题注">格位为星云·事件为流星</span>
+          </div>
+          <div class="星图舞台">
+            <svg id="世界星图" viewBox="0 0 800 460" preserveAspectRatio="xMidYMid meet" aria-label="世界星图"></svg>
+          </div>
+        </div>
+        <div class="队列面板">
+          <div class="面板题"><span class="题星">✧</span>想法星座</div>
+          <div class="星座列" id="想法星座"></div>
+        </div>
+        <div class="队列面板">
+          <div class="面板题"><span class="题星">✧</span>要求推进</div>
+          <div class="要求列" id="要求推进"></div>
+        </div>
+        <div class="流面板">
+          <div class="面板题"><span class="题星">✧</span>事件流星</div>
+          <div class="事件列" id="事件流星"></div>
+        </div>
+        <div class="格位面板">
+          <div class="面板题"><span class="题星">✧</span>格位星云</div>
+          <div class="格位列" id="格位星云"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 私聊视图：界主与诸圣一对一对话（先做壳，5角色会话列表） ===== -->
+    <div data-视图="私聊" class="视图页" hidden>
+      <div class="私聊布局">
+        <!-- 左：会话列表（5角色：鸿钧/女娲/多宝/红云/玄天） -->
+        <aside class="私聊侧">
+          <div class="私聊侧头">诸圣私聊</div>
+          <div class="私聊会话列" id="私聊会话列">
+            <!-- 会话项由 app.js 注入 -->
+          </div>
+        </aside>
+        <!-- 右：对话区 -->
+        <section class="私聊主">
+          <div class="私聊头" id="私聊头">
+            <div class="私聊头像大" id="私聊头像">钧</div>
+            <div class="私聊头文">
+              <div class="私聊头名" id="私聊头名">鸿钧</div>
+              <div class="私聊头职" id="私聊头职">道祖·主政 · 接收界主指令，调度万机</div>
+            </div>
+            <div class="私聊头态" id="私聊头态">运转中</div>
+          </div>
+          <div class="对话流" id="对话流"></div>
+          <div class="输入栏">
+            <textarea class="输入框" id="私聊输入框" placeholder="对鸿钧说些什么…  (Enter 发送 / Shift+Enter 换行)" rows="2"></textarea>
+            <button class="发送钮" id="私聊发送钮" type="button">送达</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 快捷键浮层 -->
+  <div id="快捷键浮层" class="快捷键浮层" hidden>
+    <div class="快捷键卡">
+      <h3>快捷键</h3>
+      <dl>
+        <dt>P</dt><dd>暂停 / 继续 信源</dd>
+        <dt>F</dt><dd>切换折叠模式</dd>
+        <dt>/</dt><dd>搜索</dd>
+        <dt>?</dt><dd>显示快捷键</dd>
+        <dt>Esc</dt><dd>关闭浮层 / 清除选中</dd>
+        <dt>空格</dt><dd>回最新</dd>
+        <dt>↑ ↓</dt><dd>上下选行</dd>
+        <dt>Enter</dt><dd>展开选中行详情</dd>
+      </dl>
+      <button id="快捷键关闭" type="button" aria-label="关闭">×</button>
+    </div>
+  </div>
+
 </div>
-<script src="/static/app.js?v=8"></script>
+<script src="/static/app.js?v=132" defer></script>
 </body>
 </html>
