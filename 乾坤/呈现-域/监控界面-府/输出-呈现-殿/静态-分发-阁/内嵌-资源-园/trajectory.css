@@ -1,0 +1,105 @@
+/* trajectory.css · §13.f 时序·历史视图 */
+:root {
+  --底: #0d0f0e;
+  --面: #161a18;
+  --文: #e8e8e8;
+  --次: #8a9a90;
+  --活: #13d4a4;
+  --暗: #1f2522;
+  --边界: #2a322e;
+  --危险: #ef5350;
+  --警告: #ffa726;
+  --类型-system: #5c6bc0;
+  --类型-user: #13d4a4;
+  --类型-context: #7e57c2;
+  --类型-compacted: #ff9800;
+  --类型-message: #4fc3f7;
+  --类型-tool: #aed581;
+  --类型-subtool: #81c784;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--底); color: var(--文); font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 13px; line-height: 1.5; height: 100vh; overflow: hidden; }
+
+#应用 { display: flex; flex-direction: column; height: 100vh; }
+
+/* 顶栏 */
+#顶栏 { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--面); border-bottom: 1px solid var(--边界); flex-shrink: 0; }
+#世界名 { font-size: 16px; font-weight: 600; color: var(--活); }
+#视图切换 { display: flex; gap: 4px; }
+.视图标签 { padding: 4px 12px; border-radius: 4px; color: var(--次); text-decoration: none; cursor: pointer; }
+.视图标签:hover { color: var(--文); background: var(--暗); }
+.视图标签.激活 { background: var(--活); color: var(--底); font-weight: 600; }
+
+#状态行 { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+#状态点 { width: 8px; height: 8px; border-radius: 50%; background: var(--活); display: inline-block; }
+#状态点.断开 { background: var(--危险); }
+.运行时长 { color: var(--次); font-family: ui-monospace, monospace; }
+
+#顶工具 { display: flex; gap: 6px; align-items: center; }
+#搜索框 { background: var(--底); color: var(--文); border: 1px solid var(--边界); padding: 4px 10px; border-radius: 4px; width: 200px; font-size: 12px; }
+#搜索框:focus { outline: none; border-color: var(--活); }
+.工具按钮 { background: var(--暗); color: var(--文); border: 1px solid var(--边界); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.工具按钮:hover { background: var(--边界); }
+
+/* 主体（表格） */
+#主体 { flex: 1; overflow: auto; padding: 8px 0; }
+
+.表行 { display: grid; grid-template-columns: 50px 70px 110px 80px 1fr 60px 60px 60px 50px 60px 60px 70px; gap: 8px; padding: 6px 20px; align-items: start; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 12px; border-bottom: 1px solid var(--暗); }
+.表行:hover { background: var(--暗); }
+
+.表头 { position: sticky; top: 0; background: var(--面); font-weight: 600; color: var(--次); z-index: 10; padding: 8px 20px; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+
+.列-序 { color: var(--次); }
+.列-类型 { display: flex; align-items: center; }
+.列-时间 { color: var(--次); }
+.列-角色 { color: var(--活); }
+.列-摘要 { white-space: pre-wrap; word-break: break-all; }
+.列-提示词, .列-输出, .列-缓存, .列-缓存写, .列-推理, .列-总计, .列-耗时 { text-align: right; font-variant-numeric: tabular-nums; }
+.列-总计 { color: var(--活); font-weight: 600; }
+.列-推理 { color: var(--类型-message); }
+
+/* 类型标签 */
+.类型标签 { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.类型标签.system { background: var(--类型-system); color: #fff; }
+.类型标签.user { background: var(--类型-user); color: var(--底); }
+.类型标签.context { background: var(--类型-context); color: #fff; }
+.类型标签.compacted { background: var(--类型-compacted); color: #fff; }
+.类型标签.message { background: var(--类型-message); color: var(--底); }
+.类型标签.tool { background: var(--类型-tool); color: var(--底); }
+.类型标签.subtool { background: var(--类型-subtool); color: var(--底); }
+
+/* 行染色 */
+.表行.类型-message .列-角色 { color: var(--类型-message); }
+.表行.类型-tool .列-角色 { color: var(--类型-tool); }
+.表行.类型-system .列-角色 { color: var(--类型-system); }
+.表行.类型-context .列-角色 { color: var(--类型-context); }
+.表行.类型-compacted .列-角色 { color: var(--类型-compacted); }
+.表行.类型-subtool .列-角色 { color: var(--类型-subtool); }
+
+/* Turn 段头 */
+.turn-header { position: sticky; top: 36px; background: linear-gradient(90deg, var(--面) 0%, transparent 100%); padding: 8px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--边界); z-index: 5; font-size: 12px; }
+.turn-header:hover { background: linear-gradient(90deg, var(--暗) 0%, transparent 100%); }
+.turn-折叠 { color: var(--活); font-size: 14px; display: inline-block; transition: transform 0.2s; }
+.turn-header.折叠 .turn-折叠 { transform: rotate(-90deg); }
+.turn-序号 { color: var(--活); font-weight: 600; }
+.turn-id { color: var(--次); font-family: ui-monospace, monospace; font-size: 11px; }
+.turn-起始 { color: var(--次); }
+.turn-累计 { color: var(--文); margin-left: auto; }
+
+/* 思考按钮 */
+.思考按钮 { margin-left: 8px; color: var(--类型-message); cursor: pointer; font-size: 11px; user-select: none; }
+.思考按钮:hover { color: var(--活); }
+
+.思考展开 { grid-column: 4 / -1; margin-top: 6px; padding: 10px 14px; background: var(--底); border-left: 3px solid var(--类型-message); border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.6; color: var(--次); }
+
+.工具展开 { grid-column: 4 / -1; margin-top: 6px; padding: 10px 14px; background: var(--底); border-left: 3px solid var(--类型-tool); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--次); }
+.工具参数 .标签 { color: var(--活); }
+
+/* 加载 */
+.加载 { padding: 40px; text-align: center; color: var(--次); }
+
+/* 页脚 */
+#页脚 { display: flex; align-items: center; gap: 24px; padding: 8px 20px; background: var(--面); border-top: 1px solid var(--边界); font-size: 12px; color: var(--次); flex-shrink: 0; }
+.页脚链接 { color: var(--活); text-decoration: none; margin-left: auto; }
+.页脚链接:hover { text-decoration: underline; }

@@ -13,6 +13,24 @@ pub const 样式CSS: &str = include_str!("style.css");
 /// 前端逻辑——SSE 订阅 + 事件渲染 + LOD 三级展开 + 双视图切换。
 pub const 脚本JS: &str = include_str!("app.js");
 
+/// 时序·历史子页 HTML（§13.f.2a）—— 对标 Chrome Network 面板形态。
+pub const 时序HTML: &str = include_str!("trajectory.html");
+
+/// 时序·历史子页 CSS。
+pub const 时序CSS: &str = include_str!("trajectory.css");
+
+/// 时序·历史子页 JS——表格行 + Turn 分组 + 7 种事件类型 + 思考折叠。
+pub const 时序JS: &str = include_str!("trajectory.js");
+
+/// 星图·星空子页 HTML（§13.f.10.3b）—— 函数级调用图谱。
+pub const 星图HTML: &str = include_str!("starmap.html");
+
+/// 星图·星空子页 CSS。
+pub const 星图CSS: &str = include_str!("starmap.css");
+
+/// 星图·星空子页 JS——SVG 力导向布局 + 节点交互。
+pub const 星图JS: &str = include_str!("starmap.js");
+
 /// HTML MIME 类型。
 pub const HTML_MIME: &str = "text/html; charset=utf-8";
 

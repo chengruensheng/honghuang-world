@@ -14,7 +14,7 @@ use axum::Router;
 use serde::Deserialize;
 
 use crate::{
-    三源就绪, 三源就绪 as 三源, 任务树视图, 健康状态, 历史回放, 取世界快照, 建拓扑, 建时间线,
+    三源就绪, 三源就绪 as 三源, 任务树视图, 健康状态, 历史回放, 取世界快照, 建拓扑, 建时间线, 加载星图,
     建步骤流, 建直播流, 建轨迹列表, 建轨迹详情, 搜轨迹, 过滤轨迹,
 };
 
@@ -39,14 +39,21 @@ pub fn 建路由() -> Router {
     };
     Router::new()
         .route("/", get(主页))
+        .route("/trajectory.html", get(时序子页))
+        .route("/starmap.html", get(星图子页))
+        .route("/static/starmap.css", get(星图CSS))
+        .route("/static/starmap.js", get(星图JS))
         .route("/static/style.css", get(样式))
         .route("/static/app.js", get(脚本))
+        .route("/static/trajectory.css", get(时序CSS))
+        .route("/static/trajectory.js", get(时序JS))
         .route("/api/snapshot", get(快照))
         .route("/api/events/recent", get(最近事件))
         .route("/api/events/stream", get(直播))
         .route("/api/replay", get(回放))
         .route("/api/tasks", get(任务))
         .route("/api/topology", get(拓扑视图))
+        .route("/api/starmap", get(星图))
         .route("/api/lines/:id/steps", get(任务线步骤))
         .route("/api/health", get(健康))
         // §13.f.11 轨迹表格白箱端点
@@ -121,6 +128,39 @@ async fn 脚本() -> impl IntoResponse {
             (header::CACHE_CONTROL, "no-cache"),
         ],
         crate::脚本JS,
+    )
+}
+
+/// GET /trajectory.html —— §13.f 时序·历史子页（对标 Chrome Network 面板）。
+async fn 时序子页() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, crate::HTML_MIME),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        crate::时序HTML,
+    )
+}
+
+/// GET /static/trajectory.css —— 时序子页 CSS。
+async fn 时序CSS() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, crate::CSS_MIME),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        crate::时序CSS,
+    )
+}
+
+/// GET /static/trajectory.js —— 时序子页 JS（表格行 + Turn 分组 + 思考折叠）。
+async fn 时序JS() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, crate::JS_MIME),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        crate::时序JS,
     )
 }
 
@@ -342,4 +382,44 @@ mod 测试 {
         let ms = 当前毫秒();
         assert!(ms > 0);
     }
+}
+
+/// GET /api/starmap —— 函数级调用图谱·星空视图（§13.f.10.3b）。
+///
+/// 从 shihai_fu::依赖图 投影为精简节点 + 边。
+async fn 星图() -> impl IntoResponse {
+    Json(crate::加载星图())
+}
+
+/// GET /starmap.html —— §13.f.10.3b 函数级调用图谱·星空视图。
+async fn 星图子页() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, crate::HTML_MIME),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        crate::星图HTML,
+    )
+}
+
+/// GET /static/starmap.css —— 星图子页 CSS。
+async fn 星图CSS() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, crate::CSS_MIME),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        crate::星图CSS,
+    )
+}
+
+/// GET /static/starmap.js —— 星图子页 JS（SVG 力导向 + 节点交互）。
+async fn 星图JS() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, crate::JS_MIME),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        crate::星图JS,
+    )
 }

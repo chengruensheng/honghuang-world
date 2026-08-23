@@ -247,8 +247,8 @@
       previousPromptDetail: 白箱事件.previousPromptDetail || 载荷.previousPromptDetail || "",
       // outputDetail: 完整助手/工具结果原文
       outputDetail: 白箱事件.outputDetail || 载荷.outputDetail || "",
-      // thinkingDetail: 完整推理过程
-      thinkingDetail: 白箱事件.thinkingDetail || 载荷.thinkingDetail || "",
+      // thinkingDetail: 完整推理过程（§13.f.7a 兼容 思考链 字段）
+      thinkingDetail: 白箱事件.thinkingDetail || 载荷.thinkingDetail || 白箱事件.思考链 || 载荷.思考链 || "",
       // sourceBlocks: 原始消息块（按模型顺序）
       sourceBlocks: 白箱事件.sourceBlocks || 载荷.sourceBlocks || null,
       // outputBlocks: 工具结果块
@@ -732,7 +732,9 @@
         if (详情.promptDetail) 行.提示词详情 = 详情.promptDetail;
         if (详情.previousPromptDetail) 行.旧提示词详情 = 详情.previousPromptDetail;
         if (详情.outputDetail) 行.输出详情 = 详情.outputDetail;
+        // §13.f.7a 兼容 Rust 端 serde rename "思考链"
         if (详情.thinkingDetail) 行.思考详情 = 详情.thinkingDetail;
+        else if (详情.思考链) 行.思考详情 = 详情.思考链;
         if (详情.sourceBlocks) 行.源块们 = 详情.sourceBlocks;
         if (详情.outputBlocks) 行.输出块们 = 详情.outputBlocks;
         if (详情.schemaDetail) 行.模式详情 = 详情.schemaDetail;

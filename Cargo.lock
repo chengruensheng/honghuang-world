@@ -450,6 +450,7 @@ dependencies = [
  "rizhi_fu",
  "serde",
  "serde_json",
+ "shihai_fu",
  "tokio",
  "tokio-stream",
  "zhuangtai_fu",
