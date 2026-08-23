@@ -145,6 +145,7 @@ fn 扫描命名违逆(工作区: &工作区, 报告: &mut 违逆报告) {
         "道果树",
     ];
 
+    eprintln!("[DEBUG 扫描命名] 根 = {:?}", 根);
     if let Ok(entries) = fs::read_dir(根) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();

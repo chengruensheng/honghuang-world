@@ -423,6 +423,42 @@ mod 真实任务验证 {
     }
 
     /// §十三 e2e：扫描→候选→世界状态候选池 全流程（不依赖 AI token）。
+    /// §十三 真实任务：扫描项目根并把候选/违写入世界状态（写入 .上下文/状态/世界状态.jsonl）。
+    #[test]
+    fn 真实任务_扫描项目根并写入世界状态() {
+        use shihai_fu::工作区;
+        let ws = 工作区::定位();
+        let 报告 = 扫描世界(ws.根路径());
+        eprintln!("[真实任务] 扫描产出候选 {} / 违逆 {}", 报告.候选.len(), 报告.违逆.len());
+
+        let 路径 = ws.上下文目录().join("状态").join("世界状态.jsonl");
+        std::fs::create_dir_all(路径.parent().unwrap()).unwrap();
+        let mut 状态 = crate::确保世界状态初始化(&ws.上下文目录().join("状态")).unwrap_or_else(|_| {
+            serde_json::from_str(r#"{"阶段":"甲","v1已存档":false,"进入路径":"从零创建","长期记忆":"","界主想法池":[],"在途要求":[],"验收历史":[],"失败模式":[],"版本历史":[],"巡世候选池":[],"项目档案":null,"天道报告库":[]}"#).unwrap()
+        });
+
+        let 入池前 = 状态.巡世候选池.len();
+        for c in &报告.候选 {
+            if !状态.巡世候选池.iter().any(|x| x.目标 == c.目标) {
+                状态.巡世候选池.push(c.clone());
+            }
+        }
+        let ts = shihai_fu::当前毫秒();
+        状态.天道报告库.push(crate::巡世报告 {
+            id: format!("巡世-{ts}"),
+            时间: ts,
+            候选: vec![],
+            违逆: 报告.违逆.clone(),
+        });
+
+        let mut 内容 = std::fs::read_to_string(&路径).unwrap_or_default();
+        let 新行 = serde_json::to_string(&状态).unwrap();
+        内容.push_str(&format!("{}\n", 新行));
+        std::fs::write(&路径, 内容).unwrap();
+
+        eprintln!("[真实任务] 候选池: {} → {}, 法则违逆: {}", 入池前, 状态.巡世候选池.len(), 报告.违逆.len());
+    }
+
     #[test]
     fn e2e_扫描入候选池_世界状态更新() {
         let 进程id = std::process::id();

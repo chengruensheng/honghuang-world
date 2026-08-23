@@ -443,7 +443,7 @@ async fn 候选池() -> impl IntoResponse {
             return r#"{"候选们":[],"最新报告":null}"#.to_string();
         }
         let 内容 = std::fs::read_to_string(&路径).unwrap_or_default();
-        let 末条 = 内容.lines().filter(|l| !l.trim().is_empty()).last();
+        let 末条 = 内容.lines().rfind(|l| !l.trim().is_empty());
         match 末条 {
             Some(line) => {
                 // 简化提取：返回最后一行原 JSON + 额外补一个简化视图
