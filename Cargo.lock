@@ -447,6 +447,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "jiance_fu",
+ "mingling_fu",
  "rizhi_fu",
  "serde",
  "serde_json",
