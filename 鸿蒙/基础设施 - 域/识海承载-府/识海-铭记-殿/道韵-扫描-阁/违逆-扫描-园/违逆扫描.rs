@@ -272,18 +272,11 @@ fn 扫描边界违逆(工作区: &工作区, 报告: &mut 违逆报告) {
         };
 
         for (行号, line) in 内容.lines().enumerate() {
-            // 查找 use 第二段::...::殿/阁/园 模式
-            if !line.trim_start().starts_with("use ") && !line.contains("use ") {
+            // 查找 use 语句（严格 starts_with 排除字符串字面量）
+            if !line.trim_start().starts_with("use ") {
                 continue;
             }
-
-            // 简单匹配：use xxx_xxx::xxx::殿名 或 阁名 或 园名
-            // 模式：use <crate>::<中间路径>::(<殿|阁|园>-名) - 表示深链
-            // 去除行尾换行符（保险起见 strip 一次）
             let line = line.trim_end();
-            if !line.contains("use ") {
-                continue;
-            }
             let 模式: Vec<&str> = line.split("::").collect();
             // 模式 = ["use xxx_xxx", "段1", "段2", "段3"] → 段1..段N 是路径段
             let crate_段 = 模式[0].trim_start_matches("use ").trim();
