@@ -70,6 +70,10 @@ pub fn 建路由() -> Router {
         .route("/api/self-check/targets", get(自检目标们))
         // §十三.e 自检历史
         .route("/api/self-check/history", get(自检历史))
+        // §11.f 监控界面核心契约补齐：九卡片清单 + 写自己配置 + 卡片摘要
+        .route("/api/rooms", get(房间清单))
+        .route("/api/cards", get(卡片列表))
+        .route("/api/settings", axum::routing::post(写配置))
         .with_state(状态)
 }
 
@@ -206,6 +210,66 @@ async fn 回放(Query(参数): Query<回放参数>) -> impl IntoResponse {
 struct 回放参数 {
     since: Option<u64>,
     until: Option<u64>,
+}
+
+/// §11.f 九卡片摘要 —— 按 monitor.rooms.json 抓 9 府关切字段。
+async fn 卡片列表() -> impl IntoResponse {
+    let 卡片们 = crate::数据_抓取_殿::抓全部卡片();
+    axum::response::Json(serde_json::json!({ "cards": 卡片们 }))
+}
+
+/// §11.f 房间清单（九卡片）—— 读 monitor.rooms.json 配置园资产。
+async fn 房间清单() -> impl IntoResponse {
+    let 路径 = shihai_fu::工作区::定位()
+        .根路径()
+        .join("乾坤")
+        .join("呈现-域")
+        .join("监控界面-府")
+        .join("monitor.rooms.json");
+    let 内容 = std::fs::read_to_string(&路径).unwrap_or_else(|_| "{\"rooms\":[]}".to_string());
+    let v: serde_json::Value =
+        serde_json::from_str(&内容).unwrap_or(serde_json::json!({"rooms":[]}));
+    axum::response::Json(v)
+}
+
+/// §11.f 写配置（写自己配置，需 AI 令牌）。
+async fn 写配置(axum::Json(载荷): axum::Json<serde_json::Value>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    // 写命令须 AI 令牌（-t <令牌> 或环境变量 WORLD_AI_TOKEN）— §11.5.1 + §11.6.3 安全副作用
+    let 令牌 = 载荷
+        .get("令牌")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let 环境令牌 = std::env::var("WORLD_AI_TOKEN").ok();
+    if 令牌.is_empty() && 环境令牌.is_none() {
+        return axum::response::Json(serde_json::json!({
+            "error": "写命令须 AI 令牌",
+            "状态": "拒绝",
+        }))
+        .into_response();
+    }
+    let 路径 = shihai_fu::工作区::定位()
+        .根路径()
+        .join("乾坤")
+        .join("呈现-域")
+        .join("监控界面-府")
+        .join("monitor.settings.json");
+    let 新值 = serde_json::json!({
+        "间隔": 载荷.get("间隔").and_then(|v| v.as_u64()).unwrap_or(1000),
+        "主题": 载荷.get("主题").and_then(|v| v.as_str()).unwrap_or("默认"),
+        "端口": 载荷.get("端口").and_then(|v| v.as_u64()).unwrap_or(8080),
+    });
+    if let Err(_e) = std::fs::write(
+        &路径,
+        serde_json::to_string_pretty(&新值).unwrap_or_default(),
+    ) {
+        return axum::response::Json(serde_json::json!({
+            "error": "写配置失败",
+            "状态": "失败",
+        }))
+        .into_response();
+    }
+    axum::response::Json(serde_json::json!({ "状态": "ok", "配置": 新值 })).into_response()
 }
 
 /// GET /api/tasks —— 任务索引（按 _task_id 聚合）。
@@ -1085,5 +1149,54 @@ mod self_check_e2e {
             status,
             json
         );
+    }
+
+    /// §11.f /api/rooms 返回 ≥ 9 个房间（含 9 府）
+    #[tokio::test]
+    async fn rooms_返回九府配置() {
+        let router = 构造应用().await;
+        let (status, json) = get_json(&router, "/api/rooms").await;
+        assert_eq!(status, StatusCode::OK);
+        let rooms = json["rooms"].as_array().expect("rooms 应为数组");
+        assert!(rooms.len() >= 9, "rooms 应 ≥ 9 个，实际 {}", rooms.len());
+        let ids: Vec<String> = rooms
+            .iter()
+            .filter_map(|v| v["id"].as_str().map(String::from))
+            .collect();
+        assert!(ids.contains(&"shihai_fu".to_string()), "应含 shihai_fu");
+        assert!(ids.contains(&"mingling_fu".to_string()), "应含 mingling_fu");
+        assert!(ids.contains(&"zhengdao_fu".to_string()), "应含 zhengdao_fu");
+    }
+
+    /// §11.f /api/cards 返回 9 张卡片摘要
+    #[tokio::test]
+    async fn cards_返回九卡片摘要() {
+        let router = 构造应用().await;
+        let (status, json) = get_json(&router, "/api/cards").await;
+        assert_eq!(status, StatusCode::OK);
+        let cards = json["cards"].as_array().expect("cards 应为数组");
+        assert_eq!(cards.len(), 9, "cards 应有 9 项，实际 {}", cards.len());
+        let first = &cards[0];
+        assert!(first["id"].is_string(), "卡片 id 应是字符串");
+        assert!(first["摘要"].is_object(), "摘要应是对象");
+    }
+
+    /// §11.f /api/settings 无令牌被拒
+    #[tokio::test]
+    async fn settings_无令牌被拒() {
+        let router = 构造应用().await;
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/settings")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"间隔":2000}"#))
+            .unwrap();
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert!(resp.status().is_success(), "settings 应 200");
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["状态"], "拒绝", "无令牌应被拒，实际 {:?}", json);
     }
 }

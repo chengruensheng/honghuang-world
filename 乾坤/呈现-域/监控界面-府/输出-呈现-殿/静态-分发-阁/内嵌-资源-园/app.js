@@ -3681,3 +3681,37 @@
   // 暴露 状态 供外部对接
   window.轨迹状态 = 状态;
 })();
+
+
+// §11.f 九卡片视图渲染
+  function 渲染九卡片(卡片们) {
+    var 栏 = document.getElementById('九卡片栏');
+    if (!栏) return;
+    栏.innerHTML = '';
+    卡片们.forEach(function (c) {
+      var div = document.createElement('div');
+      div.className = '九卡片 ' + (c.颜色 || '绿');
+      var html = '<div class="九卡片头"><span class="九卡片名">' + escapeHtml(c.名称 || c.id) + '</span><span class="九卡片色点" aria-label="颜色"></span></div>';
+      html += '<div class="九卡片摘要">';
+      var keys = Object.keys(c.摘要 || {});
+      keys.forEach(function (k) {
+        html += '<div><span class="九卡片摘要键">' + escapeHtml(k) + '：</span><span class="九卡片摘要值">' + escapeHtml(String(c.摘要[k])) + '</span></div>';
+      });
+      html += '</div>';
+      div.innerHTML = html;
+      栏.appendChild(div);
+    });
+  }
+
+  function 加载九卡片() {
+    fetch('/api/cards').then(function (r) { return r.json(); }).then(function (d) {
+      渲染九卡片(d.cards || []);
+    }).catch(function (e) { console.warn('加载九卡片失败', e); });
+  }
+
+  var 九卡片按钮 = document.querySelector('.视图标签[data-视图="九卡片"]');
+  if (九卡片按钮) {
+    九卡片按钮.addEventListener('click', function () {
+      setTimeout(加载九卡片, 50);
+    });
+  }

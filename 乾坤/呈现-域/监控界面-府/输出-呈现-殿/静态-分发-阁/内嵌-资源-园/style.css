@@ -1867,314 +1867,40 @@ html, body {
   padding: 0 4px;
   line-height: 1;
 }
-.星系详情面板 .详情关:hover { color: var(--字); }
-.星系详情面板 .详情节 {
-  margin-bottom: 10px;
-}
-.星系详情面板 .详情节标 {
-  font-size: 10px;
-  color: var(--活);
-  letter-spacing: 1px;
-  margin-bottom: 3px;
-}
-.星系详情面板 .详情节文 {
-  font-size: 12px;
-  color: var(--字);
-  word-break: break-all;
-  white-space: pre-wrap;
-}
-.星系详情面板 .详情原文 {
-  max-height: 180px;
-  overflow-y: auto;
-  padding: 6px 8px;
-  background: rgba(13, 15, 14, 0.6);
-  border: 1px solid var(--描);
-  border-radius: 4px;
-  font-family: var(--等体);
-  font-size: 11px;
-  color: var(--次);
-}
-.星系详情面板 .详情元 {
-  font-size: 11px;
-  color: var(--弱);
-  margin-bottom: 10px;
-  font-variant-numeric: tabular-nums;
-}
 
-/* ============ 群聊视图 ============ */
-/* 群聊流：内心世界打开时由 JS 写入 margin-right = var(--内心世界宽) 收缩 */
-.群聊流 {
+/* §11.f 九卡片视图 */
+.九卡片栏 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
   height: 100%;
-  overflow-y: auto;
-  padding: 20px 28px;
-  background: var(--底);
-  transition: margin-right var(--慢) var(--曲);
 }
-.群聊流::-webkit-scrollbar { width: 6px; }
-.群聊流::-webkit-scrollbar-track { background: transparent; }
-.群聊流::-webkit-scrollbar-thumb { background: var(--描); border-radius: 3px; }
-.群聊流::-webkit-scrollbar-thumb:hover { background: var(--描-亮); }
-
-.群聊占位 {
-  text-align: center;
-  color: var(--弱);
-  padding: 40px;
-  font-size: 14px;
-}
-.群聊组 {
-  margin-bottom: 16px;
-}
-
-/* 群聊消息：单列从上往下排列，按执行顺序 */
-.群聊消息 {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  background: var(--面);
-  border: 1px solid var(--描);
-  border-radius: 10px;
-  transition: border-color var(--快) var(--曲), box-shadow var(--快) var(--曲);
-}
-.群聊消息:hover {
-  border-color: var(--描-亮);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-
-/* 头像：40px 圆形，角色色底，白色首字加粗，微阴影，hover 轻放大 */
-.消息头像 {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 700;
-  color: #ffffff;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-  transition: transform var(--快) var(--曲);
-}
-.消息头像:hover { transform: scale(1.05); }
-
-.消息体 {
-  flex: 1;
-  min-width: 0;
-}
-
-/* 消息头：角色名 + 类型标签 + 时间戳 */
-.消息头 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.消息角色 {
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-}
-.消息类型 {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 3px;
-  background: var(--面);
-  color: var(--弱);
-  letter-spacing: 0.02em;
-}
-.消息类型.类型-工具 { color: #48cae4; background: rgba(72, 202, 228, 0.12); }
-.消息类型.类型-想法 { color: #f5a623; background: rgba(245, 166, 35, 0.12); }
-.消息类型.类型-结果 { color: #13d4a4; background: rgba(19, 212, 164, 0.12); }
-.消息类型.类型-发言 { color: #b794f6; background: rgba(183, 148, 246, 0.12); }
-.消息类型.类型-验证 { color: #fc8181; background: rgba(252, 129, 129, 0.12); }
-.消息时间 {
-  font-size: 11px;
-  color: var(--弱);
-  opacity: 0.6;
-  margin-left: auto;
-  font-family: var(--等体);
-}
-.消息内容 {
-  font-size: 13px;
-  color: var(--字);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.消息底 {
-  font-size: 11px;
-  color: var(--弱);
-  margin-top: 6px;
-  font-family: var(--等体);
-}
-
-/* ============ 内心世界面板 ============ */
-/* 滑入滑出：JS 协调 hidden 与动画 class
- *   打开：先 hidden=false，强制 reflow，加 .滑入 触发 translateX(0)
- *   关闭：先加 .滑出 触发 translateX(100%)，setTimeout 300ms 后 hidden=true
- */
-.内心世界 {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: var(--内心世界宽);
-  height: 100%;
-  background: var(--面);
-  border-left: 1px solid var(--描-亮);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
-  transform: translateX(100%);
-  transition: transform var(--慢) ease-out;
-}
-.内心世界[hidden] { display: none; }
-.内心世界.滑入 { transform: translateX(0); }
-.内心世界.滑出 { transform: translateX(100%); }
-
-.内心世界头 {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--描);
-  flex-shrink: 0;
-}
-.内心世界色点 {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.内心世界角色名 {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--字);
-}
-.内心世界职能 {
-  font-size: 13px;
-  color: var(--弱);
-}
-.内心世界关闭 {
-  margin-left: auto;
-  width: 28px;
-  height: 28px;
-  background: none;
-  border: none;
-  border-radius: 4px;
-  color: var(--弱);
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--快) var(--曲), background var(--快) var(--曲);
-}
-.内心世界关闭:hover {
-  color: var(--字);
-  background: var(--面-高);
-}
-
-.内心世界体 {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-}
-.内心世界体::-webkit-scrollbar { width: 6px; }
-.内心世界体::-webkit-scrollbar-track { background: transparent; }
-.内心世界体::-webkit-scrollbar-thumb { background: var(--描); border-radius: 3px; }
-.内心世界体::-webkit-scrollbar-thumb:hover { background: var(--描-亮); }
-
-.内心占位 {
-  text-align: center;
-  color: var(--弱);
-  padding: 40px;
-}
-
-/* 内心记录：左侧 3px 类型色边，底色 var(--底) */
-.内心记录 {
-  margin-bottom: 20px;
-  padding: 14px 16px;
-  background: var(--底);
+.九卡片 {
+  border: 1px solid var(--边界, #2a3550);
   border-radius: 8px;
-  border-left: 3px solid var(--描);
+  padding: 12px 16px;
+  background: var(--面, #161b29);
 }
-.内心记录.类型-工具 { border-left-color: #48cae4; }
-.内心记录.类型-想法 { border-left-color: #f5a623; }
-.内心记录.类型-结果 { border-left-color: #13d4a4; }
-.内心记录.类型-发言 { border-left-color: #b794f6; }
-.内心记录.类型-验证 { border-left-color: #fc8181; }
-
-.内心记录头 {
+.九卡片.绿 { border-left: 4px solid #13d4a4; }
+.九卡片.黄 { border-left: 4px solid #ffa726; }
+.九卡片.红 { border-left: 4px solid #ef5350; }
+.九卡片头 {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--文字, #e8e8e8);
 }
-.内心记录类型 {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 3px;
-  background: var(--面);
+.九卡片名 { font-size: 14px; }
+.九卡片色点 {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #13d4a4;
 }
-.内心记录类型.类型-工具 { color: #48cae4; background: rgba(72, 202, 228, 0.12); }
-.内心记录类型.类型-想法 { color: #f5a623; background: rgba(245, 166, 35, 0.12); }
-.内心记录类型.类型-结果 { color: #13d4a4; background: rgba(19, 212, 164, 0.12); }
-.内心记录类型.类型-发言 { color: #b794f6; background: rgba(183, 148, 246, 0.12); }
-.内心记录类型.类型-验证 { color: #fc8181; background: rgba(252, 129, 129, 0.12); }
-.内心记录时间 {
-  font-size: 11px;
-  color: var(--弱);
-  opacity: 0.6;
-  font-family: var(--等体);
-}
-.内心记录耗时 {
-  font-size: 11px;
-  color: var(--弱);
-  margin-left: auto;
-  font-family: var(--等体);
-}
-.内心记录内容 {
-  font-size: 13px;
-  color: var(--字);
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-family: var(--等体);
-}
-.内心记录token {
-  font-size: 11px;
-  color: var(--弱);
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--描);
-  font-family: var(--等体);
-}
-
-/* 群聊消息淡入动画（SSE 新增消息） */
-.群聊消息.淡入 {
-  animation: 消息淡入 0.3s ease-out;
-}
-@keyframes 消息淡入 {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ============ 星系/星图/私聊 响应式 ============ */
-@media (max-width: 1100px) {
-  .星图身 {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr 1fr;
-  }
-  .星图面板 { grid-column: 1 / span 2; grid-row: 1; }
-}
-@media (max-width: 760px) {
-  .视图切换 { display: none; }
-  .星图顶 { grid-template-columns: repeat(2, 1fr); }
-  .星图身 { grid-template-columns: 1fr; grid-template-rows: auto; }
-  .星图面板 { grid-column: 1; grid-row: auto; }
-  .私聊侧 { display: none; }
-}
+.九卡片.黄 .九卡片色点 { background: #ffa726; }
+.九卡片.红 .九卡片色点 { background: #ef5350; }
+.九卡片摘要 { font-size: 12px; line-height: 1.6; color: var(--次文, #b0b4c0); }
+.九卡片摘要键 { color: var(--次文, #6a7090); }
+.九卡片摘要值 { color: var(--文字, #e8e8e8); font-weight: 500; }

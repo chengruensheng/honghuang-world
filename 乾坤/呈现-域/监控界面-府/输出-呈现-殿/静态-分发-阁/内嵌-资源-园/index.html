@@ -14,12 +14,13 @@
   <!-- 顶栏：世界名 + 视图切换 + 连接状态 + 工具按钮 + 本地时刻 -->
   <header id="顶栏">
     <div id="世界名">洪荒</div>
-    <!-- 四视图切换：星系（诸圣放射·日常观看）/ 星图（世界星图）/ 私聊 / 时序（历史回溯） -->
+    <!-- 视图切换：群聊 / 星图 / 私聊 / 时序·历史 / 九卡片（§11.f） -->
     <nav id="视图切换" class="视图切换" aria-label="视图切换">
       <button class="视图标签 激活" data-视图="群聊" type="button" role="radio" aria-checked="true">群聊</button>
       <button class="视图标签" data-视图="星图" type="button" role="radio" aria-checked="false">星图</button>
       <button class="视图标签" data-视图="私聊" type="button" role="radio" aria-checked="false">私聊</button>
       <button class="视图标签" data-视图="时序" type="button" role="radio" aria-checked="false">时序·历史</button>
+      <button class="视图标签" data-视图="九卡片" type="button" role="radio" aria-checked="false">九卡片</button>
     </nav>
     <div id="状态行">
       <span id="状态点" aria-hidden="true"></span>
@@ -230,6 +231,11 @@
           <div class="格位列" id="格位星云"></div>
         </div>
       </div>
+    </div>
+
+    <!-- ===== 九卡片视图：§11.f 九府关切字段 ===== -->
+    <div data-视图="九卡片" class="视图页" hidden>
+      <div class="九卡片栏" id="九卡片栏"><!-- 9 卡片由 app.js 注入 --></div>
     </div>
 
     <!-- ===== 私聊视图：界主与诸圣一对一对话（先做壳，5角色会话列表） ===== -->
