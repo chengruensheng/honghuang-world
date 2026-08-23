@@ -410,6 +410,19 @@ function 高亮(escaped, 关键词) {
   // 启动时从 URL hash 恢复折叠/搜索状态（在任何渲染前）
   从hash恢复折叠();
 
+  function 加载自检() {
+    Promise.all([
+      fetch('/api/self-check/targets').then(function (r) { return r.json(); }),
+      fetch('/api/self-check?target=' + encodeURIComponent(状态.自检目标)).then(function (r) { return r.json(); }),
+    ]).then(function (results) {
+      状态.自检目标们 = results[0].targets || [];
+      状态.自检数据 = results[1];
+      渲染自检面板();
+    }).catch(function (e) {
+      console.warn('加载自检失败', e);
+    });
+  }
+
   function 加载道韵() {
     fetch('/api/daoyun').then(function (r) { return r.json(); }).then(function (数据) {
       状态.道韵数据 = 数据;
@@ -492,8 +505,96 @@ function 高亮(escaped, 关键词) {
   // ===== 启动 =====
   加载历史();
   加载道韵();
+  加载自检();
   启动SSE();
   setInterval(更新流速, 1000);
+
+  // §十三.d 自检面板渲染
+  function 渲染自检面板() {
+    var 面板 = document.getElementById('自检面板');
+    if (!面板) return;
+    if (!状态.自检数据) {
+      面板.innerHTML = '<div class="道韵空">自检数据加载中……</div>';
+      return;
+    }
+    var d = 状态.自检数据;
+    var h = d.health || {};
+    var score = h.score || 0;
+    var 等级 = h.等级 || '红';
+    var 颜色 = 等级 === '绿' ? '#13d4a4' : (等级 === '黄' ? '#ffa726' : '#ef5350');
+
+    面板.className = '自检面板' + (状态.自检面板开 ? ' 展开' : ' 折叠');
+
+    var 目标html = '<select id="自检目标选择" class="工具按钮" style="padding:4px 8px;">';
+    状态.自检目标们.forEach(function (t) {
+      var sel = t.target === 状态.自检目标 ? ' selected' : '';
+      目标html += '<option value="' + escapeAttr(t.target) + '"' + sel + '>' + escapeHtml(t.标签) + '</option>';
+    });
+    目标html += '</select>';
+
+    var html = '<div class="道韵头">' +
+      '<span class="道韵标题">§十三.d 项目自检</span>' +
+      '<span style="display:flex;align-items:center;gap:8px;">' + 目标html +
+      '<button id="自检刷新" class="工具按钮">刷新</button></span>' +
+      '</div>';
+
+    html += '<div class="道韵段"><h4>健康度（' + escapeHtml(等级) + '）</h4>' +
+      '<div style="display:flex;gap:20px;flex-wrap:wrap;">' +
+      '<div style="font-size:36px;font-weight:700;color:' + 颜色 + ';">' + score + '</div>' +
+      '<div style="flex:1;">' +
+      '<div>候选 ' + (d.daoyun ? d.daoyun.violations : 0) + ' 条 / 法则违逆 ' + (d.daoyun ? d.daoyun.errors : 0) + ' 错误 / ' + (d.daoyun ? d.daoyun.warnings : 0) + ' 警告</div>' +
+      '<div>workspace: ' + d.workspace.files + ' 文件 / ' + d.workspace.lines + ' 行</div>' +
+      '<div>tests: ' + d.tests.count + ' 个 / docs: ' + d.docs.count + ' 个（覆盖率 ' + d.docs.coverage_ratio + '）</div>' +
+      '<div>自检目标: ' + escapeHtml(d.target.标签) + ' (' + escapeHtml(d.target.路径) + ')</div>' +
+      '</div></div></div>';
+
+    if (h.扣分项 && h.扣分项.length > 0) {
+      html += '<div class="道韵段"><h4>扣分项</h4><ul style="margin:0;padding-left:20px;color:#ef5350;">';
+      h.扣分项.forEach(function (项) {
+        html += '<li>' + escapeHtml(项) + '</li>';
+      });
+      html += '</ul></div>';
+    } else {
+      html += '<div class="道韵段"><h4>扣分项</h4><div style="color:#13d4a4;">✓ 无扣分项</div></div>';
+    }
+
+    if (d.daoyun && d.daoyun.rules && d.daoyun.rules.length > 0) {
+      html += '<div class="道韵段"><h4>法则违逆</h4>';
+      html += '<table class="道韵表"><thead><tr><th>类型</th><th>严重度</th><th>路径</th><th>内容</th></tr></thead><tbody>';
+      d.daoyun.rules.forEach(function (r) {
+        var 严重度类 = '道韵严重度-' + (r.严重度 || '');
+        html += '<tr>' +
+          '<td>' + escapeHtml(r.类型) + '</td>' +
+          '<td><span class="' + 严重度类 + '">' + escapeHtml(r.严重度) + '</span></td>' +
+          '<td class="道韵路径">' + escapeHtml(r.路径) + '</td>' +
+          '<td>' + escapeHtml(r.描述) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div class="道韵段"><h4>法则违逆</h4><div style="color:#13d4a4;">✓ 无违逆（项目干净）</div></div>';
+    }
+
+    面板.innerHTML = html;
+
+    var sel = document.getElementById('自检目标选择');
+    if (sel) {
+      sel.onchange = function () {
+        状态.自检目标 = sel.value;
+        加载自检();
+      };
+    }
+    var btn = document.getElementById('自检刷新');
+    if (btn) {
+      btn.onclick = function () { 加载自检(); };
+    }
+  }
+
+  // §十三.d 自检按钮：展开/折叠
+  document.getElementById('自检按钮').addEventListener('click', function () {
+    状态.自检面板开 = !状态.自检面板开;
+    渲染自检面板();
+  });
 })();
 
   // §十三.b 道韵面板渲染：候选池 + 法则违逆（按优先级/严重度排序）

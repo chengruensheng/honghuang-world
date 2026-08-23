@@ -126,3 +126,8 @@ mark.高亮 { background: var(--活); color: var(--底); padding: 0 2px; border-
 .道韵优先级-高, .道韵严重度-错误 { background: var(--危险, #ef5350); color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
 .道韵优先级-中, .道韵严重度-警告 { background: var(--警告, #ffa726); color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
 .道韵优先级-低 { background: var(--次); color: var(--底); padding: 1px 6px; border-radius: 3px; }
+
+/* §十三.d 自检面板 */
+.自检面板 { background: var(--面); border-bottom: 1px solid var(--边界); padding: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.自检面板.折叠 { max-height: 0; }
+.自检面板.展开 { max-height: 4000px; padding: 16px 20px; }

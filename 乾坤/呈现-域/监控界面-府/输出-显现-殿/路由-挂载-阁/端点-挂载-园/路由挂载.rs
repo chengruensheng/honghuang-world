@@ -65,9 +65,6 @@ pub fn 建路由() -> Router {
         .route("/api/trajectory/search", get(轨迹搜索))
         .route("/api/trajectory/timeline", get(轨迹时间线))
         .route("/api/trajectory/stream", get(轨迹直播))
-        // §十三.d 动态项目自检
-        .route("/api/self-check", get(自检))
-        .route("/api/self-check/targets", get(自检目标们))
         .with_state(状态)
 }
 
@@ -498,14 +495,13 @@ fn 解析目标(target: &str) -> Result<解析目标, String> {
     // 1) 尝试 crate 名匹配
     let 工作区_toml = std::fs::read_to_string(根.join("Cargo.toml")).unwrap_or_default();
     if let Some(name) = 提取crate成员(&工作区_toml, target) {
-        let crate_根 = 根.join(&name);
-        let 路径 = crate_根.to_string_lossy().to_string();
+        let crate_根 = 根.join(name);
         if crate_根.is_dir() {
             return Ok(解析目标 {
                 输入: target.to_string(),
-                路径,
+                路径: crate_根.to_string_lossy().to_string(),
                 crate名: Some(name.clone()),
-                标签: name,
+                标签: name.as_str().to_string(),
             });
         }
     }
@@ -529,20 +525,34 @@ fn 解析目标(target: &str) -> Result<解析目标, String> {
 
 /// 从工作区 Cargo.toml 提取 members 列表中匹配 name 的路径。
 fn 提取crate成员(toml_text: &str, name: &str) -> Option<String> {
-    let 搜索短 = if name.ends_with("_fu") {
-        name[..name.len() - 3].to_string()
-    } else {
-        name.to_string()
-    };
+    // 简化解析：找 members = [ ... ] 段
     if let Some(start) = toml_text.find("members") {
         let 余 = &toml_text[start..];
         if let Some(开) = 余.find('[') {
             if let Some(关) = 余[开..].find(']') {
                 let 列表 = &余[开 + 1..开 + 关];
                 for 项 in 列表.split(',') {
-                    let 项 = 项.trim().trim_matches('"').trim_matches('\'').to_string();
-                    if 项 == name || 项.ends_with(name) || 项.ends_with(&搜索短) || 项 == 搜索短 {
-                        return Some(项);
+                    let 项 = 项.trim().trim_matches('"').trim_matches('\'');
+                    if 项 == name || 项.ends_with(name) {
+                        return Some(项.to_string());
+                    }
+                }
+            }
+        }
+    }
+    // 如果 name 含 _fu 后缀且在 members 中，找匹配
+    if name.ends_with("_fu") {
+        let 短 = &name[..name.len() - 3];
+        if let Some(start) = toml_text.find("members") {
+            let 余 = &toml_text[start..];
+            if let Some(开) = 余.find('[') {
+                if let Some(关) = 余[开..].find(']') {
+                    let 列表 = &余[开 + 1..开 + 关];
+                    for 项 in 列表.split(',') {
+                        let 项 = 项.trim().trim_matches('"').trim_matches('\'');
+                        if 项.ends_with(短) || 项 == 短 {
+                            return Some(项.to_string());
+                        }
                     }
                 }
             }
