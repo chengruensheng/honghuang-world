@@ -250,6 +250,36 @@ function 高亮(escaped, 关键词) {
   }
 
   // §十三.b 道韵面板渲染：候选池 + 法则违逆（按优先级/严重度排序）
+  // §十三.e 健康度趋势图：最近 N 次自检的 score 折线图（SVG）
+  function 渲染趋势图() {
+    if (!状态.自检历史 || 状态.自检历史.length === 0) {
+      return '<div class="道韵段"><h4>健康度趋势</h4><div class="道韵空">暂无历史快照</div></div>';
+    }
+    var 快照们 = 状态.自检历史.slice().reverse();
+    var w = 600, h = 80, pad = 10;
+    var svg = '<div class="道韵段"><h4>健康度趋势（最近 ' + 快照们.length + ' 次）</h4>' +
+      '<svg width="' + w + '" height="' + h + '" style="background:var(--暗);border-radius:4px;">';
+    if (快照们.length >= 2) {
+      var step = (w - 2 * pad) / (快照们.length - 1);
+      var pathD = '';
+      快照们.forEach(function (s, i) {
+        var score = s.score || 0;
+        var x = pad + i * step;
+        var y = h - pad - (score / 100) * (h - 2 * pad);
+        var color = score >= 80 ? '#13d4a4' : (score >= 50 ? '#ffa726' : '#ef5350');
+        pathD += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+        svg += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3" fill="' + color + '"/>';
+      });
+      svg += '<path d="' + pathD + '" fill="none" stroke="#4fc3f7" stroke-width="1.5"/>';
+    } else if (快照们.length === 1) {
+      var s = 快照们[0];
+      var color = (s.score || 0) >= 80 ? '#13d4a4' : ((s.score || 0) >= 50 ? '#ffa726' : '#ef5350');
+      svg += '<circle cx="300" cy="40" r="4" fill="' + color + '"/><text x="320" y="45" fill="#e8e8e8" font-size="11">' + (s.score || 0) + ' (' + (s.target_label || s.target || 'all') + ')</text>';
+    }
+    svg += '</svg></div>';
+    return svg;
+  }
+
   function 渲染道韵面板() {
     var 面板 = document.getElementById('道韵面板');
     if (!面板) return;
@@ -399,6 +429,9 @@ function 高亮(escaped, 关键词) {
     });
   }
 
+  // 属性值转义（与 escapeHtml 同语义）
+  function escapeAttr(s) { return escapeHtml(s); }
+
   function 切折叠Turn(id) {
     if (状态.折叠Turn们.has(id)) 状态.折叠Turn们.delete(id);
     else 状态.折叠Turn们.add(id);
@@ -414,9 +447,11 @@ function 高亮(escaped, 关键词) {
     Promise.all([
       fetch('/api/self-check/targets').then(function (r) { return r.json(); }),
       fetch('/api/self-check?target=' + encodeURIComponent(状态.自检目标)).then(function (r) { return r.json(); }),
+      fetch('/api/self-check/history?限制=20').then(function (r) { return r.json(); }),
     ]).then(function (results) {
       状态.自检目标们 = results[0].targets || [];
       状态.自检数据 = results[1];
+      状态.自检历史 = (results[2] && results[2].snapshots) || [];
       渲染自检面板();
     }).catch(function (e) {
       console.warn('加载自检失败', e);
@@ -557,6 +592,8 @@ function 高亮(escaped, 关键词) {
     } else {
       html += '<div class="道韵段"><h4>扣分项</h4><div style="color:#13d4a4;">✓ 无扣分项</div></div>';
     }
+
+        html += 渲染趋势图();
 
     if (d.daoyun && d.daoyun.rules && d.daoyun.rules.length > 0) {
       html += '<div class="道韵段"><h4>法则违逆</h4>';

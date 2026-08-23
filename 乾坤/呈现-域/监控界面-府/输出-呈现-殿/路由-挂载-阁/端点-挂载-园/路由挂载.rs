@@ -68,6 +68,8 @@ pub fn 建路由() -> Router {
         // §十三.d 动态项目自检
         .route("/api/self-check", get(自检))
         .route("/api/self-check/targets", get(自检目标们))
+        // §十三.e 自检历史
+        .route("/api/self-check/history", get(自检历史))
         .with_state(状态)
 }
 
@@ -903,6 +905,26 @@ fn 追加自检历史(报告: &自检报告) -> Result<(), String> {
         .map_err(|e| format!("打开自检历史失败: {e}"))?;
     writeln!(文件, "{行}").map_err(|e| format!("写入失败: {e}"))?;
     Ok(())
+}
+
+/// GET /api/self-check/history —— 最近 N 条自检快照（趋势图用）。
+async fn 自检历史(Query(参数): Query<自检历史参数>) -> impl IntoResponse {
+    let 限制 = 参数.限制.unwrap_or(50);
+    let 路径 = shihai_fu::工作区::定位().上下文目录().join("状态").join("自检历史.jsonl");
+    let 内容 = std::fs::read_to_string(&路径).unwrap_or_default();
+    let mut 快照们: Vec<serde_json::Value> = Vec::new();
+    for line in 内容.lines().rev() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            快照们.push(v);
+        }
+    }
+    快照们.truncate(限制);
+    axum::response::Json(serde_json::json!({ "snapshots": 快照们 }))
+}
+
+#[derive(Deserialize)]
+struct 自检历史参数 {
+    限制: Option<usize>,
 }
 
 /// GET /api/self-check/targets —— 列出可选 target（workspace crates + 根）。
