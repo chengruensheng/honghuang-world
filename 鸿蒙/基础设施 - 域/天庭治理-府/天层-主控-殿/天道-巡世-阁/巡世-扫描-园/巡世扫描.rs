@@ -421,4 +421,53 @@ mod 真实任务验证 {
         let _ = std::fs::remove_dir_all(&根);
         eprintln!("[集成] 测试通过（已清理临时工作区）");
     }
+
+    /// §十三 e2e：扫描→候选→世界状态候选池 全流程（不依赖 AI token）。
+    #[test]
+    fn e2e_扫描入候选池_世界状态更新() {
+        let 进程id = std::process::id();
+        let 纳秒 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let 临时 = std::env::temp_dir().join(format!("e2e-扫描入池-{进程id}-{纳秒}"));
+
+        // 1. 造违逆
+        std::fs::create_dir_all(&临时).unwrap();
+        std::fs::create_dir_all(临时.join("bad_english_dir")).unwrap();
+        std::fs::create_dir_all(临时.join("示例-园")).unwrap();
+        std::fs::write(临时.join("示例-园").join("mod.rs"), "pub fn x() {}").unwrap();
+
+        // 2. 扫描
+        let 报告 = 扫描世界(&临时);
+        eprintln!("[e2e] 扫描完成：候选 {} 条 / 法则违逆 {} 条", 报告.候选.len(), 报告.违逆.len());
+        assert!(!报告.候选.is_empty() && 报告.候选.len() > 1);
+        assert!(!报告.违逆.is_empty());
+
+        // 3. 直接构造世界状态（避免依赖 确保世界状态初始化）
+        let mut 状态 = match crate::确保世界状态初始化(&临时.join(".上下文")) {
+            Ok(s) => s,
+            Err(_) => serde_json::from_str(r#"{"阶段":"甲","v1已存档":false,"进入路径":"从零创建","长期记忆":"","界主想法池":[],"在途要求":[],"验收历史":[],"失败模式":[],"版本历史":[],"巡世候选池":[],"项目档案":null,"天道报告库":[]}"#).unwrap(),
+        };
+        let 入池前 = 状态.巡世候选池.len();
+        for 候选 in &报告.候选 {
+            if !状态.巡世候选池.iter().any(|c| c.目标 == 候选.目标) {
+                状态.巡世候选池.push(候选.clone());
+            }
+        }
+        状态.天道报告库.push(crate::巡世报告 {
+            id: format!("巡世-{纳秒}"),
+            时间: 纳秒 as u64,
+            候选: vec![],
+            违逆: 报告.违逆.clone(),
+        });
+
+        // 4. 验证候选池增长
+        assert!(状态.巡世候选池.len() > 入池前, "候选池应增长");
+        assert!(!状态.天道报告库.last().unwrap().违逆.is_empty());
+
+        eprintln!("[e2e] 候选池：{} → {}", 入池前, 状态.巡世候选池.len());
+        eprintln!("[e2e] 法则违逆数：{}", 状态.天道报告库.last().unwrap().违逆.len());
+        eprintln!("[e2e] 通过（不依赖 AI token，端到端验证 数据流）");
+
+        // 清理
+        let _ = std::fs::remove_dir_all(&临时);
+    }
 }

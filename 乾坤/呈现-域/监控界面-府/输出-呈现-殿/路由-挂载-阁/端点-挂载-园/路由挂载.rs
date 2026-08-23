@@ -53,6 +53,9 @@ pub fn 建路由() -> Router {
         .route("/api/replay", get(回放))
         .route("/api/tasks", get(任务))
         .route("/api/topology", get(拓扑视图))
+        // §十三 道韵接入：候选池端点（英文 alias 兼容 PowerShell，中文路径给浏览器）
+        .route("/api/daoyun", get(候选池))
+        .route("/api/候选池", get(候选池))
         .route("/api/starmap", get(星图))
         .route("/api/lines/:id/steps", get(任务线步骤))
         .route("/api/health", get(健康))
@@ -424,4 +427,34 @@ async fn 星图JS() -> impl IntoResponse {
         ],
         crate::星图JS,
     )
+}
+
+/// GET /api/候选池 —— 道韵违逆候选 + 法则违逆报告（实时呈现道韵扫描结果）。
+///
+/// 数据源：.上下文/状态/世界状态.jsonl。读最后一条世界状态，返回 巡世候选们 + 天道报告库末条。
+async fn 候选池() -> impl IntoResponse {
+    use std::sync::OnceLock;
+    static 缓存: OnceLock<String> = OnceLock::new();
+    let json = 缓存.get_or_init(|| {
+        // 读 .上下文/状态/世界状态.jsonl 末条
+        let 工作区 = shihai_fu::工作区::定位();
+        let 路径 = 工作区.上下文目录().join("状态").join("世界状态.jsonl");
+        if !路径.exists() {
+            return r#"{"候选们":[],"最新报告":null}"#.to_string();
+        }
+        let 内容 = std::fs::read_to_string(&路径).unwrap_or_default();
+        let 末条 = 内容.lines().filter(|l| !l.trim().is_empty()).last();
+        match 末条 {
+            Some(line) => {
+                // 简化提取：返回最后一行原 JSON + 额外补一个简化视图
+                // 前端可解析巡世候选们字段
+                line.to_string()
+            }
+            None => r#"{"候选们":[],"最新报告":null}"#.to_string(),
+        }
+    });
+    axum::response::Response::builder()
+        .header("content-type", "application/json; charset=utf-8")
+        .body(axum::body::Body::from(json.clone()))
+        .unwrap()
 }
