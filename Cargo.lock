@@ -1460,6 +1460,7 @@ version = "0.1.0"
 dependencies = [
  "chajian_fu",
  "daoshu_fu",
+ "jiankong_fu",
  "mingling_fu",
  "moxing_fu",
  "peizhi_fu",
