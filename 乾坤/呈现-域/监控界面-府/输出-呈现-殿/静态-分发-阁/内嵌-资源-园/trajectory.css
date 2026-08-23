@@ -106,3 +106,23 @@ html, body { background: var(--底); color: var(--文); font-family: -apple-syst
 
 /* URL hash 折叠持久化提示 + 搜索高亮 */
 mark.高亮 { background: var(--活); color: var(--底); padding: 0 2px; border-radius: 2px; font-weight: 600; }
+
+/* §十三.b 道韵违逆面板 */
+.道韵面板 { background: var(--面); border-bottom: 1px solid var(--边界); padding: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.道韵面板.折叠 { max-height: 0; }
+.道韵面板.展开 { max-height: 4000px; padding: 16px 20px; }
+.道韵头 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--边界); }
+.道韵标题 { color: var(--活); font-weight: 600; font-size: 14px; }
+.道韵统计 { color: var(--次); font-size: 12px; }
+.道韵统计 b { color: var(--文); font-weight: 600; }
+.道韵段 { margin-bottom: 16px; }
+.道韵段 h4 { color: var(--次); font-size: 12px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.道韵空 { color: var(--次); font-style: italic; padding: 8px 12px; background: var(--暗); border-radius: 4px; }
+.道韵表 { width: 100%; border-collapse: collapse; font-size: 12px; }
+.道韵表 th, .道韵表 td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--暗); }
+.道韵表 th { background: var(--暗); color: var(--次); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.道韵依据 { color: var(--次); font-size: 11px; max-width: 300px; }
+.道韵路径 { font-family: ui-monospace, monospace; font-size: 11px; max-width: 350px; word-break: break-all; }
+.道韵优先级-高, .道韵严重度-错误 { background: var(--危险, #ef5350); color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+.道韵优先级-中, .道韵严重度-警告 { background: var(--警告, #ffa726); color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+.道韵优先级-低 { background: var(--次); color: var(--底); padding: 1px 6px; border-radius: 3px; }

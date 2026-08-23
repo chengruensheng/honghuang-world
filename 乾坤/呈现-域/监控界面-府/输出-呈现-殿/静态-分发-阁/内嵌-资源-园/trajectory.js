@@ -14,6 +14,8 @@
     事件源: null,         // EventSource
     流速计数: { 起始毫秒: Date.now(), 累计条数: 0 },
     类型映射: {},          // id → 类型
+    道韵数据: null,        // §十三 道韵扫描结果（候选池 + 法则违逆）
+    道韵面板开: false,    // 面板是否展开
   };
 
   // URL hash 折叠/搜索持久化：§13.f.6 沿用
@@ -247,6 +249,82 @@ function 高亮(escaped, 关键词) {
     总览.textContent = '总计 ' + 状态.事件们.length + ' 事件 / ' + turns.length + ' Turn';
   }
 
+  // §十三.b 道韵面板渲染：候选池 + 法则违逆（按优先级/严重度排序）
+  function 渲染道韵面板() {
+    var 面板 = document.getElementById('道韵面板');
+    if (!面板) return;
+    if (!状态.道韵数据) {
+      面板.innerHTML = '<div class="道韵空">道韵数据加载中……</div>';
+      return;
+    }
+    var 候选们 = (状态.道韵数据.巡世候选们 || []).slice();
+    var 违逆们 = (状态.道韵数据.天道报告库 && 状态.道韵数据.天道报告库.length > 0
+      ? (状态.道韵数据.天道报告库[状态.道韵数据.天道报告库.length - 1].违逆 || [])
+      : []);
+    var 优先级顺序 = { '高': 0, '中': 1, '低': 2 };
+    var 严重度顺序 = { '错误': 0, '警告': 1 };
+    候选们.sort(function (a, b) {
+      var pa = 优先级顺序[a.优先级] !== undefined ? 优先级顺序[a.优先级] : 3;
+      var pb = 优先级顺序[b.优先级] !== undefined ? 优先级顺序[b.优先级] : 3;
+      return pa - pb;
+    });
+    违逆们.sort(function (a, b) {
+      var sa = 严重度顺序[a.严重度] !== undefined ? 严重度顺序[a.严重度] : 2;
+      var sb = 严重度顺序[b.严重度] !== undefined ? 严重度顺序[b.严重度] : 2;
+      return sa - sb;
+    });
+    面板.className = '道韵面板' + (状态.道韵面板开 ? ' 展开' : ' 折叠');
+    var html = '<div class="道韵头">' +
+      '<span class="道韵标题">§十三 道韵违逆扫描</span>' +
+      '<span class="道韵统计">候选 <b>' + 候选们.length + '</b> 条 · 法则违逆 <b>' + 违逆们.length + '</b> 条</span>' +
+      '</div>';
+    html += '<div class="道韵段"><h4>候选池（按优先级）</h4>';
+    if (候选们.length === 0) {
+      html += '<div class="道韵空">当前无候选</div>';
+    } else {
+      html += '<table class="道韵表"><thead><tr><th>优先级</th><th>类别</th><th>目标</th><th>依据</th></tr></thead><tbody>';
+      var 显示候选 = 候选们.slice(0, 20);
+      显示候选.forEach(function (c) {
+        var 优先级类 = '道韵优先级-' + (c.优先级 || '');
+        html += '<tr>' +
+          '<td><span class="' + 优先级类 + '">' + escapeHtml(c.优先级 || '') + '</span></td>' +
+          '<td>' + escapeHtml(c.建议类别 || '') + '</td>' +
+          '<td>' + escapeHtml(c.目标 || '') + '</td>' +
+          '<td class="道韵依据">' + escapeHtml((c.依据 || '').substring(0, 80)) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      if (候选们.length > 20) {
+        html += '<div class="道韵空">…还有 ' + (候选们.length - 20) + ' 条候选未显示</div>';
+      }
+    }
+    html += '</div>';
+    html += '<div class="道韵段"><h4>法则违逆（按严重度）</h4>';
+    if (违逆们.length === 0) {
+      html += '<div class="道韵空">✓ 当前无违逆（项目干净）</div>';
+    } else {
+      html += '<table class="道韵表"><thead><tr><th>严重度</th><th>路径</th><th>内容</th><th>依据</th></tr></thead><tbody>';
+      违逆们.forEach(function (v) {
+        var 严重度类 = '道韵严重度-' + (v.严重度 || '');
+        html += '<tr>' +
+          '<td><span class="' + 严重度类 + '">' + escapeHtml(v.严重度 || '') + '</span></td>' +
+          '<td class="道韵路径">' + escapeHtml(v.路径 || '') + '</td>' +
+          '<td>' + escapeHtml(v.违逆内容 || '') + '</td>' +
+          '<td class="道韵依据">' + escapeHtml(v.依据规则 || '') + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+    面板.innerHTML = html;
+  }
+
+  // §十三.b 道韵按钮：展开/折叠
+  document.getElementById('道韵按钮').addEventListener('click', function () {
+    状态.道韵面板开 = !状态.道韵面板开;
+    渲染道韵面板();
+  });
+
   function 渲染行(事件) {
     var 行 = document.createElement('div');
     行.className = '表行 类型-' + (事件.类型 || 'context');
@@ -332,6 +410,15 @@ function 高亮(escaped, 关键词) {
   // 启动时从 URL hash 恢复折叠/搜索状态（在任何渲染前）
   从hash恢复折叠();
 
+  function 加载道韵() {
+    fetch('/api/daoyun').then(function (r) { return r.json(); }).then(function (数据) {
+      状态.道韵数据 = 数据;
+      渲染道韵面板();
+    }).catch(function (e) {
+      console.warn('加载道韵失败', e);
+    });
+  }
+
   function 加载历史() {
     fetch('/api/events/recent?n=200').then(function (r) { return r.json(); }).then(function (data) {
       if (Array.isArray(data)) {
@@ -343,6 +430,8 @@ function 高亮(escaped, 关键词) {
       表体.innerHTML = '<div class="加载">加载失败：' + e + '</div>';
     });
   }
+
+  加载道韵();
 
   function 启动SSE() {
     if (状态.事件源) 状态.事件源.close();
@@ -402,6 +491,92 @@ function 高亮(escaped, 关键词) {
 
   // ===== 启动 =====
   加载历史();
+  加载道韵();
   启动SSE();
   setInterval(更新流速, 1000);
 })();
+
+  // §十三.b 道韵面板渲染：候选池 + 法则违逆（按优先级/严重度排序）
+  function 渲染道韵面板() {
+    var 面板 = document.getElementById('道韵面板');
+    if (!面板) return;
+    if (!状态.道韵数据) {
+      面板.innerHTML = '<div class="道韵空">道韵数据加载中……</div>';
+      return;
+    }
+    var 候选们 = (状态.道韵数据.巡世候选们 || []).slice();
+    var 违逆们 = (状态.道韵数据.天道报告库 && 状态.道韵数据.天道报告库.length > 0
+      ? (状态.道韵数据.天道报告库[状态.道韵数据.天道报告库.length - 1].违逆 || [])
+      : []);
+    var 优先级顺序 = { '高': 0, '中': 1, '低': 2 };
+    var 严重度顺序 = { '错误': 0, '警告': 1 };
+    候选们.sort(function (a, b) {
+      var pa = 优先级顺序[a.优先级] !== undefined ? 优先级顺序[a.优先级] : 3;
+      var pb = 优先级顺序[b.优先级] !== undefined ? 优先级顺序[b.优先级] : 3;
+      return pa - pb;
+    });
+    违逆们.sort(function (a, b) {
+      var sa = 严重度顺序[a.严重度] !== undefined ? 严重度顺序[a.严重度] : 2;
+      var sb = 严重度顺序[b.严重度] !== undefined ? 严重度顺序[b.严重度] : 2;
+      return sa - sb;
+    });
+
+    // 面板样式
+    面板.className = '道韵面板' + (状态.道韵面板开 ? ' 展开' : ' 折叠');
+
+    // 顶部摘要
+    var html = '<div class="道韵头">' +
+      '<span class="道韵标题">§十三 道韵违逆扫描</span>' +
+      '<span class="道韵统计">候选 <b>' + 候选们.length + '</b> 条 · 法则违逆 <b>' + 违逆们.length + '</b> 条</span>' +
+      '</div>';
+
+    // 候选列表
+    html += '<div class="道韵段"><h4>候选池（按优先级）</h4>';
+    if (候选们.length === 0) {
+      html += '<div class="道韵空">当前无候选</div>';
+    } else {
+      html += '<table class="道韵表"><thead><tr><th>优先级</th><th>类别</th><th>目标</th><th>依据</th></tr></thead><tbody>';
+      var 显示候选 = 候选们.slice(0, 20); // 限 20 条
+      显示候选.forEach(function (c) {
+        var 优先级类 = '道韵优先级-' + (c.优先级 || '');
+        html += '<tr>' +
+          '<td><span class="' + 优先级类 + '">' + escapeHtml(c.优先级 || '') + '</span></td>' +
+          '<td>' + escapeHtml(c.建议类别 || '') + '</td>' +
+          '<td>' + escapeHtml(c.目标 || '') + '</td>' +
+          '<td class="道韵依据">' + escapeHtml((c.依据 || '').substring(0, 80)) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      if (候选们.length > 20) {
+        html += '<div class="道韵空">…还有 ' + (候选们.length - 20) + ' 条候选未显示</div>';
+      }
+    }
+    html += '</div>';
+
+    // 法则违逆
+    html += '<div class="道韵段"><h4>法则违逆（按严重度）</h4>';
+    if (违逆们.length === 0) {
+      html += '<div class="道韵空">✓ 当前无违逆（项目干净）</div>';
+    } else {
+      html += '<table class="道韵表"><thead><tr><th>严重度</th><th>路径</th><th>内容</th><th>依据</th></tr></thead><tbody>';
+      违逆们.forEach(function (v) {
+        var 严重度类 = '道韵严重度-' + (v.严重度 || '');
+        html += '<tr>' +
+          '<td><span class="' + 严重度类 + '">' + escapeHtml(v.严重度 || '') + '</span></td>' +
+          '<td class="道韵路径">' + escapeHtml(v.路径 || '') + '</td>' +
+          '<td>' + escapeHtml(v.违逆内容 || '') + '</td>' +
+          '<td class="道韵依据">' + escapeHtml(v.依据规则 || '') + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+
+    面板.innerHTML = html;
+  }
+
+  // §十三.b 道韵面板按钮：展开/折叠
+  document.getElementById('道韵按钮').addEventListener('click', function () {
+    状态.道韵面板开 = !状态.道韵面板开;
+    渲染道韵面板();
+  });
