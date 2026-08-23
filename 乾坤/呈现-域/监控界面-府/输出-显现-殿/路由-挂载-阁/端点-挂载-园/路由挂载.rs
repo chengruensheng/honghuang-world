@@ -53,6 +53,9 @@ pub fn 建路由() -> Router {
         .route("/api/replay", get(回放))
         .route("/api/tasks", get(任务))
         .route("/api/topology", get(拓扑视图))
+        .route("/api/self-check", get(自检))
+        .route("/api/self-check/targets", get(自检目标们))
+        .route("/api/self-check/history", get(自检历史))
         // §十三 道韵接入：候选池端点（英文 alias 兼容 PowerShell，中文路径给浏览器）
         .route("/api/daoyun", get(候选池))
         .route("/api/候选池", get(候选池))
@@ -525,9 +528,10 @@ fn 解析目标(target: &str) -> Result<解析目标, String> {
 
 /// 从工作区 Cargo.toml 提取 members 列表中匹配 name 的路径。
 fn 提取crate成员(toml_text: &str, name: &str) -> Option<String> {
+    let _搜索短_marker = ();
     // 简化解析：找 members = [ ... ] 段
     if let Some(start) = toml_text.find("members") {
-        let 余 = &toml_text[start..];
+        let 余 = toml_text.strip_prefix("members").unwrap_or(toml_text);
         if let Some(开) = 余.find('[') {
             if let Some(关) = 余[开..].find(']') {
                 let 列表 = &余[开 + 1..开 + 关];
@@ -542,7 +546,7 @@ fn 提取crate成员(toml_text: &str, name: &str) -> Option<String> {
     }
     // 如果 name 含 _fu 后缀且在 members 中，找匹配
     if name.ends_with("_fu") {
-        let 短 = &name[..name.len() - 3];
+        let 短 = name.strip_suffix("_fu").unwrap_or(name);
         if let Some(start) = toml_text.find("members") {
             let 余 = &toml_text[start..];
             if let Some(开) = 余.find('[') {
@@ -761,7 +765,7 @@ async fn 自检(Query(参数): Query<自检参数>) -> impl IntoResponse {
         }
     };
     let 根 = std::path::PathBuf::from(解析.路径.as_str());
-    let 工作区 = 工作区::新(&根);
+    let _工作区 = 工作区::新(&根);
 
     // 道韵违逆
     let 报告 = 扫描违逆_路径(&根);
@@ -799,6 +803,27 @@ async fn 自检(Query(参数): Query<自检参数>) -> impl IntoResponse {
 }
 
 /// GET /api/self-check/targets —— 列出可选 target（workspace crates + 根）。
+/// GET /api/self-check/history —— 最近 N 条自检快照（趋势图用）。
+async fn 自检历史(Query(参数): Query<自检历史参数>) -> impl IntoResponse {
+    let 限制 = 参数.限制.unwrap_or(50);
+    let 路径 = shihai_fu::工作区::定位().上下文目录().join("状态").join("自检历史.jsonl");
+    let 内容 = std::fs::read_to_string(&路径).unwrap_or_default();
+    let mut 快照们: Vec<serde_json::Value> = Vec::new();
+    for line in 内容.lines().rev() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            快照们.push(v);
+        }
+    }
+    快照们.truncate(限制);
+    axum::response::Json(serde_json::json!({ "snapshots": 快照们 }))
+}
+
+#[derive(Deserialize)]
+struct 自检历史参数 {
+    限制: Option<usize>,
+}
+
+
 async fn 自检目标们() -> impl IntoResponse {
     let 工作区 = 工作区::定位();
     let 根 = 工作区.根路径();

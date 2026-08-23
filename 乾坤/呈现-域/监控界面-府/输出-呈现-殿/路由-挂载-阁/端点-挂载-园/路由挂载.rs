@@ -225,7 +225,9 @@ async fn 拓扑视图() -> impl IntoResponse {
 /// GET /api/lines/:id/steps —— 单任务线的步骤流（§13.c 形态）。
 ///
 /// 该任务线事件 = 读全部().filter(|e| e.任务线id == id)。
-async fn 任务线步骤(axum::extract::Path(id): axum::extract::Path<String>) -> impl IntoResponse {
+async fn 任务线步骤(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> impl IntoResponse {
     let 全部 = crate::读全部();
     let 该线: Vec<_> = 全部.into_iter().filter(|e| e.任务线id == id).collect();
     let 步 = 建步骤流(&该线);
@@ -283,7 +285,9 @@ struct 轨迹列表参数 {
 /// GET /api/trajectory/event/{id} —— 单事件详情面板全量（§13.f.3 字段全集）。
 ///
 /// `id` 为事件 ts 字符串。返回该事件的完整详情，含 inputDetail/outputDetail/thinkingDetail 等。
-async fn 轨迹详情端点(axum::extract::Path(id): axum::extract::Path<String>) -> impl IntoResponse {
+async fn 轨迹详情端点(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> impl IntoResponse {
     let 全部 = crate::读全部();
     // 按 ts 字符串匹配；ts 重复时返回第一条
     let 命中 = 全部.iter().find(|e| e.ts.to_string() == id);
@@ -466,8 +470,8 @@ async fn 候选池() -> impl IntoResponse {
 // §十三.d 动态项目自检
 // ============================================================================
 
-use shihai_fu::{扫描违逆_路径, 工作区};
 use serde::Serialize;
+use shihai_fu::{工作区, 扫描违逆_路径};
 use std::path::Path as StdPath;
 
 /// 目标解析结果：把入参 target 解析为绝对路径 + crate 名（如果有）。
@@ -523,14 +527,17 @@ fn 解析目标(target: &str) -> Result<解析目标, String> {
         输入: target.to_string(),
         路径: 候选.to_string_lossy().to_string(),
         crate名,
-        标签: 候选.strip_prefix(根).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| 候选.to_string_lossy().to_string()),
+        标签: 候选
+            .strip_prefix(根)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| 候选.to_string_lossy().to_string()),
     })
 }
 
 /// 从工作区 Cargo.toml 提取 members 列表中匹配 name 的路径。
 fn 提取crate成员(toml_text: &str, name: &str) -> Option<String> {
     let 搜索短 = if name.ends_with("_fu") {
-        name[..name.len() - 3].to_string()
+        name.strip_suffix("_fu").unwrap_or(name).to_string()
     } else {
         name.to_string()
     };
@@ -541,7 +548,8 @@ fn 提取crate成员(toml_text: &str, name: &str) -> Option<String> {
                 let 列表 = &余[开 + 1..开 + 关];
                 for 项 in 列表.split(',') {
                     let 项 = 项.trim().trim_matches('"').trim_matches('\'').to_string();
-                    if 项 == name || 项.ends_with(name) || 项.ends_with(&搜索短) || 项 == 搜索短 {
+                    if 项 == name || 项.ends_with(name) || 项.ends_with(&搜索短) || 项 == 搜索短
+                    {
                         return Some(项);
                     }
                 }
@@ -554,7 +562,11 @@ fn 提取crate成员(toml_text: &str, name: &str) -> Option<String> {
 /// 从路径提取 crate 名（路径最后一段的 -XX-府 格式）。
 fn extract_crate_from_path(路径: &StdPath, 工作区根: &StdPath) -> Option<String> {
     let 名称 = 路径.file_name()?.to_string_lossy().to_string();
-    if 名称.ends_with("-府") || 名称.ends_with("-殿") || 名称.ends_with("-阁") || 名称.ends_with("-园") {
+    if 名称.ends_with("-府")
+        || 名称.ends_with("-殿")
+        || 名称.ends_with("-阁")
+        || 名称.ends_with("-园")
+    {
         // 向上找 -府 祖先
         let mut 当前 = 路径.to_path_buf();
         while 当前.starts_with(工作区根) {
@@ -564,7 +576,9 @@ fn extract_crate_from_path(路径: &StdPath, 工作区根: &StdPath) -> Option<S
                     return Some(名);
                 }
             }
-            if !当前.pop() { break; }
+            if !当前.pop() {
+                break;
+            }
         }
     }
     Some(名称)
@@ -625,23 +639,38 @@ struct Health指标 {
 }
 
 /// 递归统计目录中的 .rs 文件数和总行数。
-fn 扫workspace统计(根: &StdPath, 已访问: &mut std::collections::HashSet<std::path::PathBuf>) -> (u64, u64, u64) {
-    if !根.is_dir() { return (0, 0, 0); }
+fn 扫workspace统计(
+    根: &StdPath,
+    已访问: &mut std::collections::HashSet<std::path::PathBuf>,
+) -> (u64, u64, u64) {
+    if !根.is_dir() {
+        return (0, 0, 0);
+    }
     let canonical = match 根.canonicalize() {
         Ok(p) => p,
         Err(_) => return (0, 0, 0),
     };
-    if !已访问.insert(canonical) { return (0, 0, 0); } // 防循环
+    if !已访问.insert(canonical) {
+        return (0, 0, 0);
+    } // 防循环
 
     let mut 文件数 = 0u64;
     let mut 行数 = 0u64;
     let mut 目录数 = 0u64;
-    let Ok(entries) = std::fs::read_dir(根) else { return (0, 0, 0); };
+    let Ok(entries) = std::fs::read_dir(根) else {
+        return (0, 0, 0);
+    };
     for entry in entries.flatten() {
         let 路径 = entry.path();
         let 名 = entry.file_name().to_string_lossy().to_string();
         // 跳过构建产物/依赖/临时目录
-        if 名 == "target" || 名 == "node_modules" || 名 == "道果树" || 名 == ".git" || 名 == "临时文件夹" || 名.starts_with(".上下文") {
+        if 名 == "target"
+            || 名 == "node_modules"
+            || 名 == "道果树"
+            || 名 == ".git"
+            || 名 == "临时文件夹"
+            || 名.starts_with(".上下文")
+        {
             continue;
         }
         if 路径.is_dir() {
@@ -669,8 +698,17 @@ fn 扫代码指标(根: &StdPath) -> (Tests指标, Docs指标) {
 
     fn visit(路径: &StdPath, tests: &mut u64, cfgs: &mut u64, docs: &mut u64, publics: &mut u64) {
         if 路径.is_dir() {
-            let 名 = 路径.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-            if 名 == "target" || 名 == "node_modules" || 名 == "道果树" || 名 == ".git" || 名 == "临时文件夹" || 名.starts_with(".上下文") {
+            let 名 = 路径
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if 名 == "target"
+                || 名 == "node_modules"
+                || 名 == "道果树"
+                || 名 == ".git"
+                || 名 == "临时文件夹"
+                || 名.starts_with(".上下文")
+            {
                 return;
             }
             if let Ok(entries) = std::fs::read_dir(路径) {
@@ -680,12 +718,10 @@ fn 扫代码指标(根: &StdPath) -> (Tests指标, Docs指标) {
             }
         } else if 路径.extension().map(|e| e == "rs").unwrap_or(false) {
             if let Ok(内容) = std::fs::read_to_string(路径) {
-                
                 for line in 内容.lines() {
                     let t = line.trim_start();
                     if t.starts_with("///") || t.starts_with("//!") {
                         *docs += 1;
-
                     }
                     if line.contains("#[test]") || line.contains("#[test(") {
                         *tests += 1;
@@ -693,7 +729,12 @@ fn 扫代码指标(根: &StdPath) -> (Tests指标, Docs指标) {
                     if line.contains("#[cfg(test)]") {
                         *cfgs += 1;
                     }
-                    if line.contains("pub fn ") || line.contains("pub struct ") || line.contains("pub enum ") || line.contains("pub trait ") || line.contains("pub type ") {
+                    if line.contains("pub fn ")
+                        || line.contains("pub struct ")
+                        || line.contains("pub enum ")
+                        || line.contains("pub trait ")
+                        || line.contains("pub type ")
+                    {
                         *publics += 1;
                     }
                 }
@@ -701,14 +742,36 @@ fn 扫代码指标(根: &StdPath) -> (Tests指标, Docs指标) {
         }
     }
 
-    visit(根, &mut tests_count, &mut cfgs_count, &mut docs_count, &mut public_count);
+    visit(
+        根,
+        &mut tests_count,
+        &mut cfgs_count,
+        &mut docs_count,
+        &mut public_count,
+    );
 
-    let 比率 = if public_count > 0 { docs_count as f64 / public_count as f64 } else { 0.0 };
-    (Tests指标 { count: tests_count, cfgs: cfgs_count }, Docs指标 { count: docs_count, public_count, coverage_ratio: (比率 * 100.0).round() / 100.0 })
+    let 比率 = if public_count > 0 {
+        docs_count as f64 / public_count as f64
+    } else {
+        0.0
+    };
+    (
+        Tests指标 {
+            count: tests_count,
+            cfgs: cfgs_count,
+        },
+        Docs指标 {
+            count: docs_count,
+            public_count,
+            coverage_ratio: (比率 * 100.0).round() / 100.0,
+        },
+    )
 }
 
 /// 计算健康分（0-100）。
-fn 计算健康分(报告: &shihai_fu::违逆报告, docs_ratio: f64, tests_count: u64) -> Health指标 {
+fn 计算健康分(
+    报告: &shihai_fu::违逆报告, docs_ratio: f64, tests_count: u64
+) -> Health指标 {
     let mut 分 = 100i64;
     let mut 扣分项 = Vec::new();
     // 错误违逆 -20
@@ -726,7 +789,10 @@ fn 计算健康分(报告: &shihai_fu::违逆报告, docs_ratio: f64, tests_coun
     // 文档覆盖率 <30%
     if docs_ratio < 0.3 {
         分 -= 10;
-        扣分项.push(format!("文档覆盖率 {:.0}% < 30% -10 分", docs_ratio * 100.0));
+        扣分项.push(format!(
+            "文档覆盖率 {:.0}% < 30% -10 分",
+            docs_ratio * 100.0
+        ));
     }
     // 测试数 == 0
     if tests_count == 0 {
@@ -734,8 +800,18 @@ fn 计算健康分(报告: &shihai_fu::违逆报告, docs_ratio: f64, tests_coun
         扣分项.push("无测试 -15 分".to_string());
     }
     let 分 = 分.max(0) as u64;
-    let 等级 = if 分 >= 80 { "绿".to_string() } else if 分 >= 50 { "黄".to_string() } else { "红".to_string() };
-    Health指标 { score: 分, 等级, 扣分项 }
+    let 等级 = if 分 >= 80 {
+        "绿".to_string()
+    } else if 分 >= 50 {
+        "黄".to_string()
+    } else {
+        "红".to_string()
+    };
+    Health指标 {
+        score: 分,
+        等级,
+        扣分项,
+    }
 }
 
 /// GET /api/self-check?target=X —— 动态项目自检报告。
@@ -747,11 +823,12 @@ async fn 自检(Query(参数): Query<自检参数>) -> impl IntoResponse {
             return axum::response::Json(serde_json::json!({
                 "error": e,
                 "target": target,
-            })).into_response();
+            }))
+            .into_response();
         }
     };
     let 根 = std::path::PathBuf::from(解析.路径.as_str());
-    let 工作区 = 工作区::新(&根);
+    let _工作区 = 工作区::新(&根);
 
     // 道韵违逆
     let 报告 = 扫描违逆_路径(&根);
@@ -759,12 +836,16 @@ async fn 自检(Query(参数): Query<自检参数>) -> impl IntoResponse {
         violations: 报告.总数 as u64,
         warnings: 报告.警告数 as u64,
         errors: 报告.错误数 as u64,
-        rules: 报告.条目们.iter().map(|e| 规则条目 {
-            类型: format!("{:?}", e.类型),
-            严重度: format!("{:?}", e.严重度),
-            路径: e.路径.clone(),
-            描述: e.描述.clone(),
-        }).collect(),
+        rules: 报告
+            .条目们
+            .iter()
+            .map(|e| 规则条目 {
+                类型: format!("{:?}", e.类型),
+                严重度: format!("{:?}", e.严重度),
+                路径: e.路径.clone(),
+                描述: e.描述.clone(),
+            })
+            .collect(),
     };
 
     // workspace 统计
@@ -785,7 +866,43 @@ async fn 自检(Query(参数): Query<自检参数>) -> impl IntoResponse {
         health,
     };
 
-    axum::response::Json(serde_json::to_value(&报告_总).unwrap_or_default()).into_response()
+    let 报告_json = serde_json::to_value(&报告_总).unwrap_or_default();
+
+    // §十三.e 写入自检历史快照（append-only）
+    if let Err(_e) = 追加自检历史(&报告_总) {
+        // 写入失败不影响响应（用户能看到本次自检结果）
+    }
+
+    axum::response::Json(报告_json).into_response()
+}
+
+/// §十三.e 自检历史快照：append 到 .上下文/状态/自检历史.jsonl
+fn 追加自检历史(报告: &自检报告) -> Result<(), String> {
+    use std::io::Write;
+    let dir = shihai_fu::工作区::定位().上下文目录().join("状态");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("建状态目录失败: {e}"))?;
+    let 路径 = dir.join("自检历史.jsonl");
+    let 快照 = serde_json::json!({
+        "ts": shihai_fu::当前毫秒(),
+        "target": 报告.target.输入,
+        "target_label": 报告.target.标签,
+        "score": 报告.health.score,
+        "等级": 报告.health.等级,
+        "violations": 报告.daoyun.violations,
+        "errors": 报告.daoyun.errors,
+        "warnings": 报告.daoyun.warnings,
+        "tests_count": 报告.tests.count,
+        "files": 报告.workspace.files,
+        "lines": 报告.workspace.lines,
+    });
+    let 行 = serde_json::to_string(&快照).map_err(|e| format!("序列化失败: {e}"))?;
+    let mut 文件 = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&路径)
+        .map_err(|e| format!("打开自检历史失败: {e}"))?;
+    writeln!(文件, "{行}").map_err(|e| format!("写入失败: {e}"))?;
+    Ok(())
 }
 
 /// GET /api/self-check/targets —— 列出可选 target（workspace crates + 根）。
@@ -812,7 +929,10 @@ async fn 自检目标们() -> impl IntoResponse {
                         let 路径 = 根.join(项);
                         if 路径.is_dir() {
                             // 提取 crate 名（路径最后一段）
-                            let crate名 = 路径.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                            let crate名 = 路径
+                                .file_name()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default();
                             列表.push(serde_json::json!({
                                 "target": crate名,
                                 "标签": crate名,
@@ -832,4 +952,113 @@ async fn 自检目标们() -> impl IntoResponse {
 #[derive(Deserialize)]
 struct 自检参数 {
     target: Option<String>,
+}
+
+// ============================================================================
+// §13.d 自检端点 e2e 测试（C3 放证道）
+// ============================================================================
+
+#[cfg(test)]
+mod self_check_e2e {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    async fn 构造应用() -> axum::Router {
+        建路由()
+    }
+
+    async fn get_json(router: &axum::Router, path: &str) -> (StatusCode, serde_json::Value) {
+        let resp = router
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = resp.status();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value =
+            serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+        (status, json)
+    }
+
+    /// §13.d /api/self-check/targets 返回 ≥ 14 个目标（含 all + 13 个 crate）
+    #[tokio::test]
+    async fn self_check_targets_列表完整() {
+        let router = 构造应用().await;
+        let (status, json) = get_json(&router, "/api/self-check/targets").await;
+        assert_eq!(status, StatusCode::OK);
+        let targets = json["targets"].as_array().expect("targets 应为数组");
+        assert!(
+            targets.len() >= 14,
+            "targets 应 ≥ 14 个，实际 {}",
+            targets.len()
+        );
+        let has_all = targets.iter().any(|t| t["target"].as_str() == Some("all"));
+        assert!(has_all, "应包含 'all' target");
+        let has_mingling = targets
+            .iter()
+            .any(|t| t["target"].as_str() == Some("命令操作-府"));
+        assert!(has_mingling, "应包含 '命令操作-府' target");
+    }
+
+    /// §13.d /api/self-check?target=命令操作-府 返回健康分 100
+    #[tokio::test]
+    async fn self_check_命令操作_府_健康分100() {
+        let router = 构造应用().await;
+        let (status, json) = get_json(&router, "/api/self-check?target=命令操作-府").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(json.get("error").is_none(), "不应有 error: {:?}", json);
+        let score = json["health"]["score"].as_u64().expect("score 应为 u64");
+        assert_eq!(score, 100, "命令操作-府 应 100 分，实际 {}", score);
+        let 等级 = json["health"]["等级"].as_str().expect("等级 应为字符串");
+        assert_eq!(等级, "绿", "命令操作-府 应为绿，实际 {}", 等级);
+    }
+
+    /// §13.d /api/self-check 报告字段齐全
+    #[tokio::test]
+    async fn self_check_报告字段齐全() {
+        let router = 构造应用().await;
+        let (status, json) = get_json(&router, "/api/self-check").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(json["target"].is_object(), "target 应是对象");
+        assert!(json["daoyun"].is_object(), "daoyun 应是对象");
+        assert!(json["workspace"].is_object(), "workspace 应是对象");
+        assert!(json["tests"].is_object(), "tests 应是对象");
+        assert!(json["docs"].is_object(), "docs 应是对象");
+        assert!(json["health"].is_object(), "health 应是对象");
+        let target = &json["target"];
+        assert!(target["输入"].is_string(), "target.输入 应是字符串");
+        assert!(target["路径"].is_string(), "target.路径 应是字符串");
+        assert!(target["标签"].is_string(), "target.标签 应是字符串");
+        assert!(
+            json["workspace"]["files"].is_number(),
+            "workspace.files 应是数字"
+        );
+        assert!(
+            json["workspace"]["lines"].is_number(),
+            "workspace.lines 应是数字"
+        );
+        assert!(json["health"]["score"].is_number(), "health.score 应是数字");
+        assert!(json["health"]["等级"].is_string(), "health.等级 应是字符串");
+        assert!(
+            json["health"]["扣分项"].is_array(),
+            "health.扣分项 应是数组"
+        );
+    }
+
+    /// §13.d /api/self-check?target=bad 错误处理
+    #[tokio::test]
+    async fn self_check_无效target_返回错误() {
+        let router = 构造应用().await;
+        let (status, json) = get_json(&router, "/api/self-check?target=不存在的crate名xyz").await;
+        assert!(
+            json.get("error").is_some() || status.is_client_error() || status.is_server_error(),
+            "无效 target 应有错误响应，实际 status={} json={:?}",
+            status,
+            json
+        );
+    }
 }

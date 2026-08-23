@@ -429,7 +429,11 @@ mod 真实任务验证 {
         use shihai_fu::工作区;
         let ws = 工作区::定位();
         let 报告 = 扫描世界(ws.根路径());
-        eprintln!("[真实任务] 扫描产出候选 {} / 违逆 {}", 报告.候选.len(), 报告.违逆.len());
+        eprintln!(
+            "[真实任务] 扫描产出候选 {} / 违逆 {}",
+            报告.候选.len(),
+            报告.违逆.len()
+        );
 
         let 路径 = ws.上下文目录().join("状态").join("世界状态.jsonl");
         std::fs::create_dir_all(路径.parent().unwrap()).unwrap();
@@ -456,13 +460,21 @@ mod 真实任务验证 {
         内容.push_str(&format!("{}\n", 新行));
         std::fs::write(&路径, 内容).unwrap();
 
-        eprintln!("[真实任务] 候选池: {} → {}, 法则违逆: {}", 入池前, 状态.巡世候选池.len(), 报告.违逆.len());
+        eprintln!(
+            "[真实任务] 候选池: {} → {}, 法则违逆: {}",
+            入池前,
+            状态.巡世候选池.len(),
+            报告.违逆.len()
+        );
     }
 
     #[test]
     fn e2e_扫描入候选池_世界状态更新() {
         let 进程id = std::process::id();
-        let 纳秒 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let 纳秒 = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let 临时 = std::env::temp_dir().join(format!("e2e-扫描入池-{进程id}-{纳秒}"));
 
         // 1. 造违逆
@@ -473,7 +485,11 @@ mod 真实任务验证 {
 
         // 2. 扫描
         let 报告 = 扫描世界(&临时);
-        eprintln!("[e2e] 扫描完成：候选 {} 条 / 法则违逆 {} 条", 报告.候选.len(), 报告.违逆.len());
+        eprintln!(
+            "[e2e] 扫描完成：候选 {} 条 / 法则违逆 {} 条",
+            报告.候选.len(),
+            报告.违逆.len()
+        );
         assert!(!报告.候选.is_empty() && 报告.候选.len() > 1);
         assert!(!报告.违逆.is_empty());
 
@@ -500,7 +516,10 @@ mod 真实任务验证 {
         assert!(!状态.天道报告库.last().unwrap().违逆.is_empty());
 
         eprintln!("[e2e] 候选池：{} → {}", 入池前, 状态.巡世候选池.len());
-        eprintln!("[e2e] 法则违逆数：{}", 状态.天道报告库.last().unwrap().违逆.len());
+        eprintln!(
+            "[e2e] 法则违逆数：{}",
+            状态.天道报告库.last().unwrap().违逆.len()
+        );
         eprintln!("[e2e] 通过（不依赖 AI token，端到端验证 数据流）");
 
         // 清理

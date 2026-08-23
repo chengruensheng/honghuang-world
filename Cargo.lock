@@ -453,6 +453,7 @@ dependencies = [
  "shihai_fu",
  "tokio",
  "tokio-stream",
+ "tower",
  "zhuangtai_fu",
 ]
 
