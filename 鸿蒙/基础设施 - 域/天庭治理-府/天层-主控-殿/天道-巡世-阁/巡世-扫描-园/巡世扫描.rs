@@ -370,7 +370,8 @@ mod 真实任务验证 {
     /// 输出格式：候选数/违逆数 + 前 N 条候选与违逆详情，便于人工核对。
     #[test]
     fn 真实任务_扫描当前项目_产出道韵候选与法则违逆() {
-        let 报告 = 扫描世界(Path::new("."));
+        // 直接传项目根，绕过 cwd 锚点问题
+        let 报告 = 扫描世界(Path::new(r"D:\洪荒 - 世界"));
         eprintln!("\n===== 真实任务：扫描当前项目 =====");
         eprintln!("候选数: {}", 报告.候选.len());
         eprintln!("法则违逆数: {}", 报告.违逆.len());
@@ -386,5 +387,38 @@ mod 真实任务验证 {
         // 真实任务允许 0 候选 0 违逆（项目干净），不强制断言
         assert!(报告.候选.len() < 10000, "候选数应合理");
         assert!(报告.违逆.len() < 10000, "法则违逆数应合理");
+    }
+
+    /// §十三 集成验证：临时工作区造违逆 → 扫描 → 检测到候选 + 法则违逆。
+    /// 不污染项目根，测试完清理临时目录。
+    #[test]
+    fn 集成_临时工作区_造违逆扫描可捕() {
+        let 进程id = std::process::id();
+        let 纳秒 = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let 根 = std::env::temp_dir().join(format!("xunshi-集成-{进程id}-{纳秒}"));
+        std::fs::create_dir_all(&根).unwrap();
+
+        // 故意造违逆：英文目录 + 园内 .rs
+        std::fs::create_dir_all(根.join("bad_name_dir")).unwrap();
+        std::fs::create_dir_all(根.join("示例-园")).unwrap();
+        std::fs::write(根.join("示例-园").join("mod.rs"), "pub fn x() {}").unwrap();
+
+        let 报告 = 扫描世界(&根);
+        eprintln!("\n[集成] 临时工作区 {:?} 扫描结果:", 根);
+        eprintln!("[集成]   候选数: {}", 报告.候选.len());
+        eprintln!("[集成]   法则违逆数: {}", 报告.违逆.len());
+
+        // 验证：bad_name_dir 应被检测为命名违逆 → 候选（警告级=中优先级）
+        let 有命名候选 = 报告.候选.iter().any(|c| c.依据.contains("bad_name_dir"));
+        let 有命名违逆 = 报告.违逆.iter().any(|v| v.路径.contains("bad_name_dir"));
+        assert!(有命名候选, "应检测到 bad_name_dir 命名违逆候选");
+        assert!(有命名违逆, "应包含 bad_name_dir 法则违逆");
+
+        // 清理
+        let _ = std::fs::remove_dir_all(&根);
+        eprintln!("[集成] 测试通过（已清理临时工作区）");
     }
 }
