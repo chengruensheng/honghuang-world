@@ -16,7 +16,53 @@
     类型映射: {},          // id → 类型
   };
 
-  // ===== 7 种事件类型派生（§13.f.8）=====
+  // URL hash 折叠/搜索持久化：§13.f.6 沿用
+  // 格式：#trajectory?turn=TL-001,TL-002&msg=id-abc,id-xyz&search=关键词
+  function 保存折叠到hash() {
+    try {
+      var turns = Array.from(状态.折叠Turn们).join(',');
+      var msgs = Array.from(状态.折叠消息们).join(',');
+      var parts = [];
+      if (turns) parts.push('turn=' + turns);
+      if (msgs) parts.push('msg=' + msgs);
+      if (状态.搜索关键词) parts.push('search=' + encodeURIComponent(状态.搜索关键词));
+      var hash = parts.length ? '#trajectory?' + parts.join('&') : '#trajectory';
+      if (location.hash !== hash) history.replaceState(null, '', hash);
+    } catch (e) { console.warn('hash 持久化失败', e); }
+  }
+
+  function 从hash恢复折叠() {
+    try {
+      var hash = location.hash;
+      if (!hash.startsWith('#trajectory')) return;
+      var query = hash.split('?')[1] || '';
+      if (!query) return;
+      query.split('&').forEach(function (kv) {
+        var i = kv.indexOf('=');
+        if (i < 0) return;
+        var k = kv.substring(0, i);
+        var v = decodeURIComponent(kv.substring(i + 1) || '');
+        if (k === 'turn') v.split(',').forEach(function (t) { if (t) 状态.折叠Turn们.add(t); });
+        else if (k === 'msg') v.split(',').forEach(function (m) { if (m) 状态.折叠消息们.add(m); });
+        else if (k === 'search') {
+          状态.搜索关键词 = v;
+          var sb = document.getElementById('搜索框');
+          if (sb) sb.value = v;
+        }
+      });
+    } catch (e) { console.warn('hash 恢复失败', e); }
+  }
+
+  // 搜索高亮：转义 HTML + 包高亮标签
+function 高亮(escaped, 关键词) {
+  if (!关键词) return escaped;
+  try {
+    var kw = 关键词.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var re = new RegExp('(' + kw + ')', 'gi');
+    return escaped.replace(re, '<mark class="高亮">$1</mark>');
+  } catch (e) { return escaped; }
+}
+// ===== 7 种事件类型派生（§13.f.8）=====
   function 派生类型(事件) {
     var 源 = (事件 && 事件.源) || '';
     var 动作 = (事件 && 事件.动作) || '';
@@ -208,6 +254,7 @@
 
     var token = 事件.token || {};
     var 摘要 = 取摘要(事件);
+    摘要 = 高亮(摘要, 状态.搜索关键词);
     var 思考 = 事件.思考链 || '';
     var 思考长 = 思考.length;
     var 折叠消息 = 状态.折叠消息们.has(行.dataset.id);
@@ -241,6 +288,7 @@
         } else {
           状态.折叠消息们.add(行.dataset.id);
         }
+        保存折叠到hash();
         渲染全部();
       });
       行.querySelector('.列-摘要').appendChild(按钮);
@@ -248,7 +296,8 @@
       if (!折叠消息) {
         var 思考区 = document.createElement('div');
         思考区.className = '思考展开';
-        思考区.textContent = 思考;
+        // 高亮（设 innerHTML 而不是 textContent）
+        思考区.innerHTML = 高亮(escapeHtml(思考), 状态.搜索关键词);
         行.appendChild(思考区);
       }
     }
@@ -275,10 +324,14 @@
   function 切折叠Turn(id) {
     if (状态.折叠Turn们.has(id)) 状态.折叠Turn们.delete(id);
     else 状态.折叠Turn们.add(id);
+    保存折叠到hash();
     渲染全部();
   }
 
   // ===== 数据加载 =====
+  // 启动时从 URL hash 恢复折叠/搜索状态（在任何渲染前）
+  从hash恢复折叠();
+
   function 加载历史() {
     fetch('/api/events/recent?n=200').then(function (r) { return r.json(); }).then(function (data) {
       if (Array.isArray(data)) {
@@ -330,16 +383,20 @@
   // ===== 折叠全部/展开全部 =====
   document.getElementById('全部折叠').addEventListener('click', function () {
     状态.折叠Turn们 = new Set(分Turn们(状态.事件们).map(function (t) { return t.id; }));
+    保存折叠到hash();
     渲染全部();
   });
   document.getElementById('全部展开').addEventListener('click', function () {
     状态.折叠Turn们 = new Set();
+    状态.折叠消息们 = new Set();
+    保存折叠到hash();
     渲染全部();
   });
 
   // ===== 搜索 =====
   document.getElementById('搜索框').addEventListener('input', function (e) {
     状态.搜索关键词 = e.target.value;
+    保存折叠到hash();
     渲染全部();
   });
 

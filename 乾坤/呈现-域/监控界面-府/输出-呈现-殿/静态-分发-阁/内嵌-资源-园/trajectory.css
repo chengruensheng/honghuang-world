@@ -103,3 +103,6 @@ html, body { background: var(--底); color: var(--文); font-family: -apple-syst
 #页脚 { display: flex; align-items: center; gap: 24px; padding: 8px 20px; background: var(--面); border-top: 1px solid var(--边界); font-size: 12px; color: var(--次); flex-shrink: 0; }
 .页脚链接 { color: var(--活); text-decoration: none; margin-left: auto; }
 .页脚链接:hover { text-decoration: underline; }
+
+/* URL hash 折叠持久化提示 + 搜索高亮 */
+mark.高亮 { background: var(--活); color: var(--底); padding: 0 2px; border-radius: 2px; font-weight: 600; }

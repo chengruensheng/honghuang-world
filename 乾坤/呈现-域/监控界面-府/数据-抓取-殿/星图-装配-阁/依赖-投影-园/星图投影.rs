@@ -41,7 +41,10 @@ pub fn 投影星图(图: &依赖图) -> 星图 {
     for (i, 档) in 图.档案们.iter().enumerate() {
         let id = format!("{}::{}", 档.模块, 档.符号);
         let crate_名 = crate_名(&档.文件);
-        let 类型 = if 档.签名.starts_with("pub fn ") || 档.签名.starts_with("fn ") || 档.签名.starts_with("pub async fn ") {
+        let 类型 = if 档.签名.starts_with("pub fn ")
+            || 档.签名.starts_with("fn ")
+            || 档.签名.starts_with("pub async fn ")
+        {
             "fn".to_string()
         } else {
             "type".to_string()
@@ -84,7 +87,12 @@ pub fn 投影星图(图: &依赖图) -> 星图 {
 
     let 节点数 = 节点们.len();
     let 边数 = 边们.len();
-    星图 { 节点们, 边们, 节点数, 边数 }
+    星图 {
+        节点们,
+        边们,
+        节点数,
+        边数,
+    }
 }
 
 pub fn 加载星图() -> 星图 {
@@ -119,7 +127,11 @@ fn 解析被调用(波及: &str) -> Option<String> {
         let 末尾斜杠 = 波及.rfind('/').map(|i| i + 1).unwrap_or(0);
         let basename = &波及[末尾斜杠..];
         let 去扩展 = basename.strip_suffix(".rs").unwrap_or(basename);
-        if 去扩展.is_empty() { None } else { Some(去扩展.to_string()) }
+        if 去扩展.is_empty() {
+            None
+        } else {
+            Some(去扩展.to_string())
+        }
     } else {
         // 既无 :: 也非 .rs 文件 → 不是有效符号
         None
@@ -149,13 +161,19 @@ mod 测试 {
 
     #[test]
     fn crate_名_提取() {
-        assert_eq!(crate_名("鸿蒙/基础设施 - 域/识海承载-府/入口.rs"), "识海承载-府");
+        assert_eq!(
+            crate_名("鸿蒙/基础设施 - 域/识海承载-府/入口.rs"),
+            "识海承载-府"
+        );
         assert_eq!(crate_名("乾坤/呈现-域/命令操作-府/入口.rs"), "命令操作-府");
     }
 
     #[test]
     fn 解析被调用_取末尾符号() {
-        assert_eq!(解析被调用("crate::module::Symbol"), Some("Symbol".to_string()));
+        assert_eq!(
+            解析被调用("crate::module::Symbol"),
+            Some("Symbol".to_string())
+        );
         assert_eq!(解析被调用("a::b::c::Foo"), Some("Foo".to_string()));
         assert_eq!(解析被调用("no_colon"), None);
     }

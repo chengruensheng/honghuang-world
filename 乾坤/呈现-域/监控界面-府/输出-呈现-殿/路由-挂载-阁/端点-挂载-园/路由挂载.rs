@@ -14,8 +14,8 @@ use axum::Router;
 use serde::Deserialize;
 
 use crate::{
-    三源就绪, 三源就绪 as 三源, 任务树视图, 健康状态, 历史回放, 取世界快照, 建拓扑, 建时间线, 加载星图,
-    建步骤流, 建直播流, 建轨迹列表, 建轨迹详情, 搜轨迹, 过滤轨迹,
+    三源就绪, 三源就绪 as 三源, 任务树视图, 健康状态, 历史回放, 取世界快照, 建拓扑,
+    建时间线, 建步骤流, 建直播流, 建轨迹列表, 建轨迹详情, 搜轨迹, 过滤轨迹,
 };
 
 /// 共享状态——启动时刻（毫秒），经 axum State 注入各 handler。
@@ -360,6 +360,7 @@ async fn 轨迹直播() -> impl IntoResponse {
 
 // 抑制未使用警告——三源类型仅在健康检查中通过 三源就绪() 间接使用
 #[allow(dead_code)]
+#[allow(clippy::items_after_test_module)]
 fn _三源类型引用() -> 三源 {
     三源 {
         事件流: false,
@@ -369,6 +370,7 @@ fn _三源类型引用() -> 三源 {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod 测试 {
     use super::*;
 
