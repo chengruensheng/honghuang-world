@@ -16,6 +16,7 @@
     类型映射: {},          // id → 类型
     道韵数据: null,        // §十三 道韵扫描结果（候选池 + 法则违逆）
     道韵面板开: false,    // 面板是否展开
+    自检告警: null,       // §十五 检测自检历史趋势告警
   };
 
   // URL hash 折叠/搜索持久化：§13.f.6 沿用
@@ -452,10 +453,34 @@ function 高亮(escaped, 关键词) {
       状态.自检目标们 = results[0].targets || [];
       状态.自检数据 = results[1];
       状态.自检历史 = (results[2] && results[2].snapshots) || [];
+      检测自检趋势();
       渲染自检面板();
     }).catch(function (e) {
       console.warn('加载自检失败', e);
     });
+  }
+
+  // §15 道韵自检守护趋势告警：最近 2 个快照 score 对比，下降 ≥5 或当前 < 80 时产生告警
+  function 检测自检趋势() {
+    if (状态.自检历史.length < 2) {
+      状态.自检告警 = null;
+      return;
+    }
+    var 最新 = 状态.自检历史[0];
+    var 上次 = 状态.自检历史[1];
+    var 降幅 = 上次.score - 最新.score;
+    if (降幅 >= 5 || 最新.score < 80) {
+      状态.自检告警 = {
+        类别: 降幅 >= 10 ? '重' : '警',
+        score: 最新.score,
+        降幅: 降幅,
+        target: 最新.target_label,
+        ts: 最新.ts,
+        信息: 降幅 >= 5 ? 最新.score + ' ↓ ' + 降幅 + ' 分（趋势下降）' : 最新.score + ' 低于阈值 80',
+      };
+    } else {
+      状态.自检告警 = null;
+    }
   }
 
   function 加载道韵() {
@@ -582,6 +607,12 @@ function 高亮(escaped, 关键词) {
       '<div>tests: ' + d.tests.count + ' 个 / docs: ' + d.docs.count + ' 个（覆盖率 ' + d.docs.coverage_ratio + '）</div>' +
       '<div>自检目标: ' + escapeHtml(d.target.标签) + ' (' + escapeHtml(d.target.路径) + ')</div>' +
       '</div></div></div>';
+
+    // §15 道韵自检守护趋势告警条
+    if (状态.自检告警) {
+      var 告警颜色 = 状态.自检告警.类别 === '重' ? '#ef5350' : '#ffa726';
+      html += '<div style="background:' + 告警颜色 + ';color:#fff;padding:8px 12px;border-radius:4px;margin-bottom:12px;">⚠ 趋势检测告警：' + escapeHtml(状态.自检告警.类别) + ' — ' + escapeHtml(状态.自检告警.信息) + '</div>';
+    }
 
     if (h.扣分项 && h.扣分项.length > 0) {
       html += '<div class="道韵段"><h4>扣分项</h4><ul style="margin:0;padding-left:20px;color:#ef5350;">';
