@@ -40,10 +40,15 @@ impl 工作区 {
         }
         if let Ok(当前) = std::env::current_dir() {
             for 目录 in 当前.ancestors() {
-                if 目录.join(上下文目录名).is_dir()
-                    || 目录.join("Cargo.toml").exists()
-                    || 目录.join("AGENTS.md").exists()
-                {
+                // §修正：按"根指示强度"由强到弱匹配
+                // .上下文（最强，只在项目根）和 AGENTS.md（也在根）优先于 Cargo.toml（每个子 crate 都有）
+                if 目录.join(上下文目录名).is_dir() || 目录.join("AGENTS.md").exists() {
+                    return 工作区::新(目录);
+                }
+            }
+            // 没找到 .上下文/AGENTS.md，回退到最近的 Cargo.toml（兼容单 crate 项目）
+            for 目录 in 当前.ancestors() {
+                if 目录.join("Cargo.toml").exists() {
                     return 工作区::新(目录);
                 }
             }
