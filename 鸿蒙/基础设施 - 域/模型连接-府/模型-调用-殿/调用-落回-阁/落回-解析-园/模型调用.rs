@@ -141,12 +141,13 @@ pub fn 调用模型(
     let 总耗时ms = 调用起.elapsed().as_millis() as u64;
 
     let 内容 = 解析回复(&文本)?;
+    let 思考 = 提取思考链(&内容).unwrap_or_default();
     let 用量 = 解析用量(&文本);
     let 解码吞吐 = 解码吞吐量(用量.输出, 总耗时ms.saturating_sub(首token时延));
     记回复(
         角色,
         "模型连接-府::调用模型",
-        "",
+        &思考,
         &内容,
         关联,
         Some(用量附加扩展(
@@ -205,12 +206,20 @@ pub fn 调用模型带工具(
 
     let 回复 = 解析工具回复(&文本)?;
     let 用量 = 解析用量(&文本);
+    // §13.f.7a 思考链提取：从工具调用模式的回复内容（含 think）中剥离思考文本入库。
     let 概要 = 回复概要(&回复);
+    let 思考 = if let 模型回复::工具调用(ref 内容, _) = 回复 {
+        提取思考链(内容).unwrap_or_default()
+    } else if let 模型回复::文本(ref 内容) = 回复 {
+        提取思考链(内容).unwrap_or_default()
+    } else {
+        String::new()
+    };
     let 解码吞吐 = 解码吞吐量(用量.输出, 总耗时ms.saturating_sub(首token时延));
     记回复(
         角色,
         "模型连接-府::调用模型带工具",
-        "",
+        &思考,
         &概要,
         关联,
         Some(用量附加扩展(
@@ -470,6 +479,100 @@ fn 参数缺失(参数: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(修剪).is_err()
 }
 
+/// 从模型回复内容中提取 `<think>...</think>` 思考块。
+///
+/// §13.f.7a 思考链入库契约前置：调用模型 / 调用模型带工具 在 解析回复 后调本函数，
+/// 把思考文本独立出来传给 jiance_fu::记回复（替代当前空字符串）。
+///
+/// 算法：字符串字面量感知的平衡扫描（与 提取对象 同思路，跳过字符串内部），找每段
+/// `<think>...</think>` 内的文本，多段拼接返回；无任何思考块返回 None。
+pub fn 提取思考链(内容: &str) -> Option<String> {
+    let 修剪 = 内容.trim();
+    if 修剪.is_empty() {
+        return None;
+    }
+    let mut 结果们: Vec<&str> = Vec::new();
+    let mut 游标 = 0;
+    while 游标 < 修剪.len() {
+        // 找下一个 <think> 起始
+        let Some(开相对) = 修剪[游标..].find("<think>") else {
+            break;
+        };
+        let 开绝对 = 游标 + 开相对;
+        let 内容起点 = 开绝对 + "<think>".len();
+        // 找对应的 </think> 结束（字符串字面量感知的平衡扫描）
+        let 闭绝对 = match 配平思考块(&修剪[内容起点..]) {
+            Some(偏移) => 内容起点 + 偏移,
+            None => break,
+        };
+        // 提取内容并 trim
+        let 块 = 修剪[内容起点..闭绝对].trim();
+        if !块.is_empty() {
+            结果们.push(块);
+        }
+        游标 = 闭绝对 + "</think>".len();
+    }
+    if 结果们.is_empty() {
+        None
+    } else {
+        Some(结果们.join(
+            "
+
+",
+        ))
+    }
+}
+
+/// 从 `<think>` 起点开始，扫描到对应 `</think>` 结束位置（跳过字符串字面量）。
+/// 找不到匹配闭标签返回 None。
+fn 配平思考块(从开标签后: &str) -> Option<usize> {
+    let 字节们 = 从开标签后.as_bytes();
+    let mut 深度: usize = 0;
+    let mut 在字符串 = false;
+    let mut 转义 = false;
+    let mut i = 0;
+    while i < 字节们.len() {
+        let b = 字节们[i];
+        if 转义 {
+            转义 = false;
+            i += 1;
+            continue;
+        }
+        if 在字符串 {
+            match b {
+                b'\\' => 转义 = true,
+                b'"' => 在字符串 = false,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
+        // 不在字符串内：检查标签
+        // <think> 嵌套（罕见但允许）：增加深度
+        if i + 7 <= 字节们.len() && &字节们[i..i + 7] == b"<think>" {
+            深度 += 1;
+            i += 7;
+            continue;
+        }
+        // </think> 减少深度
+        if i + 8 <= 字节们.len() && &字节们[i..i + 8] == b"</think>" {
+            if 深度 == 0 {
+                // 外层闭合
+                return Some(i);
+            }
+            深度 -= 1;
+            i += 8;
+            continue;
+        }
+        // 进入字符串（双引号）
+        if b == b'"' {
+            在字符串 = true;
+        }
+        i += 1;
+    }
+    None
+}
+
 /// 从模型回复中提取 JSON：
 /// 优先取 ```json 围栏块；否则剥掉 <think>...</think> 思维链（防其内部的示例 JSON 抢先命中），再括号配平首个对象。
 /// 供 解析想法 / 读现状 等结构化落回共用（跨府经 lib 根引用，勿在各府重复实现）。
@@ -687,7 +790,7 @@ pub fn 全局提供者注册表() -> &'static std::sync::Mutex<模型提供者�
 #[cfg(test)]
 mod 测试 {
     use super::{
-        提取对象, 是瞬时故障, 最大重试次数, 解析用量, 退避间隔, 预检地址
+        提取对象, 提取思考链, 是瞬时故障, 最大重试次数, 解析用量, 退避间隔, 预检地址
     };
 
     #[test]
@@ -844,5 +947,67 @@ Wait, let me output the real JSON.</think>
         assert!(表.注销("模拟").is_some());
         assert!(表.取("模拟").is_none());
         assert!(表.注销("不存在").is_none());
+    }
+
+    // §13.f.7a 思考链提取：从模型回复剥离 <think>...</think> 块，多段拼接。
+    #[test]
+    fn 提取思考链_单段() {
+        let 内容 = "<think>推理过程</think>\n最终回复";
+        assert_eq!(提取思考链(内容), Some("推理过程".to_string()));
+    }
+
+    #[test]
+    fn 提取思考链_多段拼接() {
+        let 内容 = "<think>第一段</think>中间<think>第二段</think>回复";
+        let 思考 = 提取思考链(内容);
+        let 思考文本 = 思考.expect("应提取到思考");
+        // 两段思考都应被收集
+        assert!(思考文本.contains("第一段"));
+        assert!(思考文本.contains("第二段"));
+        // "中间"是思考外的回复，不应进思考
+        assert!(
+            !思考文本.contains("中间"),
+            "中间是思考外的回复，不应混入思考"
+        );
+    }
+
+    #[test]
+    fn 提取思考链_无思考块返回_none() {
+        assert_eq!(提取思考链("纯回复文本无思考"), None);
+    }
+
+    #[test]
+    fn 提取思考链_空字符串返回_none() {
+        assert_eq!(提取思考链(""), None);
+        assert_eq!(提取思考链("   "), None);
+    }
+
+    #[test]
+    fn 提取思考链_多行思考保留空白() {
+        let 内容 = "<think>\n第一行\n第二行\n</think>\n回复";
+        let 思考 = 提取思考链(内容).expect("应提取");
+        assert!(思考.contains("第一行"));
+        assert!(思考.contains("第二行"));
+    }
+
+    #[test]
+    fn 提取思考链_思考在末尾() {
+        let 内容 = "回复在前<think>后面是思考</think>";
+        assert_eq!(提取思考链(内容), Some("后面是思考".to_string()));
+    }
+
+    #[test]
+    fn 提取思考链_大文本不超时() {
+        let 长思考 = "x".repeat(100_000);
+        let 内容 = format!("<think>{长思考}</think>\n回复");
+        let 思考 = 提取思考链(&内容);
+        assert_eq!(思考.as_ref().map(|s| s.len()), Some(100_000));
+    }
+
+    #[test]
+    fn 提取思考链_不平衡时优雅() {
+        // <think> 但没有 </think>：不应 panic
+        let 思考 = 提取思考链("<think>只有开头没有结尾");
+        let _ = 思考;
     }
 }

@@ -23,6 +23,7 @@ fn 白箱六字段_齐备() {
         证据: String::new(),
         任务线id: String::new(),
         轮次: None,
+        思考链: None, // §13.f.7a
     };
     assert!(事件.ts > 0, "ts 必填非零");
     assert!(!事件.源.is_empty(), "源 必填非空");
@@ -43,6 +44,7 @@ fn 白箱事件_json_含中文键名() {
         证据: String::new(),
         任务线id: String::new(),
         轮次: None,
+        思考链: Some("这是思考文本".to_string()), // §13.f.7a
     };
     let json = serde_json::to_string(&事件).unwrap();
     assert!(

@@ -26,6 +26,7 @@ fn 并发构造_10路无干扰() {
                     证据: String::new(),
                     任务线id: String::new(),
                     轮次: None,
+                    思考链: None, // §13.f.7a
                 };
                 assert_eq!(事件.影响[0].字节, Some(i as u64));
                 i
@@ -60,6 +61,7 @@ fn 并发构造_token无竞争() {
                     证据: String::new(),
                     任务线id: String::new(),
                     轮次: None,
+                    思考链: None, // §13.f.7a
                 };
                 事件.token.总计
             })
@@ -93,6 +95,7 @@ fn 并发_共享Arc源字符串无竞争() {
                     证据: String::new(),
                     任务线id: String::new(),
                     轮次: None,
+                    思考链: None, // §13.f.7a
                 };
                 (事件.ts, 事件.源.clone())
             })

@@ -35,6 +35,11 @@ pub struct 白箱事件 {
     /// 轮次（从载荷.轮次提取，可空）。
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "轮次")]
     pub 轮次: Option<u64>,
+    /// 思考链（从 jiance_fu 附加.思考 还原，可空）。
+    /// §13.f.7a 思考链入库契约：模型回复中的 `<think>...</think>` 块文本。
+    /// 前端 §13.f 轨迹表格 `message` 类型行折叠渲染，折叠符号 `▶ 思考 (N 字)`。
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "思考链")]
+    pub 思考链: Option<String>,
 }
 
 /// 影响项——白箱影响清单的一条。
@@ -398,6 +403,7 @@ impl 白箱事件 {
             证据: String::new(),
             任务线id: String::new(),
             轮次: None,
+            思考链: None, // §13.f.7a 思考链默认 None，由三源归并从观测记录还原
         }
     }
 
