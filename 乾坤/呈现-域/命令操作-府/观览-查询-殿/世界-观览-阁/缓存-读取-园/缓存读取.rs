@@ -179,11 +179,8 @@ pub fn 呈现装配() -> String {
 #[cfg(test)]
 mod 测试 {
     use super::*;
+    use crate::测试设施::工作区测试锁;
     use std::path::PathBuf;
-
-    /// 本 crate 测试进程级 env 互斥锁：并行测试下 WORLD_WORKSPACE_ROOT 串行使用
-    ///（照 终裁.rs 同款模式）。
-    static 测试环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// 造临时工作区：建 状态 目录并写指定 jsonl 内容，返回工作区根。
     fn 建临时工作区(名: &str, 文件们: &[(&str, &str)]) -> PathBuf {
@@ -230,7 +227,7 @@ mod 测试 {
 
     #[test]
     fn 呈现世界状态_读取存在状态() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 根 = 建临时工作区("存在状态", &[("世界状态.jsonl", &世界状态样例())]);
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 输出 = 呈现世界状态();
@@ -244,7 +241,7 @@ mod 测试 {
 
     #[test]
     fn 呈现世界状态_文件缺失提示未初始化() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 根 = 建临时工作区("无状态", &[]);
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 输出 = 呈现世界状态();
@@ -255,7 +252,7 @@ mod 测试 {
 
     #[test]
     fn 呈现版本历史_多记录倒序展示() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 内容 = format!(
             "{}{}",
             版本记录行("v2", "第二版"),
@@ -274,7 +271,7 @@ mod 测试 {
 
     #[test]
     fn 呈现版本历史_空文件提示暂无() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 根 = 建临时工作区("空版本", &[]);
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
         let 输出 = 呈现版本历史();
@@ -285,7 +282,7 @@ mod 测试 {
 
     #[test]
     fn 版本详情_命中返回完整字段() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 内容 = 版本记录行("v1", "初始版");
         let 根 = 建临时工作区("版本命中", &[("版本.jsonl", &内容)]);
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);
@@ -299,7 +296,7 @@ mod 测试 {
 
     #[test]
     fn 版本详情_未命中提示找不到() {
-        let _锁 = 测试环境锁.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 内容 = 版本记录行("v1", "初始版");
         let 根 = 建临时工作区("版本未命中", &[("版本.jsonl", &内容)]);
         std::env::set_var("WORLD_WORKSPACE_ROOT", &根);

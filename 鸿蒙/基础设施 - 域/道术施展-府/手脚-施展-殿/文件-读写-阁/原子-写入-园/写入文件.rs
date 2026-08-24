@@ -8,7 +8,7 @@ use shihai_fu::{回滚垫, 工作区, 当前任务};
 use std::path::{Path, PathBuf};
 
 /// §B.1.5 沙箱兼容：临时目录放工作区根下（写入文件测试用）。
-#[allow(dead_code)]  // 测试用 — §B.1.5 沙箱兼容
+#[allow(dead_code)] // 测试用 — §B.1.5 沙箱兼容
 fn 工作区根() -> PathBuf {
     工作区::定位().根路径().join(".上下文")
 }
@@ -30,7 +30,10 @@ pub fn 沙箱校验(工作区根: &Path, 目标: &Path) -> Result<(), String> {
     let 目标 = std::path::Path::new(目标).components().collect::<Vec<_>>();
     let 根段 = 工作区根.components().collect::<Vec<_>>();
     if 目标.len() < 根段.len() || 目标[..根段.len()] != 根段[..] {
-        return Err(format!("沙箱拒绝：路径 {:?} 不在工作区根 {:?} 内", 目标, 根段));
+        return Err(format!(
+            "沙箱拒绝：路径 {:?} 不在工作区根 {:?} 内",
+            目标, 根段
+        ));
     }
     Ok(())
 }
@@ -82,7 +85,10 @@ mod tests {
     /// 空操作优化：文件已存在且内容相同 → 成功返回且不改写（mtime 不变）。
     #[test]
     fn 写文件_内容相同跳过() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/写文件测试-跳过-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/写文件测试-跳过-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "相同内容").unwrap();
@@ -104,7 +110,10 @@ mod tests {
     /// 内容不同 → 正常写入。
     #[test]
     fn 写文件_内容不同正常写入() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/写文件测试-写入-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/写文件测试-写入-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "旧内容").unwrap();
@@ -121,7 +130,10 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn 写文件_保持原CRLF行尾() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/写文件测试-行尾-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/写文件测试-行尾-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "旧行1\r\n旧行2\r\n").unwrap();
@@ -141,7 +153,10 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn 写文件_保持原LF行尾() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/写文件测试-行尾LF-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/写文件测试-行尾LF-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "旧行1\n旧行2\n").unwrap();

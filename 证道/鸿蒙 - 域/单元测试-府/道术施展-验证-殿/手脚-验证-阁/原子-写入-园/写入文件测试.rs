@@ -66,7 +66,12 @@ mod 测试 {
     fn 写文件_沙箱拒绝跳出工作区根() {
         let (根, _锁) = 临时工作区("写文件", "沙箱拒绝");
         // 构造一个工作区根外的绝对路径（在根的父目录）
-        let 跳出路径 = 根.parent().unwrap().parent().unwrap().join("sandbox_blocked.txt");
+        let 跳出路径 = 根
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("sandbox_blocked.txt");
         let 结果 = 写文件(跳出路径.to_str().unwrap(), "恶意");
         assert!(结果.is_err(), "跳出工作区根的绝对路径应被拒绝");
         let 错误 = 结果.unwrap_err();

@@ -1,12 +1,12 @@
 //! 增量 - 改写 - 园：把文件里第一次出现的旧文替换为新文。
 //! 写前经 回滚垫 备份旧内容：任务失败时可单文件撤销恢复。
 
+use crate::原子_写入_园::沙箱校验;
 use rizhi_fu::{debug, error, info, warn};
 use shihai_fu::{回滚垫, 工作区, 当前任务};
-use crate::原子_写入_园::沙箱校验;
 use std::path::PathBuf;
 
-#[allow(dead_code)]  // 测试用 — §B.1.5 沙箱兼容
+#[allow(dead_code)] // 测试用 — §B.1.5 沙箱兼容
 fn 工作区根() -> PathBuf {
     工作区::定位().根路径().join(".上下文")
 }
@@ -64,7 +64,10 @@ mod tests {
     /// 让 LLM 看到真实内容（2026-08-18 容错补齐）。
     #[test]
     fn 改文件_未找到时_附原文片段便于诊断() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-未找到-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/改文件测试-未找到-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "实际内容是 ABCDEF, 不含要找的子串").unwrap();
@@ -100,7 +103,10 @@ mod tests {
     /// 「找到并替换」应正常工作。
     #[test]
     fn 改文件_找到时正常替换() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-找到-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/改文件测试-找到-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "old content here, more").unwrap();
@@ -113,7 +119,10 @@ mod tests {
     /// 空操作优化：旧文==新文 → 替换结果与原文相同，跳过改写（mtime 不变）。
     #[test]
     fn 改文件_替换结果相同跳过() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-跳过-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/改文件测试-跳过-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "内容包含目标词").unwrap();
@@ -136,7 +145,10 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn 改文件_新文LF转CRLF防混合行尾() {
-        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-行尾-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(
+            ".上下文/.test-tmp/改文件测试-行尾-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "第1行\r\n目标词\r\n第3行\r\n").unwrap();

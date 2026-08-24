@@ -19,3 +19,10 @@ pub use 命令_解析_殿::*;
 pub use 权限_校验_殿::*;
 pub use 观览_查询_殿::*;
 pub use 输出_呈现_殿::*;
+
+/// crate 级测试共享锁：所有设置 WORLD_WORKSPACE_ROOT 环境变量或写入状态目录的测试共用此锁，
+/// 避免并行测试互相覆盖环境变量或并发追加同一 jsonl 文件。
+#[cfg(test)]
+pub mod 测试设施 {
+    pub static 工作区测试锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
+}

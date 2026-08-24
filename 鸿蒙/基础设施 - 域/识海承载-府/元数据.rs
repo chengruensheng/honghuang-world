@@ -13,7 +13,11 @@ pub struct 版本 {
 
 impl 版本 {
     pub const fn 新(major: u32, minor: u32, patch: u32) -> Self {
-        Self { major, minor, patch }
+        Self {
+            major,
+            minor,
+            patch,
+        }
     }
     pub fn 字符串(&self) -> String {
         format!("{}.{}.{}", self.major, self.minor, self.patch)

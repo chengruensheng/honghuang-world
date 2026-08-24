@@ -2,9 +2,9 @@
 //!
 //! 用途：测试场景用 — 内存中存记录，不落盘，测试结束即清空。
 
-use crate::记录;
 use super::工作区;
 use super::格位存储;
+use crate::记录;
 use std::sync::Mutex;
 
 /// Memory 格位存储（线程安全）
@@ -14,7 +14,9 @@ pub struct Memory格位存储 {
 
 impl Memory格位存储 {
     pub fn 新() -> Self {
-        Self { 记录们: Mutex::new(Vec::new()) }
+        Self {
+            记录们: Mutex::new(Vec::new()),
+        }
     }
     pub fn 全部记录(&self) -> Vec<记录> {
         self.记录们.lock().unwrap().clone()

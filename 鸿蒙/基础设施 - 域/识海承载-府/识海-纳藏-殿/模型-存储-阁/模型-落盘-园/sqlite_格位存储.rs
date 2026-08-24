@@ -3,9 +3,9 @@
 //! 当前为骨架：占位 trait 实现 + TODO。
 //! 后续：依赖 `rusqlite` crate + 写 .上下文/格位.db 单一文件。
 
-use crate::记录;
 use super::工作区;
 use super::格位存储;
+use crate::记录;
 
 /// Sqlite 格位存储
 pub struct Sqlite格位存储 {

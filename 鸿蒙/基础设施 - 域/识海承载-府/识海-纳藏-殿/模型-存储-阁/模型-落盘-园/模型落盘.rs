@@ -5,10 +5,14 @@ use rizhi_fu::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::Mutex;
 
 /// 上下文目录名（工作区内的记忆数据目录，源码快照时排除）。
 pub const 上下文目录名: &str = ".上下文";
+
+/// 定位缓存：(工作区, 设缓存时的 WORLD_WORKSPACE_ROOT 值)。
+/// 环境变量变化时自动重算——兼顾热路径免重复探测与测试可切换工作区。
+static 定位缓存: Mutex<Option<(工作区, Option<String>)>> = Mutex::new(None);
 
 /// §B.2.2 抽象：格位存储 trait（3 实现 Jsonl / Sqlite / Memory）。
 ///
@@ -47,13 +51,24 @@ impl 工作区 {
     }
 
     /// 定位工作区根：环境变量 → 向上探测锚点 → 当前目录。
-    /// 结果用 OnceLock 缓存：首次调用计算并固化，后续直接返回克隆（热路径免重复读环境/探测锚点）。
+    /// 缓存：首次调用计算并缓存。若 WORLD_WORKSPACE_ROOT 环境变量变化（测试切换工作区），
+    /// 下次调用自动重算——兼顾热路径免重复探测与测试可切换工作区。
     pub fn 定位() -> 工作区 {
-        static 缓存: OnceLock<工作区> = OnceLock::new();
-        缓存.get_or_init(工作区::定位_计算).clone()
+        let 当前环境 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        {
+            let 锁 = 定位缓存.lock().unwrap();
+            if let Some((已缓存, 缓存时环境)) = 锁.as_ref() {
+                if *缓存时环境 == 当前环境 {
+                    return 已缓存.clone();
+                }
+            }
+        }
+        let 新 = 工作区::定位_计算();
+        *定位缓存.lock().unwrap() = Some((新.clone(), 当前环境));
+        新
     }
 
-    /// 实际的定位计算（仅首次调用执行，由 `定位` 经 OnceLock 调度）。
+    /// 实际的定位计算（仅缓存未命中时执行，由 `定位` 调度）。
     fn 定位_计算() -> 工作区 {
         if let Ok(根) = std::env::var("WORLD_WORKSPACE_ROOT") {
             if !根.is_empty() {
@@ -429,7 +444,7 @@ where
 {
     let 内容 = match std::fs::read_to_string(路径) {
         Ok(内容) => 内容,
-        Err(_) => return Vec::new(),  // 文件不存在返空（监控/观测/状态文件 首次启动时无）
+        Err(_) => return Vec::new(), // 文件不存在返空（监控/观测/状态文件 首次启动时无）
     };
     let mut 结果 = Vec::new();
     for 行 in 内容.lines() {

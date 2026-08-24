@@ -10,10 +10,7 @@
 //! 3. 读 JSONL（容错版 读_jsonl，1000 行）
 //! 4. 沙箱校验（components 比对）
 
-use shihai_fu::
-{
-    工作区, 读_jsonl, 模型存储, 记录,
-};
+use shihai_fu::{工作区, 模型存储, 记录, 读_jsonl};
 use std::hint::black_box;
 use std::time::Instant;
 
@@ -34,7 +31,9 @@ fn 测<T>(名: &str, 次数: usize, mut f: impl FnMut() -> T) {
 fn 我的基准() {
     println!("\n=== 1. 工作区::定位（OnceLock 缓存）===");
     测("冷启动", 1, || 工作区::定位().根路径().to_path_buf());
-    测("热调用", 100_000, || black_box(工作区::定位().根路径().to_path_buf()));
+    测("热调用", 100_000, || {
+        black_box(工作区::定位().根路径().to_path_buf())
+    });
 
     println!("\n=== 2. 写记录（jsonl 追加）===");
     let dir = std::env::temp_dir().join(format!("shihai_bench_{}", std::process::id()));
@@ -43,7 +42,9 @@ fn 我的基准() {
     std::env::set_var("WORLD_WORKSPACE_ROOT", &dir);
     let 存储 = 模型存储::在工作区(&工作区::定位());
     let 记录 = 记录::新("结构", "测试内容", "测试来源", "测试录入者");
-    测("单条写记录", 1_000, || 存储.写记录(black_box(&记录)).unwrap());
+    测("单条写记录", 1_000, || {
+        存储.写记录(black_box(&记录)).unwrap()
+    });
 
     println!("\n=== 3. 读 JSONL（容错版 读_jsonl，1000 行）===");
     let 文件 = dir.join("test.jsonl");
@@ -52,7 +53,9 @@ fn 我的基准() {
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(&文件, &内容).unwrap();
-    测("1000 行读", 100, || 读_jsonl::<serde_json::Value>(black_box(&文件)).unwrap());
+    测("1000 行读", 100, || {
+        读_jsonl::<serde_json::Value>(black_box(&文件)).unwrap()
+    });
 
     println!("\n=== 4. 沙箱校验（components 比对，2 路径）===");
     use std::path::Path;

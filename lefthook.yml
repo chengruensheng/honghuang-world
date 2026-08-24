@@ -1,0 +1,15 @@
+# lefthook：git hooks 自动化
+# 用法：lefthook install
+
+pre-commit:
+  commands:
+    格式:
+      run: cargo fmt --all -- --check
+      stage_fixed: true
+    警告:
+      run: cargo clippy --workspace --all-targets -- -D warnings
+
+pre-push:
+  commands:
+    测试:
+      run: cargo test --workspace --lib

@@ -100,6 +100,7 @@ fn 是证道测试文件(路径: &Path) -> bool {
 #[cfg(test)]
 mod 测试 {
     use super::*;
+    use crate::测试设施::工作区测试锁;
     use std::env;
     use std::fs;
     use std::path::PathBuf;
@@ -179,6 +180,7 @@ mod 测试 {
 
     #[test]
     fn 呈现项目规模含四项() {
+        let _锁 = 工作区测试锁.lock().unwrap_or_else(|e| e.into_inner());
         let 目录 = 临时目录();
         fs::write(目录.join("a.rs"), "fn a() {}\n").unwrap();
         fs::write(目录.join("Cargo.toml"), "[package]\n").unwrap();

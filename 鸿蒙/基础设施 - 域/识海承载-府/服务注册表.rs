@@ -6,7 +6,14 @@
 /// 服务注册表 trait（让 chajian_fu 的 `Any + Send + Sync` 注册表有 trait 抽象）。
 pub trait 服务注册表: Send + Sync {
     /// 注册服务（按 TypeId）
-    fn 注册服务_任意(&mut self, 类型: std::any::TypeId, 实例: Box<dyn std::any::Any + Send + Sync>);
+    fn 注册服务_任意(
+        &mut self,
+        类型: std::any::TypeId,
+        实例: Box<dyn std::any::Any + Send + Sync>,
+    );
     /// 查找服务（按 TypeId）
-    fn 查找服务_任意(&self, 类型: std::any::TypeId) -> Option<Box<dyn std::any::Any + Send + Sync>>;
+    fn 查找服务_任意(
+        &self,
+        类型: std::any::TypeId,
+    ) -> Option<Box<dyn std::any::Any + Send + Sync>>;
 }

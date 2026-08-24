@@ -4,8 +4,8 @@
 //! 读取时遇 schema 错误（key 缺失 / 类型错）→ 跳过该行（不 panic），并 warn 日志。
 //! 截断修复：最后一行不完整（JSON parse fail）→ 截断文件。
 
-use std::path::Path;
 use crate::世界错误::世界错误;
+use std::path::Path;
 
 /// 读 jsonl 文件为 T — 容错：单行错跳过 + warn。
 /// 截断修复：发现末行不完整则截断（仅保留完整行）。

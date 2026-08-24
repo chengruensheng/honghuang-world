@@ -12,73 +12,78 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # ---- Job 1: 基础检查（fmt + clippy）—— 快速反馈 ----
-  lint:
-    name: fmt + clippy
-    runs-on: ubuntu-latest
+  # ── 车道 1：格式 + 警告 ── 快速反馈，3 平台 ──
+  格式与警告:
+    name: 格式 + 警告 / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.78
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: fmt
+      - name: 格式检查
         run: cargo fmt --all -- --check
-      - name: clippy (deny warnings)
+      - name: 警告检查（deny warnings）
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # ---- Job 2: 测试 + 覆盖率 ----
-  test:
-    name: test + coverage
-    runs-on: ubuntu-latest
-    needs: lint
+  # ── 车道 2：测试 ── 核心门禁，3 平台 ──
+  测试:
+    name: 测试 / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    needs: 格式与警告
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.78
-        with:
-          components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
-      - name: test (lib + 单线程)
-        run: cargo test --workspace --lib --no-fail-fast -- --test-threads=1
-      - name: 覆盖率（cargo-llvm-cov · B.3 阶段实装）
-        # 现阶段仅展示 lcov.info — 不强制阈值（B.3.5 加 ≥ 70%）
-        run: |
-          cargo install cargo-llvm-cov --locked
-          cargo llvm-cov --workspace --no-report --lcov --output-path lcov.info
-          echo "覆盖率报告：lcov.info"
-      - name: 上传 lcov 到 codecov（占位 — 后续 B.3.5 接 codecov.io）
-        if: always()
-        uses: codecov/codecov-action@v4
-        with:
-          files: lcov.info
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: 全量测试
+        run: cargo test --workspace --lib --no-fail-fast
 
-  # ---- Job 3: 文档 + README ----
-  docs:
-    name: docs check
+  # ── 车道 3：文档 ── 单平台即可 ──
+  文档:
+    name: 文档检查
     runs-on: ubuntu-latest
-    needs: lint
+    needs: 格式与警告
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.78
       - uses: Swatinem/rust-cache@v2
-      - name: cargo doc（无报错即过）
+      - name: 生成文档（无报错即过）
         run: cargo doc --workspace --no-deps
 
-  # ---- Job 4: 安全审计（B.1.9 完整实装）----
-  audit:
-    name: cargo audit + deny
+  # ── 车道 4：安全审计 ── 单平台，已知 ring CVE 待修 ──
+  安全审计:
+    name: 依赖审计
     runs-on: ubuntu-latest
-    needs: lint
-    continue-on-error: true  # 现阶段不强制通过（已知有 ring 0.17 CVE 待在线时修）
+    needs: 格式与警告
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: 安装 cargo-audit + cargo-deny
         run: |
           cargo install cargo-audit --locked
           cargo install cargo-deny --locked
-      - name: cargo audit（依赖漏洞）
+      - name: 漏洞审计
         run: cargo audit
-      - name: cargo deny（许可协议 + 重复依赖 + 源码）
+      - name: 依赖检查（许可协议 + 重复依赖 + 源码）
         run: cargo deny check
+
+  # ── 车道 5：门禁脚本 ── 跑 道果树/质量门禁-域/门禁-府/ 下验证 ──
+  门禁脚本:
+    name: 门禁脚本
+    runs-on: windows-latest
+    needs: 测试
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.78
+      - uses: Swatinem/rust-cache@v2
+      - name: 检查全部
+        run: pwsh 道果树/质量门禁-域/门禁-府/检查-全部.ps1

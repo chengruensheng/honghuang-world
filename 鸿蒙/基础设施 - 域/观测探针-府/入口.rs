@@ -117,7 +117,9 @@ pub struct 观测记录 {
 
 /// 观测根目录（§B.2.5 — 改用 shihai_fu 统一 fn）。
 fn 观测目录() -> PathBuf {
-    let 根 = std::env::var("WORLD_WORKSPACE_ROOT").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(".上下文"));
+    let 根 = std::env::var("WORLD_WORKSPACE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(".上下文"));
     根.join("观测")
 }
 
@@ -127,7 +129,7 @@ fn 观测目录() -> PathBuf {
 fn 完整记录开关() -> bool {
     match std::env::var("观测完整记录") {
         Ok(值) => 值.trim() == "开",
-        Err(_) => false,  // §B.1.6 默认脱敏
+        Err(_) => false, // §B.1.6 默认脱敏
     }
 }
 

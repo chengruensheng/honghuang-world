@@ -4,11 +4,8 @@
 #[cfg(test)]
 mod 测试 {
     use super::super::流式回放::{全流程总览, 流水列表, 流水跟踪, 流水跟随};
+    use crate::测试设施::工作区测试锁;
     use std::fs;
-    use std::sync::Mutex;
-
-    /// 串行互斥：四个用例都会改 WORLD_WORKSPACE_ROOT，必须串行跑。
-    static 串行: Mutex<()> = Mutex::new(());
 
     fn 准备根() -> std::path::PathBuf {
         let 唯一 = format!(
@@ -36,7 +33,7 @@ mod 测试 {
     /// 用例 1 · 列表关键词：返回文本须含「流水列表」标题与事件条数标注。
     #[test]
     fn 流水列表_含列表关键词与条数() {
-        let _锁 = 串行.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 根 = 准备根();
 
         let 输出 = 流水列表();
@@ -52,7 +49,7 @@ mod 测试 {
     /// 用例 2 · 会话过滤：传入会话 id 应被原样回填到「会话 {会话id}」中。
     #[test]
     fn 流水跟踪_会话id进入标题() {
-        let _锁 = 串行.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 根 = 准备根();
 
         let 输出 = 流水跟踪("测试会话-A", false);
@@ -72,7 +69,7 @@ mod 测试 {
     /// 用例 3 · 流程状态汇总：全流程总览应在标题中给出三池计数行。
     #[test]
     fn 全流程总览_三池计数齐备() {
-        let _锁 = 串行.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 根 = 准备根();
 
         let 输出 = 全流程总览();
@@ -87,7 +84,7 @@ mod 测试 {
     /// 用例 4 · 流水跟随：空会话应走「全流程总览」分支。
     #[test]
     fn 流水跟随_空会话走总览分支() {
-        let _锁 = 串行.lock().unwrap();
+        let _锁 = 工作区测试锁.lock().unwrap();
         let 根 = 准备根();
 
         let 输出 = 流水跟随("");
