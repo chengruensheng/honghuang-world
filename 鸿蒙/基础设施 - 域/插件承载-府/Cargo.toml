@@ -10,3 +10,4 @@ doctest = false
 
 [dependencies]
 rizhi_fu = { path = "../日志记录-府" }
+parking_lot = { workspace = true }

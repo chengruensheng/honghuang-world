@@ -23,6 +23,10 @@ rust-version = "1.75"
 authors = ["此生愿"]
 license = "MIT"
 
+[workspace.dependencies]
+# 跨 crate 共享依赖版本（避免重复）
+parking_lot = "0.12"
+
 # 集中 lints 配置：12 个 crate 共享（避免重复）
 [workspace.lints.rust]
 unsafe_code = "deny"  # 13 个 crate 全部禁止 unsafe

@@ -3,9 +3,9 @@
 //! 府作为插件单元，暴露 Service Definition（插件接口）。
 //! 跨府引用经插件注册表查找，止步于 Service Definition。
 
+use parking_lot::RwLock;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::RwLock;
 
 use rizhi_fu::{error, info};
 
@@ -53,30 +53,25 @@ impl 插件上下文 {
         let 名称 = 插件.名称().to_string();
         let 依赖们 = 插件.注入();
         // 先读后写：依赖检查与注册分两段持锁，避免一次写锁独占过久
-        let 注册表 = self.注册表.read().map_err(|e| e.to_string())?;
         for 依赖 in &依赖们 {
-            if !注册表.contains_key(*依赖) {
+            if !self.注册表.read().contains_key(*依赖) {
                 error!("插件{}依赖{}未注册", 名称, 依赖);
                 return Err(format!("插件{}依赖{}未注册", 名称, 依赖));
             }
         }
-        drop(注册表);
-        let mut 注册表 = self.注册表.write().map_err(|e| e.to_string())?;
-        注册表.insert(名称.clone(), 插件);
+        self.注册表.write().insert(名称.clone(), 插件);
         info!("插件{}已注册", 名称);
         Ok(())
     }
 
     /// 查找插件——按名称查找已注册的插件。
     pub fn 查找(&self, 名称: &str) -> Option<String> {
-        let 注册表 = self.注册表.read().ok()?;
-        注册表.get(名称).map(|p| p.名称().to_string())
+        self.注册表.read().get(名称).map(|p| p.名称().to_string())
     }
 
     /// 已注册的插件名列表。
     pub fn 已注册(&self) -> Vec<String> {
-        let 注册表 = self.注册表.read().unwrap_or_else(|e| e.into_inner());
-        注册表.keys().cloned().collect()
+        self.注册表.read().keys().cloned().collect()
     }
 
     /// 注册服务——将服务实例注册到服务表，按类型 ID 索引。
@@ -84,11 +79,10 @@ impl 插件上下文 {
     /// 服务实例通常是 `Arc<dyn 服务trait>`，它实现了 `Any + Send + Sync + Clone`。
     pub fn 注册服务<T: Any + Send + Sync>(&mut self, 服务: T) -> Result<(), String> {
         let 类型id = TypeId::of::<T>();
-        let mut 服务表 = self.服务表.write().map_err(|e| e.to_string())?;
-        if 服务表.contains_key(&类型id) {
+        if self.服务表.read().contains_key(&类型id) {
             return Err(format!("服务类型{:?}已注册", 类型id));
         }
-        服务表.insert(类型id, Box::new(服务));
+        self.服务表.write().insert(类型id, Box::new(服务));
         info!("服务类型{:?}已注册", 类型id);
         Ok(())
     }
@@ -98,7 +92,7 @@ impl 插件上下文 {
     /// 调用方传入 `T = Arc<dyn 服务trait>`，查找成功返回 `Option<Arc<dyn 服务trait>>`。
     pub fn 查找服务<T: Any + Send + Sync + Clone>(&self) -> Option<T> {
         let 类型id = TypeId::of::<T>();
-        let 服务表 = self.服务表.read().ok()?;
+        let 服务表 = self.服务表.read();
         let 任意 = 服务表.get(&类型id)?;
         任意.downcast_ref::<T>().cloned()
     }
