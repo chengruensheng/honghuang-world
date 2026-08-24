@@ -9,6 +9,7 @@
 use crate::工作区根;
 use crate::状态目录;
 use rizhi_fu::{error, info, warn};
+use shihai_fu::世界结果;
 use std::path::{Path, PathBuf};
 
 fn 版本库(根: &Path) -> PathBuf {
@@ -16,8 +17,8 @@ fn 版本库(根: &Path) -> PathBuf {
 }
 
 /// 每次存档都先保证世界状态存在：不存在则原子落盘默认（阶段=甲、v1已存档=false）。
-fn 确保状态已初始化(状态目录: &Path) -> Result<tianting_fu::世界状态, String> {
-    tianting_fu::确保世界状态初始化(状态目录)
+fn 确保状态已初始化(状态目录: &Path) -> 世界结果<tianting_fu::世界状态> {
+    tianting_fu::确保世界状态初始化(状态目录).map_err(shihai_fu::世界错误::世界错误::from)
 }
 
 /// 收集最近一次验收历史作为本次版本存档的「验收结论」字段。

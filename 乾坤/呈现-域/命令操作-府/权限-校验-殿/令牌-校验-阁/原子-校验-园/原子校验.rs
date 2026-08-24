@@ -2,6 +2,8 @@
 
 use crate::调用;
 use rizhi_fu::{debug, warn};
+use shihai_fu::世界结果;
+use shihai_fu::世界错误::世界错误;
 
 /// 写命令清单（AI 专用）
 pub fn 写命令清单() -> &'static [(&'static str, &'static str)] {
@@ -24,7 +26,7 @@ pub fn 写命令清单() -> &'static [(&'static str, &'static str)] {
 /// 校验调用：写命令须 AI 令牌（-t 或环境变量 WORLD_AI_TOKEN）
 /// 校验调用：读命令免令牌直接 Ok；写命令须有令牌否则 Err 描述缺令牌。
 /// Ok=通过 Err=缺令牌被拒
-pub fn 校验调用(调用: &调用, 环境令牌: Option<&str>) -> Result<(), String> {
+pub fn 校验调用(调用: &调用, 环境令牌: Option<&str>) -> 世界结果<()> {
     let 是否写 = 写命令清单()
         .iter()
         .any(|(域, 动作)| 域 == &调用.域 && 动作 == &调用.动作);
@@ -37,9 +39,9 @@ pub fn 校验调用(调用: &调用, 环境令牌: Option<&str>) -> Result<(), S
         Ok(())
     } else {
         warn!(域 = %调用.域, 动作 = %调用.动作, "写命令缺令牌被拒");
-        Err(format!(
+        Err(世界错误::from(format!(
             "写命令「{} {}」仅 AI 可执行：缺少 AI 令牌（环境变量 WORLD_AI_TOKEN 或 -t <令牌>）",
             调用.域, 调用.动作
-        ))
+        )))
     }
 }

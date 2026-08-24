@@ -4,6 +4,8 @@
 
 use crate::{打开存储, 状态目录};
 use rizhi_fu::{error, info, warn};
+use shihai_fu::世界结果;
+use shihai_fu::世界错误::世界错误;
 use std::fs;
 
 pub fn 投递想法(内容: &str) -> String {
@@ -120,12 +122,12 @@ pub fn 投递想法(内容: &str) -> String {
 
 /// 推进想法状态：读全部 → 改目标 → 重写整个想法.jsonl。
 /// 落盘队列无原地更新接口，须在原子入池园内做读改写（防目标状态被覆盖）。
-fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> Result<(), String> {
+fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> 世界结果<()> {
     let 想法路径 = 状态目录().join("想法.jsonl");
     let 队列 = tianting_fu::落盘队列::<tianting_fu::想法>::打开(想法路径.clone());
     let mut 项们 = 队列
         .读全部()
-        .map_err(|错误| format!("读想法队列失败: {错误}"))?;
+        .map_err(|错误| 世界错误::from(format!("读想法队列失败: {错误}")))?;
     let mut 命中 = false;
     for 项 in 项们.iter_mut() {
         if 项.id == 目标id {
@@ -135,13 +137,13 @@ fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> R
         }
     }
     if !命中 {
-        return Err(format!("未找到目标想法：{目标id}"));
+        return Err(世界错误::from(format!("未找到目标想法：{目标id}")));
     }
     // 写临时文件再原子改名，避免写一半导致 jsonl 损坏。
     let 临时路径 = 想法路径.with_extension("jsonl.tmp");
     let mut 行们 = Vec::with_capacity(项们.len());
     for 项 in &项们 {
-        let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化想法失败: {错误}"))?;
+        let 行 = serde_json::to_string(项).map_err(|错误| 世界错误::from(format!("序列化想法失败: {错误}")))?;
         行们.push(行);
     }
     let 内容 = if 行们.is_empty() {
@@ -149,8 +151,8 @@ fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> R
     } else {
         format!("{}\n", 行们.join("\n"))
     };
-    fs::write(&临时路径, &内容).map_err(|错误| format!("写临时文件失败: {错误}"))?;
-    fs::rename(&临时路径, &想法路径).map_err(|错误| format!("原子改名失败: {错误}"))?;
+    fs::write(&临时路径, &内容).map_err(|错误| 世界错误::from(format!("写临时文件失败: {错误}")))?;
+    fs::rename(&临时路径, &想法路径).map_err(|错误| 世界错误::from(format!("原子改名失败: {错误}")))?;
     info!(目标id, 新状态 = ?新状态, "想法状态已推进");
     Ok(())
 }
