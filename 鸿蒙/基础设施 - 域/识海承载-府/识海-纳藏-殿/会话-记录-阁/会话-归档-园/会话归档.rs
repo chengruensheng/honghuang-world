@@ -1,5 +1,6 @@
 //! 会话 - 归档 - 园：会话记录读写与归档。
 
+use crate::世界结果;
 use crate::{会话记录, 当前毫秒, 模型存储, 记录};
 use rizhi_fu::{debug, error};
 use std::fs;
@@ -24,7 +25,7 @@ impl 会话缓存 {
     }
 
     /// 写一份会话记录（完整覆盖）。
-    pub fn 写会话(&self, 会话id: &str, 内容: &str) -> Result<(), String> {
+    pub fn 写会话(&self, 会话id: &str, 内容: &str) -> 世界结果<()> {
         let 记录 = 会话记录 {
             会话id: 会话id.to_string(),
             内容: 内容.to_string(),
@@ -41,7 +42,7 @@ impl 会话缓存 {
     }
 
     /// 读一份会话记录。
-    pub fn 读会话(&self, 会话id: &str) -> Result<Option<会话记录>, String> {
+    pub fn 读会话(&self, 会话id: &str) -> 世界结果<Option<会话记录>> {
         let 路径 = self.路径(会话id);
         if !路径.exists() {
             return Ok(None);
@@ -54,11 +55,8 @@ impl 会话缓存 {
 
     /// 归档一份会话：写入「事件」格位（经历记忆），再移动文件到归档目录。
     pub fn 归档会话(
-        &self,
-        会话id: &str,
-        归档目录: &Path,
-        存储: &模型存储,
-    ) -> Result<(), String> {
+        &self, 会话id: &str, 归档目录: &Path, 存储: &模型存储
+    ) -> 世界结果<()> {
         if let Some(会话) = self.读会话(会话id)? {
             存储.写记录(&记录::新(
                 "事件",

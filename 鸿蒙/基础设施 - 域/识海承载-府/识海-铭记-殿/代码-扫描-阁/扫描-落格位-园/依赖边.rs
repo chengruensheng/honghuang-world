@@ -1,5 +1,6 @@
 //! 依赖 - 边：扫描 use / pub use 依赖边 → 依赖图。
 
+use crate::世界结果;
 use crate::{依赖图, 工作区, 扫描排除项, 符号档案};
 use std::collections::HashMap;
 use std::path::Path;
@@ -11,7 +12,7 @@ use super::符号解析::{
 
 /// 扫描 use / pub use 依赖边 → 依赖图（符号档案：五层标识 + 解释 + 波及）。
 /// 不动格位，产出依赖图交给依赖-边-园落盘。
-pub fn 扫描依赖边(根目录: &Path) -> Result<依赖图, String> {
+pub fn 扫描依赖边(根目录: &Path) -> 世界结果<依赖图> {
     let 排除项 = 扫描排除项(根目录);
     let 文件们 = 收集源文件(根目录, &排除项);
     let 项目名 = 根目录

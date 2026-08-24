@@ -1,5 +1,6 @@
 //! 分级 - 缓存 - 园：三级缓存（永久 / 版本 / 会话）+ 预算生长。
 
+use crate::世界结果;
 use std::collections::HashMap;
 
 use crate::{会话记录, 固化度, 格位, 模型存储, 记录, 顺序档位};
@@ -49,7 +50,7 @@ impl 三级缓存 {
     /// 取永久（经格位）记录：未命中则读并缓存。
     pub fn 取永久(
         &mut self, 存储: &模型存储, 格位名: &str
-    ) -> Result<Vec<记录>, String> {
+    ) -> 世界结果<Vec<记录>> {
         if let Some(记录们) = self.永久.get(格位名) {
             return Ok(记录们.clone());
         }
@@ -64,7 +65,7 @@ impl 三级缓存 {
         存储: &模型存储,
         格位名: &str,
         版本戳: u64,
-    ) -> Result<Vec<记录>, String> {
+    ) -> 世界结果<Vec<记录>> {
         if let Some((旧戳, 记录们)) = self.版本.get(格位名) {
             if *旧戳 == 版本戳 {
                 return Ok(记录们.clone());
@@ -90,8 +91,8 @@ impl 三级缓存 {
     pub fn 拼装(
         &mut self,
         指纹: &str,
-        拼装: impl FnOnce() -> Result<String, String>,
-    ) -> Result<String, String> {
+        拼装: impl FnOnce() -> 世界结果<String>,
+    ) -> 世界结果<String> {
         if let Some(结果) = self.投影.get(指纹) {
             return Ok(结果.clone());
         }

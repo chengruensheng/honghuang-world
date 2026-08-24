@@ -143,7 +143,8 @@ fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> �
     let 临时路径 = 想法路径.with_extension("jsonl.tmp");
     let mut 行们 = Vec::with_capacity(项们.len());
     for 项 in &项们 {
-        let 行 = serde_json::to_string(项).map_err(|错误| 世界错误::from(format!("序列化想法失败: {错误}")))?;
+        let 行 = serde_json::to_string(项)
+            .map_err(|错误| 世界错误::from(format!("序列化想法失败: {错误}")))?;
         行们.push(行);
     }
     let 内容 = if 行们.is_empty() {
@@ -151,8 +152,10 @@ fn 推进想法状态(目标id: &str, 新状态: tianting_fu::想法状态) -> �
     } else {
         format!("{}\n", 行们.join("\n"))
     };
-    fs::write(&临时路径, &内容).map_err(|错误| 世界错误::from(format!("写临时文件失败: {错误}")))?;
-    fs::rename(&临时路径, &想法路径).map_err(|错误| 世界错误::from(format!("原子改名失败: {错误}")))?;
+    fs::write(&临时路径, &内容)
+        .map_err(|错误| 世界错误::from(format!("写临时文件失败: {错误}")))?;
+    fs::rename(&临时路径, &想法路径)
+        .map_err(|错误| 世界错误::from(format!("原子改名失败: {错误}")))?;
     info!(目标id, 新状态 = ?新状态, "想法状态已推进");
     Ok(())
 }

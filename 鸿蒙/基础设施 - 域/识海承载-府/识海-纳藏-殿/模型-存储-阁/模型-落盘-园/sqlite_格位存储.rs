@@ -5,6 +5,7 @@
 
 use super::工作区;
 use super::格位存储;
+use crate::世界结果;
 use crate::记录;
 
 /// Sqlite 格位存储
@@ -19,9 +20,11 @@ impl Sqlite格位存储 {
 }
 
 impl 格位存储 for Sqlite格位存储 {
-    fn 写记录(&self, _记录: &记录) -> Result<(), String> {
+    fn 写记录(&self, _记录: &记录) -> 世界结果<()> {
         // TODO B.3: rusqlite insert + 索引
-        Err("Sqlite格位存储 未实装 — B.3 阶段加 rusqlite".to_string())
+        Err("Sqlite格位存储 未实装 — B.3 阶段加 rusqlite"
+            .to_string()
+            .into())
     }
     fn 在工作区(_工作区: &工作区) -> Box<dyn 格位存储> {
         Box::new(Sqlite格位存储::新())

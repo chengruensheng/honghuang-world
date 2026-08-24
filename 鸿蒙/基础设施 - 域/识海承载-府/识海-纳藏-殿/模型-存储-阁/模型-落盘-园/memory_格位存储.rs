@@ -4,6 +4,7 @@
 
 use super::工作区;
 use super::格位存储;
+use crate::世界结果;
 use crate::记录;
 use std::sync::Mutex;
 
@@ -24,7 +25,7 @@ impl Memory格位存储 {
 }
 
 impl 格位存储 for Memory格位存储 {
-    fn 写记录(&self, 记录: &记录) -> Result<(), String> {
+    fn 写记录(&self, 记录: &记录) -> 世界结果<()> {
         self.记录们.lock().unwrap().push(记录.clone());
         Ok(())
     }

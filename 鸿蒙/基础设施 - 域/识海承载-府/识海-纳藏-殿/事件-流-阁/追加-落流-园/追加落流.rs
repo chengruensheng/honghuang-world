@@ -3,6 +3,7 @@
 //! 事件流是「经历记忆」的事实源：只追加、不改写、不删除，与「事件」格位（语义归纳）分工——
 //! 事件流记细粒度事实，事件格位记粗粒度语义。对齐 DeepSeek「Every run is traceable」。
 
+use crate::世界结果;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -84,7 +85,7 @@ impl 事件流 {
     /// 批量缓冲：序列化后入缓冲，达阈值/定时触发刷盘；锁超时放弃本批（不阻塞主流程）。
     pub fn 追加事件(
         &self, 类型: 事件类型, 载荷: serde_json::Value
-    ) -> Result<事件, String> {
+    ) -> 世界结果<事件> {
         let 事件 = 事件::新(类型, 载荷);
         let 行 = serde_json::to_string(&事件).map_err(|错误| format!("序列化事件失败: {错误}"))?;
         let 该刷 = {
@@ -108,7 +109,7 @@ impl 事件流 {
 
     /// 刷盘：把缓冲行批量写入文件，清缓冲并重置刷盘时刻。
     /// 读事件流前与 Drop 时调用，保证落盘一致；空缓冲时仅重置时刻。
-    pub fn 刷盘(&self) -> Result<(), String> {
+    pub fn 刷盘(&self) -> 世界结果<()> {
         let 行们 = {
             let mut 状态 = self.缓冲.lock().expect("事件流缓冲锁 poisoned");
             if 状态.行们.is_empty() {
@@ -125,7 +126,7 @@ impl 事件流 {
 
     /// 批量写：抢文件锁，append 多行，关文件删锁。
     /// 进程级互斥锁：防并发写者行交错（2026-08-17 体检实锤）；陈旧锁>30 秒自动清理，最长等 5 秒。
-    fn 批量写(&self, 行们: Vec<String>) -> Result<(), String> {
+    fn 批量写(&self, 行们: Vec<String>) -> 世界结果<()> {
         if 行们.is_empty() {
             return Ok(());
         }
@@ -156,7 +157,7 @@ impl 事件流 {
 
     /// 读事件流（从起点下标起，返回后续全部事件）。
     /// 读前先刷盘，保证缓冲内待写事件也可见。
-    pub fn 读事件流(&self, 起点: usize) -> Result<Vec<事件>, String> {
+    pub fn 读事件流(&self, 起点: usize) -> 世界结果<Vec<事件>> {
         self.刷盘()?;
         if !self.路径.exists() {
             return Ok(Vec::new());
@@ -168,7 +169,8 @@ impl 事件流 {
             .filter(|行| !行.trim().is_empty())
             .skip(起点)
             .map(|行| {
-                serde_json::from_str::<事件>(行).map_err(|错误| format!("解析事件失败: {错误}"))
+                serde_json::from_str::<事件>(行)
+                    .map_err(|错误| format!("解析事件失败: {错误}").into())
             })
             .collect()
     }

@@ -1,5 +1,6 @@
 //! 模型 - 落盘 - 园：工作区定位 + 心智模型聚合 + 格位/记录落盘读写。
 
+use crate::世界结果;
 use crate::{会话记录, 全部格位, 工具清单, 记录};
 use rizhi_fu::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
@@ -19,7 +20,7 @@ static 定位缓存: Mutex<Option<(工作区, Option<String>)>> = Mutex::new(Non
 /// 12 个 crate 用 1 个 trait 抽象（之前直接用 模型存储 struct — 紧耦合）。
 pub trait 格位存储: Send + Sync {
     /// 写一条记录（jsonl 一行）。
-    fn 写记录(&self, 记录: &记录) -> Result<(), String>;
+    fn 写记录(&self, 记录: &记录) -> 世界结果<()>;
     /// 在工作区根下打开（格位落 .上下文/格位/）。
     fn 在工作区(工作区: &工作区) -> Box<dyn 格位存储>
     where
@@ -28,7 +29,7 @@ pub trait 格位存储: Send + Sync {
 
 /// Jsonl 格位存储（§B.2.2 三个实现之一）—— 把 模型存储 适配成 trait。
 impl 格位存储 for 模型存储 {
-    fn 写记录(&self, 记录: &记录) -> Result<(), String> {
+    fn 写记录(&self, 记录: &记录) -> 世界结果<()> {
         模型存储::写记录(self, 记录)
     }
     fn 在工作区(工作区: &工作区) -> Box<dyn 格位存储> {
@@ -94,7 +95,7 @@ impl 工作区 {
     }
 
     /// 初始化记忆目录结构（模板落盘）。
-    pub fn 初始化(&self) -> Result<(), String> {
+    pub fn 初始化(&self) -> 世界结果<()> {
         fs::create_dir_all(self.格位目录()).map_err(|错误| format!("建格位目录失败: {错误}"))?;
         fs::create_dir_all(self.会话目录()).map_err(|错误| format!("建会话目录失败: {错误}"))?;
         debug!(根 = %self.根路径.display(), "记忆目录已就绪");
@@ -194,17 +195,17 @@ impl 心智模型 {
 /// 格位名直接 join 到格位目录，若放行 `../` 会写出格位目录之外。
 /// 不限制字符集：项目已有 `环境·依赖`/`传承·决策`/`例外·临时` 等含中点格位名，
 /// 安全关键在路径分隔符与 `..` 段，而非字符白名单。
-fn 校验格位名(格位名: &str) -> Result<(), String> {
+fn 校验格位名(格位名: &str) -> 世界结果<()> {
     if 格位名.is_empty() {
-        return Err("格位名为空".to_string());
+        return Err("格位名为空".to_string().into());
     }
     // 拒路径分隔符：含分隔符时 join 会写出格位目录之外（逃逸根因）。
     if 格位名.contains('/') || 格位名.contains('\\') {
-        return Err(format!("格位名含路径分隔符: {格位名}"));
+        return Err(format!("格位名含路径分隔符: {格位名}").into());
     }
     // 拒 `.` 与 `..`：作为格位名语义不清，且部分系统对它们有特殊处理。
     if 格位名 == "." || 格位名 == ".." {
-        return Err(format!("格位名非法: {格位名}"));
+        return Err(format!("格位名非法: {格位名}").into());
     }
     Ok(())
 }
@@ -255,7 +256,7 @@ impl 模型存储 {
     }
 
     /// 追加写入一条记录（jsonl 一行）。
-    pub fn 写记录(&self, 记录: &记录) -> Result<(), String> {
+    pub fn 写记录(&self, 记录: &记录) -> 世界结果<()> {
         let 路径 = self.格位文件路径(&记录.格位名)?;
         let 行 = serde_json::to_string(记录).map_err(|错误| format!("序列化记录失败: {错误}"))?;
         use std::io::Write;
@@ -272,7 +273,7 @@ impl 模型存储 {
     }
 
     /// 读某个格位的全部记录（按写入顺序）。
-    pub fn 读格位(&self, 格位名: &str) -> Result<Vec<记录>, String> {
+    pub fn 读格位(&self, 格位名: &str) -> 世界结果<Vec<记录>> {
         let 路径 = self.格位文件路径(格位名)?;
         if !路径.exists() {
             return Ok(Vec::new());
@@ -293,14 +294,14 @@ impl 模型存储 {
     }
 
     /// 格位文件路径：格位目录 / 格位名.jsonl。先校验格位名防路径逃逸。
-    fn 格位文件路径(&self, 格位名: &str) -> Result<PathBuf, String> {
+    fn 格位文件路径(&self, 格位名: &str) -> 世界结果<PathBuf> {
         校验格位名(格位名)?;
         Ok(self.格位目录.join(format!("{格位名}.jsonl")))
     }
 
     /// 读某个格位的链头集：按实体键分组，每组取时间戳最新一条（默认拉最新）。
     /// 实体键为空的旧记录按内容兜底分组。
-    pub fn 读链头集(&self, 格位名: &str) -> Result<Vec<记录>, String> {
+    pub fn 读链头集(&self, 格位名: &str) -> 世界结果<Vec<记录>> {
         let 全部 = self.读格位(格位名)?;
         let mut 链头 = Vec::new();
         let mut 已见 = HashSet::new();
@@ -321,7 +322,7 @@ impl 模型存储 {
     /// 清洗格位：reducer 四步（去重 + 剔失效 + 分组留链头 + 标矛盾）→ 重写 jsonl 只含链头。
     /// 纯代码 reducer（设计稿 §14.20）：不调 LLM、零 token，机械判定归代码。
     /// 幂等：对已清洗的 jsonl 再跑一次，去重数/剔除失效数/矛盾清单均为空。
-    pub fn 清洗格位(&self, 格位名: &str) -> Result<清洗报告, String> {
+    pub fn 清洗格位(&self, 格位名: &str) -> 世界结果<清洗报告> {
         let 全部 = self.读格位(格位名)?;
         let 原条数 = 全部.len();
 
@@ -402,7 +403,7 @@ impl 模型存储 {
     }
 
     /// 重写格位 jsonl：覆盖写入给定记录（按顺序一行一条）。
-    fn 重写格位(&self, 格位名: &str, 记录们: &[记录]) -> Result<(), String> {
+    fn 重写格位(&self, 格位名: &str, 记录们: &[记录]) -> 世界结果<()> {
         let 路径 = self.格位文件路径(格位名)?;
         // 预分配容量：先序列化所有行收集到 Vec，按总字节数（含换行）精确预分配 String，
         // 消除 push_str 多次重分配（性能报告 M2）。Vec 一次分配 + String 一次精确分配，

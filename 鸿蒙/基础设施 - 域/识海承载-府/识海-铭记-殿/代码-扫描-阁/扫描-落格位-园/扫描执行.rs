@@ -1,5 +1,6 @@
 //! 扫描 - 执行 - 园：六类扫描入口，落格位快照。
 
+use crate::世界结果;
 use crate::{工作区, 扫描排除项, 模型存储, 记录};
 use rizhi_fu::debug;
 use std::collections::BTreeMap;
@@ -12,7 +13,7 @@ use super::收集::{
 use super::符号解析::提取符号签名;
 
 /// 扫描文件清单 → 「文件」格位（府级快照：每府源文件数），返回文件数。
-pub fn 扫描文件清单(存储: &模型存储, 根目录: &Path) -> Result<usize, String> {
+pub fn 扫描文件清单(存储: &模型存储, 根目录: &Path) -> 世界结果<usize> {
     let 排除项 = 扫描排除项(根目录);
     let 文件们 = 收集源文件(根目录, &排除项);
     let mut 府文件: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -37,7 +38,7 @@ pub fn 扫描文件清单(存储: &模型存储, 根目录: &Path) -> Result<usi
 
 /// 扫描目录结构 → 「结构」格位（crate 列表：含 Cargo.toml 的目录），返回 crate 数。
 /// 块状落盘：只写一条快照（链头），crate 内目录细节按需经依赖图下探。
-pub fn 扫描目录结构(存储: &模型存储, 根目录: &Path) -> Result<usize, String> {
+pub fn 扫描目录结构(存储: &模型存储, 根目录: &Path) -> 世界结果<usize> {
     let 排除项 = 扫描排除项(根目录);
     let cargo们 = 收集cargo文件(根目录, &排除项);
     let mut crate们: Vec<String> = cargo们
@@ -59,7 +60,7 @@ pub fn 扫描目录结构(存储: &模型存储, 根目录: &Path) -> Result<usi
 }
 
 /// 扫描所有 Cargo.toml 依赖 → 「环境·依赖」格位（按府聚合），返回依赖总数。
-pub fn 扫描依赖(存储: &模型存储, 根目录: &Path) -> Result<usize, String> {
+pub fn 扫描依赖(存储: &模型存储, 根目录: &Path) -> 世界结果<usize> {
     let 排除项 = 扫描排除项(根目录);
     let 文件们 = 收集cargo文件(根目录, &排除项);
     let mut 府依赖: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -93,7 +94,7 @@ pub fn 扫描依赖(存储: &模型存储, 根目录: &Path) -> Result<usize, St
 }
 
 /// 解析单个 Cargo.toml 的依赖段，返回依赖名列表。
-fn 解析依赖(文件: &Path) -> Result<Vec<String>, String> {
+fn 解析依赖(文件: &Path) -> 世界结果<Vec<String>> {
     let 内容 =
         std::fs::read_to_string(文件).map_err(|错误| format!("读 Cargo.toml 失败: {错误}"))?;
     let mut 依赖们 = Vec::new();
@@ -122,7 +123,7 @@ fn 解析依赖(文件: &Path) -> Result<Vec<String>, String> {
 }
 
 /// 扫描 .rs 函数签名 → 「调用」格位（府级快照：每府 pub 符号名），返回符号数。
-pub fn 扫描符号(存储: &模型存储, 根目录: &Path) -> Result<usize, String> {
+pub fn 扫描符号(存储: &模型存储, 根目录: &Path) -> 世界结果<usize> {
     let 排除项 = 扫描排除项(根目录);
     let 文件们 = 收集源文件(根目录, &排除项);
     let mut 府符号: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -152,7 +153,7 @@ pub fn 扫描符号(存储: &模型存储, 根目录: &Path) -> Result<usize, St
 }
 
 /// 扫描数据文件 → 「数据」格位（.json/.jsonl/.csv/.db），返回条数。
-pub fn 扫描数据(存储: &模型存储, 根目录: &Path) -> Result<usize, String> {
+pub fn 扫描数据(存储: &模型存储, 根目录: &Path) -> 世界结果<usize> {
     let 排除项 = 扫描排除项(根目录);
     let 文件们 = 收集数据文件(根目录, &排除项);
     for 文件 in &文件们 {
@@ -164,7 +165,7 @@ pub fn 扫描数据(存储: &模型存储, 根目录: &Path) -> Result<usize, St
 }
 
 /// 综合扫描：文件 + 结构 + 依赖 + 符号 + 数据 + 事件，返回总条数。
-pub fn 扫描(存储: &模型存储, 根目录: &Path) -> Result<usize, String> {
+pub fn 扫描(存储: &模型存储, 根目录: &Path) -> 世界结果<usize> {
     let mut 条数 = 0;
     条数 += 扫描文件清单(存储, 根目录)?;
     条数 += 扫描目录结构(存储, 根目录)?;
