@@ -47,6 +47,11 @@ pub use 服务_模块::服务;
 #[path = "服务.rs"]
 mod 服务_模块;
 
+// §B.2.7 服务注册表 trait（包装 chajian_fu Any + Send + Sync 注册表）
+pub use 服务注册表_模块::服务注册表;
+#[path = "服务注册表.rs"]
+mod 服务注册表_模块;
+
 /// 识海服务——识海承载-府的 Service Definition。
 ///
 /// 暴露回想（检索投影）和铐记（回填记忆）两方法，包回想-殿/纳藏-殿的真实逻辑。
