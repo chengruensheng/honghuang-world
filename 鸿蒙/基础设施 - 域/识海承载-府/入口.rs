@@ -27,6 +27,9 @@ pub use 识海_回想_殿::{
 pub mod 世界错误 {
     pub use super::错误::{世界结果, 世界错误};
 }
+// 2026-08-25 修：把 世界结果 也透出到 crate 根（之前只通过 shihai_fu::世界错误::世界结果 访问）。
+// 供 mingling_fu 等下游直接 use shihai_fu::世界结果;（世界错误已通过 pub mod 世界错误 暴露）。
+pub use 世界错误::世界结果;
 #[path = "错误.rs"]
 mod 错误;
 
