@@ -9,25 +9,23 @@ mod 测试 {
     use daoshu_fu::改文件;
     use shihai_fu::{进入任务, 回滚垫, 工作区};
 
-    fn 临时路径(名: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("手脚架_改文件_{}_{}", std::process::id(), 名))
-    }
-
     #[test]
     fn 改文件替换首处() {
-        let 路径 = 临时路径("替换首处.txt");
+        let (根, _锁) = 临时工作区("改文件", "替换首处");
+        let 路径 = 根.join("替换首处.txt");
         std::fs::write(&路径, "甲乙甲").unwrap();
         改文件(路径.to_str().unwrap(), "甲", "丙").unwrap();
         assert_eq!(std::fs::read_to_string(&路径).unwrap(), "丙乙甲");
-        std::fs::remove_file(&路径).unwrap();
+        let _ = std::fs::remove_dir_all(&根);
     }
 
     #[test]
     fn 改文件找不到旧文报错() {
-        let 路径 = 临时路径("找不到.txt");
+        let (根, _锁) = 临时工作区("改文件", "找不到");
+        let 路径 = 根.join("找不到.txt");
         std::fs::write(&路径, "内容").unwrap();
         assert!(改文件(路径.to_str().unwrap(), "没有", "x").is_err());
-        std::fs::remove_file(&路径).unwrap();
+        let _ = std::fs::remove_dir_all(&根);
     }
 
     #[test]

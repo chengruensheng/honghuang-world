@@ -1,0 +1,33 @@
+# Rust 编译产物 + 测试缓存
+target/
+道果树/构建物-域/
+
+# VCS
+.git/
+.gitlab-ci.yml
+
+# Node（无）
+node_modules/
+npm-debug.log
+
+# IDE
+.idea/
+.vscode/
+.arts/
+.codeartsdoer/
+.codegraph/
+
+# 临时 / 版本库 / 监控
+临时文件夹/
+.上下文/命令沙箱/
+.上下文/版本库/
+*.log
+*.err
+
+# 设计稿索引（不动）
+*.md
+!README.md
+
+# CI 配置（运行时不需）
+.github/
+.gitlab-ci.yml

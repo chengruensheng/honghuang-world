@@ -3,11 +3,21 @@
 
 use rizhi_fu::{debug, error, info, warn};
 use shihai_fu::{回滚垫, 工作区, 当前任务};
+use crate::原子_写入_园::沙箱校验;
+use std::path::PathBuf;
+
+fn 工作区根() -> PathBuf {
+    工作区::定位().根路径().join(".上下文")
+}
 
 /// 把文件里第一次出现的旧文替换为新文，旧文不存在则报错；写前先备份进回滚垫。
 /// 返回是否真的改写（false = 替换结果与原文相同，空操作跳过，未写盘）。
 /// 空操作优化：替换后内容与原文相同（旧文==新文 等）→ 返回 false，不备份不重写。
 pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<bool, String> {
+    let 根 = shihai_fu::工作区::定位();
+    if let Err(错误) = 沙箱校验(根.根路径(), std::path::Path::new(路径)) {
+        return Err(错误);
+    }
     let 原文 = std::fs::read_to_string(路径).map_err(|错误| {
         error!(路径, "改文件读失败：{错误}");
         format!("读文件失败：{路径}：{错误}")
@@ -55,8 +65,7 @@ mod tests {
     /// 让 LLM 看到真实内容（2026-08-18 容错补齐）。
     #[test]
     fn 改文件_未找到时_附原文片段便于诊断() {
-        let 临时目录 =
-            std::env::temp_dir().join(format!("改文件测试-未找到-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-未找到-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "实际内容是 ABCDEF, 不含要找的子串").unwrap();
@@ -92,7 +101,7 @@ mod tests {
     /// 「找到并替换」应正常工作。
     #[test]
     fn 改文件_找到时正常替换() {
-        let 临时目录 = std::env::temp_dir().join(format!("改文件测试-找到-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-找到-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "old content here, more").unwrap();
@@ -105,7 +114,7 @@ mod tests {
     /// 空操作优化：旧文==新文 → 替换结果与原文相同，跳过改写（mtime 不变）。
     #[test]
     fn 改文件_替换结果相同跳过() {
-        let 临时目录 = std::env::temp_dir().join(format!("改文件测试-跳过-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-跳过-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "内容包含目标词").unwrap();
@@ -128,7 +137,7 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn 改文件_新文LF转CRLF防混合行尾() {
-        let 临时目录 = std::env::temp_dir().join(format!("改文件测试-行尾-{}", std::process::id()));
+        let 临时目录 = 工作区根().join(format!(".上下文/.test-tmp/改文件测试-行尾-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&临时目录);
         let 临时文件 = 临时目录.join("sample.txt");
         std::fs::write(&临时文件, "第1行\r\n目标词\r\n第3行\r\n").unwrap();

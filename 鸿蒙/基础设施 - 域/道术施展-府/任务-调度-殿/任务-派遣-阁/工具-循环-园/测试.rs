@@ -12,9 +12,10 @@ use std::path::PathBuf;
 ///（cargo test 各 crate 独立进程，crate 内一把锁即可）。
 static 测试环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// 临时目录：唯一子目录，测试结束清理。
+/// §B.1.5 沙箱兼容：临时目录放工作区根下。
 fn 临时目录(名: &str) -> PathBuf {
-    let 目录 = std::env::temp_dir().join(format!("工具循环_{名}_{}", std::process::id()));
+    use shihai_fu::工作区;
+    let 目录 = 工作区::定位().根路径().join(format!(".上下文/.test-tmp/工具循环_{名}_{}", std::process::id()));
     let _ = fs::remove_dir_all(&目录);
     fs::create_dir_all(&目录).unwrap();
     目录

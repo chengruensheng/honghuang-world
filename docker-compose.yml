@@ -1,0 +1,82 @@
+# docker-compose.yml —— 洪荒·世界 多服务编排
+#
+# 依据：§B.1.1 投产基础（Dockerfile + docker-compose）
+# 当前阶段：占位骨架，等监控界面 2.0 重新设计后补全服务依赖
+
+services:
+  # ---- 世界主进程：守护循环 + 鸿钧对话 + 任务线 + 巡世扫描 ----
+  # 占位（B.1.4 graceful shutdown 阶段补实际入口）
+  world-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 洪荒-世界:dev
+    container_name: 洪荒-world-runner
+    restart: unless-stopped
+    environment:
+      # §6.6 工作区根（peizhi_fu::读取装配 + shihai_fu::工作区::定位）
+      WORLD_WORKSPACE_ROOT: /data
+      # 观测完整记录（默认开 = 完整；设 "关" 时只摘要）
+      观测完整记录: 开
+      # Rust 日志
+      RUST_LOG: info,鸿蒙=debug
+      RUST_BACKTRACE: 1
+    volumes:
+      # 数据卷：状态 + 观测 + 格位 + 对话 — 容器重启不丢
+      - ./data:/data
+      - ./.env:/app/.env:ro
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN  # 写文件
+      - SETUID  # 切换用户
+      - SETGID
+      - DAC_OVERRIDE  # 越过文件权限（读 .env）
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,uid=1001
+    healthcheck:
+      # 占位：等监控界面 2.0 重新设计后填实际 health 端点
+      test: ["CMD-SHELL", "test -f /app/bin/监控"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # 暴露端口（监控界面 2.0 重新设计时填实际端口）
+    # ports:
+    #   - "8080:8080"
+    networks:
+      - 洪荒
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---- 监控界面（占位）----
+  # 待 jiankong_fu 2.0 重新设计后填实际镜像
+  # monitoring:
+  #   build: ./monitoring
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     - world-runner
+  #   networks:
+  #     - 洪荒
+
+  # ---- Prometheus（占位）----
+  # 等 B.1.3 /metrics 端点实装后启用
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - 洪荒
+
+networks:
+  洪荒:
+    driver: bridge

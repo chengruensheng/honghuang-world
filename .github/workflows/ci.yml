@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 1
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ---- Job 1: 基础检查（fmt + clippy）—— 快速反馈 ----
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.78
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ---- Job 2: 测试 + 覆盖率 ----
+  test:
+    name: test + coverage
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.78
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: test (lib + 单线程)
+        run: cargo test --workspace --lib --no-fail-fast -- --test-threads=1
+      - name: 覆盖率（cargo-llvm-cov · B.3 阶段实装）
+        # 现阶段仅展示 lcov.info — 不强制阈值（B.3.5 加 ≥ 70%）
+        run: |
+          cargo install cargo-llvm-cov --locked
+          cargo llvm-cov --workspace --no-report --lcov --output-path lcov.info
+          echo "覆盖率报告：lcov.info"
+      - name: 上传 lcov 到 codecov（占位 — 后续 B.3.5 接 codecov.io）
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ---- Job 3: 文档 + README ----
+  docs:
+    name: docs check
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.78
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo doc（无报错即过）
+        run: cargo doc --workspace --no-deps
+
+  # ---- Job 4: 安全审计（B.1.9 完整实装）----
+  audit:
+    name: cargo audit + deny
+    runs-on: ubuntu-latest
+    needs: lint
+    continue-on-error: true  # 现阶段不强制通过（已知有 ring 0.17 CVE 待在线时修）
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 cargo-audit + cargo-deny
+        run: |
+          cargo install cargo-audit --locked
+          cargo install cargo-deny --locked
+      - name: cargo audit（依赖漏洞）
+        run: cargo audit
+      - name: cargo deny（许可协议 + 重复依赖 + 源码）
+        run: cargo deny check

@@ -9,25 +9,22 @@ mod 测试 {
     use daoshu_fu::写文件;
     use shihai_fu::{进入任务, 回滚垫, 工作区};
 
-    fn 临时路径(名: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("手脚架_写文件_{}_{}", std::process::id(), 名))
-    }
-
     #[test]
     fn 写文件后可读回() {
-        let 路径 = 临时路径("可读回.txt");
+        let (根, _锁) = 临时工作区("写文件", "可读回");
+        let 路径 = 根.join("可读回.txt");
         写文件(路径.to_str().unwrap(), "内容").unwrap();
         assert_eq!(std::fs::read_to_string(&路径).unwrap(), "内容");
-        std::fs::remove_file(&路径).unwrap();
+        let _ = std::fs::remove_dir_all(&根);
     }
 
     #[test]
     fn 写文件自动建父目录() {
-        let 目录 = 临时路径("子目录");
-        let 路径 = 目录.join("a").join("b.txt");
+        let (根, _锁) = 临时工作区("写文件", "子目录");
+        let 路径 = 根.join("a").join("b.txt");
         写文件(路径.to_str().unwrap(), "x").unwrap();
         assert_eq!(std::fs::read_to_string(&路径).unwrap(), "x");
-        std::fs::remove_dir_all(&目录).unwrap();
+        let _ = std::fs::remove_dir_all(&根);
     }
 
     #[test]

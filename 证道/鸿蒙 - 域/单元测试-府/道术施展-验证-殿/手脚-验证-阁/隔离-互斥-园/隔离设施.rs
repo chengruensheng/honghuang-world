@@ -25,8 +25,21 @@ pub mod 设施 {
     /// 调用方必须持有 guard 至测试结束（drop 后才释放锁），全程独占进程级环境变量。
     pub fn 临时工作区(标记: &str, 名: &str) -> (PathBuf, MutexGuard<'static, ()>) {
         let 锁 = 环境变量锁.lock().unwrap_or_else(|e| e.into_inner());
-        let 根 = std::env::temp_dir().join(format!(
-            "手脚架_{标记}_工作区_{}_{}",
+        // §B.1.5 沙箱兼容：临时目录放工作区根下，避免沙箱拒绝
+        // 工作区根 = 当前文件锁定的 WORLD_WORKSPACE_ROOT（或向上探测 AGENTS.md）
+        let 工作区根 = std::env::var("WORLD_WORKSPACE_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                let 当前 = std::env::current_dir().unwrap();
+                for 祖先 in 当前.ancestors() {
+                    if 祖先.join("AGENTS.md").exists() {
+                        return 祖先.to_path_buf();
+                    }
+                }
+                当前
+            });
+        let 根 = 工作区根.join(".上下文").join(".test-tmp").join(format!(
+            "{标记}_{}_{}",
             std::process::id(),
             名
         ));
