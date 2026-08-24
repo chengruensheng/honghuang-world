@@ -15,6 +15,9 @@
 # IDE/工具本地配置
 .arts/
 .merkle-snapshot.json
+.vscode/
+.idea/
+.codegraph/
 
 # 工具本地配置(CodeArts/智能体工具)
 .codeartsdoer/
