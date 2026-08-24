@@ -397,6 +397,35 @@ impl 模型存储 {
     }
 }
 
+/// §B.0.4 抽 读状态文件 通用抽象：读 .上下文/状态/*.jsonl 或 .上下文/观测/*.jsonl
+/// 逐行反序列化为 JSON，调用方提取 F 决定保留哪些行。
+///
+/// 错误：文件不存在返空 vec；单行解析失败跳过该行（不 panic — 之前 §16.b 实测 8 条记录 7 条因 key 缺失 panic — 现在容错）。
+pub fn 读状态文件<T, F>(路径: &Path, 提取: F) -> Vec<T>
+where
+    F: Fn(&serde_json::Value) -> Option<T>,
+{
+    let 内容 = match std::fs::read_to_string(路径) {
+        Ok(内容) => 内容,
+        Err(_) => return Vec::new(),  // 文件不存在返空（监控/观测/状态文件 首次启动时无）
+    };
+    let mut 结果 = Vec::new();
+    for 行 in 内容.lines() {
+        if 行.is_empty() {
+            continue;
+        }
+        // 容错：单行 parse 失败跳过（不 panic）
+        let 值 = match serde_json::from_str::<serde_json::Value>(行) {
+            Ok(值) => 值,
+            Err(_) => continue,
+        };
+        if let Some(项目) = 提取(&值) {
+            结果.push(项目);
+        }
+    }
+    结果
+}
+
 /// 分组键：实体键为空时按内容兜底（与 读链头集 同策略，兼容旧式无键记录）。
 fn 分组键(记录: &记录) -> String {
     if 记录.实体键.is_empty() {

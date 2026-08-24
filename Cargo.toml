@@ -14,3 +14,26 @@ members = [
     "乾坤/呈现-域/命令操作-府",
     "证道/鸿蒙 - 域/单元测试-府",
 ]
+
+# 集中元数据：12 个 crate 共享（避免重复）
+[workspace.package]
+edition = "2021"
+rust-version = "1.75"
+authors = ["此生愿"]
+license = "MIT"
+
+# 集中 lints 配置：12 个 crate 共享（避免重复）
+[workspace.lints.rust]
+unsafe_code = "deny"  # 13 个 crate 全部禁止 unsafe
+unused_must_use = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# 中文命名约定：snake_case 是规范，但项目用中文 = 必须显式 allow
+non_snake_case = { level = "allow", priority = 0 }
+# 模块级抽象 lints
+module_name_repetitions = "allow"  # 数据-抓取-殿/事件-读取-阁/... 模块名重复难避免
+similar_names = "allow"  # 项目内多 crate 重名难避免
+too_many_arguments = "allow"  # 9 府入口常接 5+ 参数
+result_large_err = "allow"  # 错误信息是 String 不是 thiserror
+too_long_first_doc_paragraph = "allow"
