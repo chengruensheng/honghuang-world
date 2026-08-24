@@ -10,6 +10,28 @@ use std::sync::OnceLock;
 /// 上下文目录名（工作区内的记忆数据目录，源码快照时排除）。
 pub const 上下文目录名: &str = ".上下文";
 
+/// §B.2.2 抽象：格位存储 trait（3 实现 Jsonl / Sqlite / Memory）。
+///
+/// 12 个 crate 用 1 个 trait 抽象（之前直接用 模型存储 struct — 紧耦合）。
+pub trait 格位存储: Send + Sync {
+    /// 写一条记录（jsonl 一行）。
+    fn 写记录(&self, 记录: &记录) -> Result<(), String>;
+    /// 在工作区根下打开（格位落 .上下文/格位/）。
+    fn 在工作区(工作区: &工作区) -> Box<dyn 格位存储>
+    where
+        Self: Sized;
+}
+
+/// Jsonl 格位存储（§B.2.2 三个实现之一）—— 把 模型存储 适配成 trait。
+impl 格位存储 for 模型存储 {
+    fn 写记录(&self, 记录: &记录) -> Result<(), String> {
+        模型存储::写记录(self, 记录)
+    }
+    fn 在工作区(工作区: &工作区) -> Box<dyn 格位存储> {
+        Box::new(模型存储::在工作区(工作区))
+    }
+}
+
 /// 工作区：目标项目根 + 记忆数据目录（.上下文）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct 工作区 {
