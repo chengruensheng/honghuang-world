@@ -42,3 +42,6 @@ similar_names = "allow"  # 项目内多 crate 重名难避免
 too_many_arguments = "allow"  # 9 府入口常接 5+ 参数
 result_large_err = "allow"  # 错误信息是 String 不是 thiserror
 too_long_first_doc_paragraph = "allow"
+# §B.3.11 clippy::pedantic（更严的 lint）
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

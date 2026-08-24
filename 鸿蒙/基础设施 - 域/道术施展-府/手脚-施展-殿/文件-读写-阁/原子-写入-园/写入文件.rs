@@ -8,6 +8,7 @@ use shihai_fu::{回滚垫, 工作区, 当前任务};
 use std::path::{Path, PathBuf};
 
 /// §B.1.5 沙箱兼容：临时目录放工作区根下（写入文件测试用）。
+#[allow(dead_code)]  // 测试用 — §B.1.5 沙箱兼容
 fn 工作区根() -> PathBuf {
     工作区::定位().根路径().join(".上下文")
 }
@@ -43,9 +44,7 @@ pub fn 沙箱校验(工作区根: &Path, 目标: &Path) -> Result<(), String> {
 pub fn 写文件(路径: &str, 内容: &str) -> Result<bool, String> {
     let 根 = shihai_fu::工作区::定位();
     let 目标 = Path::new(路径);
-    if let Err(错误) = 沙箱校验(根.根路径(), 目标) {
-        return Err(错误);
-    }
+    沙箱校验(根.根路径(), 目标)?;
     // 内容相同检测：文件已存在且内容（行尾归一后）一致 → 空操作跳过。
     let 原文 = std::fs::read_to_string(路径).ok();
     let 写入内容 = 按行尾归一(原文.as_deref(), 内容);
@@ -62,7 +61,7 @@ pub fn 写文件(路径: &str, 内容: &str) -> Result<bool, String> {
     let 垫 = 回滚垫::在工作区(&工作区::定位());
     if let Err(错误) = 垫.备份(&当前任务(), 路径) {
         debug!(路径, "回滚垫备份跳过：{错误}");
-    }
+    } // 备份失败仅 debug — 写文件应继续（用 ? 会让无备份时也失败）
     let 目标 = Path::new(路径);
     if let Some(父) = 目标.parent() {
         if !父.as_os_str().is_empty() {

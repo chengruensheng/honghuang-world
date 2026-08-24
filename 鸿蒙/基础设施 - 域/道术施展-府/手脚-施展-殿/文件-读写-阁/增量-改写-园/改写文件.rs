@@ -6,6 +6,7 @@ use shihai_fu::{回滚垫, 工作区, 当前任务};
 use crate::原子_写入_园::沙箱校验;
 use std::path::PathBuf;
 
+#[allow(dead_code)]  // 测试用 — §B.1.5 沙箱兼容
 fn 工作区根() -> PathBuf {
     工作区::定位().根路径().join(".上下文")
 }
@@ -15,9 +16,7 @@ fn 工作区根() -> PathBuf {
 /// 空操作优化：替换后内容与原文相同（旧文==新文 等）→ 返回 false，不备份不重写。
 pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<bool, String> {
     let 根 = shihai_fu::工作区::定位();
-    if let Err(错误) = 沙箱校验(根.根路径(), std::path::Path::new(路径)) {
-        return Err(错误);
-    }
+    沙箱校验(根.根路径(), std::path::Path::new(路径))?;
     let 原文 = std::fs::read_to_string(路径).map_err(|错误| {
         error!(路径, "改文件读失败：{错误}");
         format!("读文件失败：{路径}：{错误}")
