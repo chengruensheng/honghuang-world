@@ -6,12 +6,13 @@
 
 use crate::类型_定义_殿::{世界状态, 版本记录, 要求书, 阶段};
 use rizhi_fu::{debug, error, info, warn};
+use shihai_fu::世界结果;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// 复制源码到快照目录，排除构建产物/版本库/依赖，返回复制文件数。
-pub fn 源码快照(源目录: &Path, 目标目录: &Path) -> Result<usize, String> {
+pub fn 源码快照(源目录: &Path, 目标目录: &Path) -> 世界结果<usize> {
     let 排除项 = shihai_fu::扫描排除项(源目录);
     let mut 计数 = 0;
     复制目录(源目录, 目标目录, &排除项, &mut 计数)?;
@@ -26,7 +27,7 @@ pub fn 增量快照(
     源目录: &Path,
     基目录: Option<&Path>,
     目标目录: &Path,
-) -> Result<(usize, Vec<(String, u64)>), String> {
+) -> 世界结果<(usize, Vec<(String, u64)>)> {
     let 排除项 = shihai_fu::扫描排除项(源目录);
     let 有基 = 基目录.map(|路径| 路径.exists()).unwrap_or(false);
     if !有基 {
@@ -49,7 +50,7 @@ fn 复制变更目录(
     排除项: &[String],
     计数: &mut usize,
     清单: &mut Vec<(String, u64)>,
-) -> Result<(), String> {
+) -> 世界结果<()> {
     fs::create_dir_all(目标).map_err(|错误| format!("建目录失败: {错误}"))?;
     for 条目 in fs::read_dir(源).map_err(|错误| format!("读目录失败: {错误}"))? {
         let 条目 = 条目.map_err(|错误| format!("读条目失败: {错误}"))?;
@@ -87,7 +88,7 @@ fn 复制变更目录(
 
 fn 复制目录(
     源: &Path, 目标: &Path, 排除项: &[String], 计数: &mut usize
-) -> Result<(), String> {
+) -> 世界结果<()> {
     fs::create_dir_all(目标).map_err(|错误| format!("建目录失败: {错误}"))?;
     for 条目 in fs::read_dir(源).map_err(|错误| format!("读目录失败: {错误}"))? {
         let 条目 = 条目.map_err(|错误| format!("读条目失败: {错误}"))?;
@@ -134,7 +135,7 @@ pub fn 生成版本记录(
 }
 
 /// 回退版本：清空目标目录，从快照恢复。
-pub fn 回退版本(快照目录: &Path, 目标目录: &Path) -> Result<usize, String> {
+pub fn 回退版本(快照目录: &Path, 目标目录: &Path) -> 世界结果<usize> {
     if 目标目录.exists() {
         fs::remove_dir_all(目标目录).map_err(|错误| {
             error!(目标 = %目标目录.display(), "清目标失败：{错误}");
@@ -150,7 +151,7 @@ pub fn 回退版本(快照目录: &Path, 目标目录: &Path) -> Result<usize, S
 
 /// 落盘一条版本记录到 `.上下文/状态/版本.jsonl`（**追加**，一行一条，原子：旧内容+新行 → 临时文件 → rename）。
 /// 防半写：任一行必为完整 JSON（序列化失败则该次写入整体失败，绝不留半截行）。
-pub fn 落盘版本记录(状态目录: &Path, 记录: &版本记录) -> Result<(), String> {
+pub fn 落盘版本记录(状态目录: &Path, 记录: &版本记录) -> 世界结果<()> {
     if !状态目录.exists() {
         fs::create_dir_all(状态目录).map_err(|错误| format!("建状态目录失败: {错误}"))?;
     }
@@ -179,7 +180,7 @@ pub fn 落盘版本记录(状态目录: &Path, 记录: &版本记录) -> Result<
 }
 
 /// 读全部版本记录（按写入顺序）。
-pub fn 读版本历史(状态目录: &Path) -> Result<Vec<版本记录>, String> {
+pub fn 读版本历史(状态目录: &Path) -> 世界结果<Vec<版本记录>> {
     let 文件 = 状态目录.join("版本.jsonl");
     if !文件.exists() {
         return Ok(Vec::new());
@@ -200,7 +201,7 @@ pub fn 读版本历史(状态目录: &Path) -> Result<Vec<版本记录>, String>
 /// （想法.jsonl / 要求.jsonl / 验收.jsonl，由 投递/入池/验收 追加维护），
 /// 世界状态内嵌字段经常滞后（实测 验收历史=0 而验收.jsonl 有 55 条）——
 /// 读时用 jsonl 全量聚合覆盖内嵌字段，保证状态可视真实一致。
-pub fn 读世界状态(状态目录: &Path) -> Result<Option<世界状态>, String> {
+pub fn 读世界状态(状态目录: &Path) -> 世界结果<Option<世界状态>> {
     let 文件 = 状态目录.join("世界状态.jsonl");
     if !文件.exists() {
         return Ok(None);
@@ -231,7 +232,7 @@ pub fn 读世界状态(状态目录: &Path) -> Result<Option<世界状态>, Stri
 }
 
 /// 原子写世界状态：临时文件 → fsync → rename 替换。防半写：任一次写入要么全成功、要么旧文件保持完整。
-pub fn 写世界状态(状态目录: &Path, 状态: &世界状态) -> Result<(), String> {
+pub fn 写世界状态(状态目录: &Path, 状态: &世界状态) -> 世界结果<()> {
     if !状态目录.exists() {
         fs::create_dir_all(状态目录).map_err(|错误| format!("建状态目录失败: {错误}"))?;
     }
@@ -258,7 +259,7 @@ pub fn 写世界状态(状态目录: &Path, 状态: &世界状态) -> Result<(),
 
 /// 首次启动初始化：若世界状态不存在则写入默认（阶段=甲、v1已存档=false）。
 /// 已存在则原样返回现有状态，避免覆盖既有进度。
-pub fn 确保世界状态初始化(状态目录: &Path) -> Result<世界状态, String> {
+pub fn 确保世界状态初始化(状态目录: &Path) -> 世界结果<世界状态> {
     if let Some(已有) = 读世界状态(状态目录)? {
         debug!(阶段 = ?已有.阶段, v1已存档 = 已有.v1已存档, "世界状态已存在，跳过初始化");
         return Ok(已有);
@@ -284,9 +285,7 @@ pub fn 确保世界状态初始化(状态目录: &Path) -> Result<世界状态, 
 
 /// 标记 v1 已存档：读世界状态 → 改 v1已存档=true → 原子写回；同时把版本记录追加到世界状态内嵌字段。
 /// 步骤：先落盘版本记录，再升级世界状态。任一步失败则版本记录保持已写但世界状态未升级，便于人工排查。
-pub fn 标记v1已存档(
-    状态目录: &Path, 记录: 版本记录
-) -> Result<世界状态, String> {
+pub fn 标记v1已存档(状态目录: &Path, 记录: 版本记录) -> 世界结果<世界状态> {
     落盘版本记录(状态目录, &记录)?;
     let mut 状态 = 读世界状态(状态目录)?
         .ok_or_else(|| "世界状态未初始化，请先调用 确保世界状态初始化".to_string())?;

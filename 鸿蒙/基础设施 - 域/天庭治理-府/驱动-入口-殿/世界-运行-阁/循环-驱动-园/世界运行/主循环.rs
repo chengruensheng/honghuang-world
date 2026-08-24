@@ -16,6 +16,7 @@ use daoshu_fu::执行状态;
 use jiance_fu::{观测角色, 进入观测};
 use moxing_fu::模型配置;
 use rizhi_fu::{debug, error, info, warn};
+use shihai_fu::世界结果;
 use shijian_fu::全局总线;
 
 use super::状态推进::{
@@ -104,7 +105,7 @@ pub fn 主政一轮(
     想法: &想法,
     配置: &模型配置,
     存储: &shihai_fu::模型存储,
-) -> Result<主政回执, String> {
+) -> 世界结果<主政回执> {
     // 鸿钧单一意志线守护：同一时刻仅允许一条主政意志线运行，防并发任务线互相覆盖状态
     //（架构报告 2.10.3 运行时守护缺口）。进程级互斥锁（OnceLock<Mutex>），多线程并发调
     // 主政一轮 时串行化，确保状态推进/产物落盘/依赖图重建不竞态。Mutex poison 容错取数据
@@ -226,7 +227,7 @@ pub fn 运行一轮(
     要求id: &str,
     配置: &模型配置,
     存储: &shihai_fu::模型存储,
-) -> Result<终裁回执, String> {
+) -> 世界结果<终裁回执> {
     // 状态共享：写入当前要求id（供观览查询读取）
     if let Some(状态) = zhuangtai_fu::取全局状态() {
         let _ = 状态.写入(zhuangtai_fu::当前要求id(要求id.to_string()));
@@ -282,7 +283,7 @@ pub fn 运行一轮(
     入池要求.状态 = 要求状态::待领;
     if let Err(错误) = 追加要求(&入池要求) {
         error!(要求id = %入池要求.id, "要求入池失败：{错误}");
-        return Err(format!("要求入池失败：{错误}"));
+        return Err(format!("要求入池失败：{错误}").into());
     }
 
     // 依赖图滞后防御：若涉及路径对应文件全是本轮新建的（旧依赖图档案不含），先扫一次重建再查相关文件。
@@ -334,7 +335,7 @@ pub fn 运行一轮(
             break;
         }
         if 设计尝试 >= 设计重审上限 {
-            return Err("设计被打回（重审耗尽）".to_string());
+            return Err("设计被打回（重审耗尽）".into());
         }
         设计尝试 += 1;
         warn!(要求id = %要求.id, 尝试 = 设计尝试, 上限 = 设计重审上限, "设计打回，自动重审");
@@ -391,9 +392,12 @@ pub fn 运行一轮(
         // 治要求-89 三子任务并行时子任务1引用子任务0新定义导致编译失败的依赖问题（2026-08-20 入稿）。
         // 地道整理线程仍并行（LLM 生成期间做增量变更检测，白嫖等待期），串行循环后 join。
         let 根路径 = 工作区.根路径().to_path_buf();
-        let 地道结果 = std::sync::Arc::new(std::sync::Mutex::new(
-            Ok::<shihai_fu::变更报告, String>(shihai_fu::变更报告::default()),
-        ));
+        let 地道结果 = std::sync::Arc::new(std::sync::Mutex::new(Ok::<
+            shihai_fu::变更报告,
+            shihai_fu::世界错误::世界错误,
+        >(
+            shihai_fu::变更报告::default()
+        )));
         let 地道句柄 = {
             let 地道结果 = std::sync::Arc::clone(&地道结果);
             let 根路径 = 根路径.clone();
@@ -706,7 +710,7 @@ fn 打回撤销产物(
     要求id: &str,
     产物们: &[crate::产物条目],
     工作区: &shihai_fu::工作区,
-) -> Result<usize, String> {
+) -> 世界结果<usize> {
     // 优先回滚垫：恢复世界写前状态（含未存档的界主/助手改动），比版本快照精确——
     // 版本快照不含未存档改动，按快照恢复会覆盖它们。
     // 只撤销本任务前缀组（要求id 及其 -子N/-重试N），不碰其他任务/界主的组——
@@ -793,8 +797,8 @@ fn 基线指纹字符串(条目: &serde_json::Value) -> Option<String> {
 /// 执行一条待执行任务线（守护/驱动共用）：领取 → 主政一轮全链 → 回填结果 → 汇报入对话记录。
 /// 返回 Some(汇报) 表示消费了一条；None 表示无待执行（或锁被他人持有）。
 pub fn 执行一条待执行任务线(
-    存储: &shihai_fu::模型存储,
-) -> Result<Option<String>, String> {
+    存储: &shihai_fu::模型存储
+) -> 世界结果<Option<String>> {
     let 任务线 = match 领取待执行任务线()? {
         Some(任务线) => 任务线,
         None => return Ok(None),
@@ -861,7 +865,12 @@ pub fn 执行一条待执行任务线(
             归位要求状态(&想法.id);
             let 汇报 = format!("任务线 {} 执行失败：{错误}", 任务线.id);
             let _ = 回填任务线结果(&任务线.id, &任务线.id, "打回", &汇报);
-            (汇报, "打回".to_string(), 错误, 任务线.id.clone())
+            (
+                汇报,
+                "打回".to_string(),
+                错误.to_string(),
+                任务线.id.clone(),
+            )
         }
     };
     // 回填前检查中止标记（生产化 1.3）：执行期间被中止 → 撤销产物、不汇报。

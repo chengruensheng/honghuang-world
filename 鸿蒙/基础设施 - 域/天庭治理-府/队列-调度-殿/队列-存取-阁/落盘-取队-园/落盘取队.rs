@@ -2,6 +2,7 @@
 
 use rizhi_fu::{debug, error, warn};
 use serde::{de::DeserializeOwned, Serialize};
+use shihai_fu::世界结果;
 use std::fs;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -29,7 +30,7 @@ impl Drop for 排他锁 {
 }
 
 /// 抢排他锁：陈旧锁（>30 秒）视为崩溃残留清理重试；最长等待 5 秒，超时返回错误。
-fn 抢排他锁(锁路径: &Path) -> Result<排他锁, String> {
+fn 抢排他锁(锁路径: &Path) -> 世界结果<排他锁> {
     let 开始 = std::time::Instant::now();
     loop {
         match std::fs::OpenOptions::new()
@@ -55,7 +56,7 @@ fn 抢排他锁(锁路径: &Path) -> Result<排他锁, String> {
                     }
                 }
                 if 开始.elapsed().as_secs() >= 5 {
-                    return Err(format!("队列排他锁等待超时：{}", 锁路径.display()));
+                    return Err(format!("队列排他锁等待超时：{}", 锁路径.display()).into());
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
@@ -80,7 +81,7 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
     }
 
     /// 拿进程级排他锁：复合「读→改→写」操作须持锁贯穿（调用方持锁期间直接 fs 读写，勿调队列方法）。
-    pub fn 排他(&self) -> Result<排他锁, String> {
+    pub fn 排他(&self) -> 世界结果<排他锁> {
         抢排他锁(&self.路径.with_extension("jsonl.lock"))
     }
 
@@ -88,7 +89,7 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
     /// 防JSON粘连：文件非空且末尾非换*换行时先补换行（上次写入或外部修改可能丢末尾换行，
     /// 2026-08-19 实测：手动修改任务线.jsonl后末尾换行丢失，新入队的JSON粘在旧JSON后面，
     /// 逐行解析读不到新任务）。
-    pub fn 入队(&self, 项: &T) -> Result<(), String> {
+    pub fn 入队(&self, 项: &T) -> 世界结果<()> {
         let 行 = serde_json::to_string(项).map_err(|错误| format!("序列化队列项失败: {错误}"))?;
         use std::io::Write;
         let 锁 = self.排他()?;
@@ -120,7 +121,7 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
     }
 
     /// 取队（读首行并删除）。内部排他锁防与入队/重写交错。
-    pub fn 取队(&self) -> Result<Option<T>, String> {
+    pub fn 取队(&self) -> 世界结果<Option<T>> {
         let 锁 = self.排他()?;
         let 内容 = fs::read_to_string(&self.路径).map_err(|错误| {
             error!(路径 = %self.路径.display(), "读队列失败：{错误}");
@@ -149,13 +150,13 @@ impl<T: Serialize + DeserializeOwned> 落盘队列<T> {
     }
 
     /// 水位（当前行数）。只读，不加锁（rename 原子写保证读到完整旧/新内容）。
-    pub fn 水位(&self) -> Result<usize, String> {
+    pub fn 水位(&self) -> 世界结果<usize> {
         let 内容 = fs::read_to_string(&self.路径).map_err(|错误| format!("读队列失败: {错误}"))?;
         Ok(内容.lines().filter(|行| !行.trim().is_empty()).count())
     }
 
     /// 读全部（不删除，按行解析，供列表/详情用）。只读，不加锁。
-    pub fn 读全部(&self) -> Result<Vec<T>, String> {
+    pub fn 读全部(&self) -> 世界结果<Vec<T>> {
         let 内容 = fs::read_to_string(&self.路径).map_err(|错误| format!("读队列失败: {错误}"))?;
         let mut 项们 = Vec::new();
         for 行 in 内容.lines().filter(|行| !行.trim().is_empty()) {
@@ -183,12 +184,12 @@ pub fn 合法迁移(当前: &要求状态) -> Vec<要求状态> {
 }
 
 /// 状态推进：合法则返回目标态，非法则报错。
-pub fn 状态推进(当前: &要求状态, 目标: &要求状态) -> Result<要求状态, String> {
+pub fn 状态推进(当前: &要求状态, 目标: &要求状态) -> 世界结果<要求状态> {
     if 合法迁移(当前).contains(目标) {
         Ok(目标.clone())
     } else {
         warn!(当前 = ?当前, 目标 = ?目标, "非法状态推进");
-        Err(format!("非法状态推进：从 {:?} 到 {:?}", 当前, 目标))
+        Err(format!("非法状态推进：从 {:?} 到 {:?}", 当前, 目标).into())
     }
 }
 

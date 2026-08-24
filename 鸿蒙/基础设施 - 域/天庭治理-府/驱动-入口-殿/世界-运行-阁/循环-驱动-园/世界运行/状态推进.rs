@@ -16,6 +16,7 @@ use crate::类型_定义_殿::{
     任务线, 任务线状态, 想法, 想法状态, 要求书, 要求状态
 };
 use rizhi_fu::{info, warn};
+use shihai_fu::世界结果;
 
 /// 状态目录：工作区根下的 .上下文/状态（与命令操作-府的 状态目录 行为对齐，本府复制以保持跨府引用只走 lib 根符号的边界）。
 pub(super) fn 状态目录() -> std::path::PathBuf {
@@ -29,7 +30,7 @@ pub(super) fn 状态目录() -> std::path::PathBuf {
 /// 返回 (全部项, 排他锁)；调用方改完项们后调 持久化XX们 再 drop 锁（勿在持锁期间调队列方法防重入死锁）。
 pub(super) fn 读改写队列<T: serde::Serialize + serde::de::DeserializeOwned>(
     路径: &std::path::Path,
-) -> Result<(Vec<T>, crate::排他锁), String> {
+) -> 世界结果<(Vec<T>, crate::排他锁)> {
     let 队列 = crate::落盘队列::<T>::打开(路径);
     let 锁 = 队列
         .排他()
@@ -45,7 +46,7 @@ pub(super) fn 读改写队列<T: serde::Serialize + serde::de::DeserializeOwned>
 
 /// 推进要求状态机：按要求 id 找到目标 → 校验迁移合法 → 改状态 → 原子落盘。
 /// 校验失败打 warn 不阻断（甲阶段自动推进；非法迁移以现状为准）。
-pub(super) fn 推进要求状态(要求id: &str, 目标: 要求状态) -> Result<(), String> {
+pub(super) fn 推进要求状态(要求id: &str, 目标: 要求状态) -> 世界结果<()> {
     let 队列路径 = 状态目录().join("要求.jsonl");
     let (mut 项们, 锁) = 读改写队列::<要求书>(&队列路径)?;
     let mut 命中 = false;
@@ -91,7 +92,7 @@ pub(super) fn 推进并警(要求id: &str, 目标: 要求状态) {
 /// 追加要求到要求.jsonl（首次入池：要求由「解析想法」产出，状态机起点 = 待领）。
 /// 落盘队列无原 id 追加接口：读全部 → 追加新项 → 写临时文件 → 原子改名（防半写损坏）。
 /// 持进程级排他锁贯穿读改写（2026-08-17 轮8 体检：守护回填与界主登记并发会互相覆盖）。
-pub(super) fn 追加要求(要求: &要求书) -> Result<(), String> {
+pub(super) fn 追加要求(要求: &要求书) -> 世界结果<()> {
     let 队列路径 = 状态目录().join("要求.jsonl");
     let (mut 项们, 锁) = 读改写队列::<要求书>(&队列路径)?;
     // 防止同 id 重复追加（重入运行一轮 / 想法被多次投递）：已存在则覆盖旧状态，不重复入队。
@@ -126,7 +127,7 @@ pub(super) fn 追加要求(要求: &要求书) -> Result<(), String> {
 /// 下一个要求序号：读要求.jsonl 现有最大序号 +1（全局递增，防并发任务线 id 撞车；设计稿 §1.5.5 拍板 7）。
 /// 并发安全：进程内 AtomicU64 单调（初始化 0→基准=磁盘 max；之后 fetch_add 返回 max+1、max+2…），
 /// 并发多线程绝不重复；重启后重新读磁盘 max 作基准，跨进程/跨重启也不撞。
-pub(super) fn 下一个要求序号() -> Result<u64, String> {
+pub(super) fn 下一个要求序号() -> 世界结果<u64> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static 序号基准: AtomicU64 = AtomicU64::new(0);
     // 惰性初始化：首次读到磁盘当前最大序号作基准（#0 哨兵 = 未初始化）。
@@ -157,7 +158,7 @@ pub(super) fn 下一个要求序号() -> Result<u64, String> {
 
 /// 推进想法状态：读全部 → 改目标 → 原子重写（对话/任务线共用，防目标状态被覆盖）。
 /// 持进程级排他锁贯穿读改写（2026-08-17 轮8 体检：守护推进与界主投递并发会互相覆盖）。
-pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> Result<(), String> {
+pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> 世界结果<()> {
     let 想法路径 = 状态目录().join("想法.jsonl");
     let (mut 项们, 锁) = 读改写队列::<想法>(&想法路径)?;
     let mut 命中 = false;
@@ -169,7 +170,7 @@ pub fn 推进想法状态(目标id: &str, 新状态: 想法状态) -> Result<(),
         }
     }
     if !命中 {
-        return Err(format!("未找到目标想法：{目标id}"));
+        return Err(format!("未找到目标想法：{目标id}").into());
     }
     // 复用 持久化列表 泛型原子落盘（消除内联 join+format 两次分配，与要求/任务线同款）。
     持久化列表(&想法路径, &项们, "想法")?;
@@ -219,7 +220,7 @@ pub(crate) fn 唯一id(前缀: &str) -> String {
 }
 
 /// 登记任务线：一次对话发布的任务单元入盘（待执行）。
-pub fn 登记任务线(想法: &想法) -> Result<任务线, String> {
+pub fn 登记任务线(想法: &想法) -> 世界结果<任务线> {
     let 任务线 = 任务线 {
         id: 唯一id("任务线"),
         想法id: 想法.id.clone(),
@@ -246,14 +247,14 @@ pub const 陈旧执行中阈值秒: u64 = 6 * 3600;
 /// 守护崩溃残留）→ 重置 待执行 后领取。领取成功即写心跳（时间=当前），防正常执行被误判陈旧。
 /// 统一走 落盘队列 排他锁（jsonl.lock，与 入队/回填/中止 同锁互斥，防并发双跑与读改写覆盖，
 /// 2026-08-17 轮8 体检：原独立 任务线.lock 与回填的 jsonl.lock 不同源，存在读改写竞态）。
-pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
+pub fn 领取待执行任务线() -> 世界结果<Option<任务线>> {
     let 路径 = 状态目录().join("任务线.jsonl");
     let 队列 = crate::落盘队列::<任务线>::打开(路径.clone());
     let 锁 = match 队列.排他() {
         Ok(锁) => 锁,
         Err(_) => return Ok(None), // 他人持有锁，本轮不抢（超时视为被占用）
     };
-    let 结果 = (|| -> Result<Option<任务线>, String> {
+    let 结果 = (|| -> 世界结果<Option<任务线>> {
         let 内容 =
             std::fs::read_to_string(&路径).map_err(|错误| format!("读任务线队列失败: {错误}"))?;
         let mut 项们 = 内容
@@ -291,17 +292,17 @@ pub fn 领取待执行任务线() -> Result<Option<任务线>, String> {
 }
 
 /// 读全部任务线（供状态查询/守护轮询判断）。
-pub fn 读任务线们() -> Result<Vec<任务线>, String> {
+pub fn 读任务线们() -> 世界结果<Vec<任务线>> {
     crate::落盘队列::<任务线>::打开(状态目录().join("任务线.jsonl"))
         .读全部()
-        .map_err(|错误| format!("读任务线队列失败: {错误}"))
+        .map_err(|错误| format!("读任务线队列失败: {错误}").into())
 }
 
 /// 中止任务线（生产化 1.3）：任何状态 → 已中止。
 /// 待执行/执行中/已完成的任务线都可中止；执行中的任务线由执行进程在回填前检查中止标记，
 /// 已中止则不汇报并撤销产物（回滚垫前缀撤销）。
 /// 持排他锁贯穿读改写（2026-08-17 轮8 体检）。
-pub fn 中止任务线(任务线id: &str) -> Result<String, String> {
+pub fn 中止任务线(任务线id: &str) -> 世界结果<String> {
     let 路径 = 状态目录().join("任务线.jsonl");
     let (mut 项们, 锁) = 读改写队列::<任务线>(&路径)?;
     let mut 命中 = false;
@@ -313,7 +314,7 @@ pub fn 中止任务线(任务线id: &str) -> Result<String, String> {
         }
     }
     if !命中 {
-        return Err(format!("未找到任务线：{任务线id}"));
+        return Err(format!("未找到任务线：{任务线id}").into());
     }
     持久化任务线们(&路径, &项们)?;
     drop(锁);
@@ -372,7 +373,7 @@ pub fn 回填任务线结果(
     要求id: &str,
     结论: &str,
     汇报: &str,
-) -> Result<(), String> {
+) -> 世界结果<()> {
     let 路径 = 状态目录().join("任务线.jsonl");
     let (mut 项们, 锁) = 读改写队列::<任务线>(&路径)?;
     let mut 命中 = false;
@@ -387,7 +388,7 @@ pub fn 回填任务线结果(
         }
     }
     if !命中 {
-        return Err(format!("未找到任务线：{任务线id}"));
+        return Err(format!("未找到任务线：{任务线id}").into());
     }
     持久化任务线们(&路径, &项们)?;
     drop(锁);
@@ -396,7 +397,7 @@ pub fn 回填任务线结果(
 
 /// 失败沉淀：把一次失败写进世界状态.失败模式（按 要求id+阶段 去重累加次数）。
 /// 失败模式是进化环归因的输入，不再恒空；所在层先记「实现层」，由后续进化归因细化。
-pub(super) fn 沉淀失败(要求id: &str, 阶段: &str, 原因: &str) -> Result<(), String> {
+pub(super) fn 沉淀失败(要求id: &str, 阶段: &str, 原因: &str) -> 世界结果<()> {
     let 目录 = 状态目录();
     let mut 状态 = crate::确保世界状态初始化(&目录)?;
     let 已有 = 状态

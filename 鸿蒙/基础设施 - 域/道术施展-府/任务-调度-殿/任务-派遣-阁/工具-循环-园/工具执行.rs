@@ -487,7 +487,7 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             let 上限 = 参数["上限"].as_u64().unwrap_or(20).min(200) as usize;
             let 工作区 = 工作区::定位();
             let 存储 = 模型存储::在工作区(&工作区);
-            let 链头 = 存储.读链头集(格位名)?;
+            let 链头 = 存储.读链头集(格位名).map_err(|e| e.to_string())?;
             let 取条 = 链头.len().saturating_sub(上限);
             let 窗口 = &链头[取条..];
             let mut 输出 = format!(
@@ -516,7 +516,7 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             let 上限 = 参数["上限"].as_u64().unwrap_or(50).min(500) as usize;
             let 工作区 = 工作区::定位();
             let 存储 = 模型存储::在工作区(&工作区);
-            let 全部 = 存储.读格位(格位名)?;
+            let 全部 = 存储.读格位(格位名).map_err(|e| e.to_string())?;
             let 终 = (起始 + 上限).min(全部.len());
             if 起始 >= 全部.len() {
                 return Ok(工具结果::新(format!(

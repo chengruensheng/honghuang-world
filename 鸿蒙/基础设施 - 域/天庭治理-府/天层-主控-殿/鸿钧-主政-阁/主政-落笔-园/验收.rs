@@ -8,6 +8,7 @@ use crate::净化涉及路径;
 use crate::类型_定义_殿::*;
 use moxing_fu::用量;
 use rizhi_fu::{info, warn};
+use shihai_fu::世界结果;
 
 use super::终裁::终裁裁决_无名;
 
@@ -81,7 +82,7 @@ pub fn 定档(
     回执: &验收回执,
     产物们: &[产物条目],
     用量: &用量,
-) -> Result<(), String> {
+) -> 世界结果<()> {
     // 接口契约扫描（设计稿 §4.2 规则6 配套）：定档时刷新 workspace pub API 清单入格位，
     // 供执行现状拼装注入「可用API清单」。扫描失败不阻断定档（只 warn）。
     扫描接口契约写入格位(存储);

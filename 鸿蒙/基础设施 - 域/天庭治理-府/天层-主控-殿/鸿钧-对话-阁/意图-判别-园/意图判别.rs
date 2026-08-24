@@ -4,6 +4,7 @@
 use moxing_fu::{对话消息, 模型配置, 精简上限, 调用模型};
 use rizhi_fu::{info, warn};
 use serde::{Deserialize, Serialize};
+use shihai_fu::世界结果;
 
 /// 对话意图（界主一句话的归类）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -73,7 +74,7 @@ fn 兜底闲聊() -> 判别结果 {
 }
 
 /// 解析模型回复：取首个完整 JSON 对象 → 映射意图枚举（容错别名）。
-fn 解析(回复: String) -> Result<判别结果, String> {
+fn 解析(回复: String) -> 世界结果<判别结果> {
     let 对象 = 提取首个对象(&回复)?;
     let 意图文本 = 对象.get("意图").and_then(|值| 值.as_str()).unwrap_or("");
     let 意图 = 映射意图(意图文本);
@@ -133,7 +134,7 @@ fn 映射意图(文本: &str) -> 对话意图 {
 
 /// 提取首个完整可解析的 JSON 对象：字符串字面量感知的平衡括号扫描
 /// （think 块/解释文字中的花括号按字符串与配对正确跳过，取第一个合法对象）。
-fn 提取首个对象(文本: &str) -> Result<serde_json::Value, String> {
+fn 提取首个对象(文本: &str) -> 世界结果<serde_json::Value> {
     let 字符们: Vec<char> = 文本.chars().collect();
     let mut 深度 = 0i32;
     let mut 起点 = None;
@@ -173,7 +174,7 @@ fn 提取首个对象(文本: &str) -> Result<serde_json::Value, String> {
             _ => {}
         }
     }
-    Err("未找到完整 JSON 对象".to_string())
+    Err("未找到完整 JSON 对象".into())
 }
 
 #[cfg(test)]
