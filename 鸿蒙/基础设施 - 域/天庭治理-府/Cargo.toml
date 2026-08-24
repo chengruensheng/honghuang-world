@@ -11,7 +11,7 @@ doctest = false
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-thiserror = "2"
+
 daoshu_fu = { path = "../道术施展-府" }
 shihai_fu = { path = "../识海承载-府" }
 shijian_fu = { path = "../事件总线-府" }

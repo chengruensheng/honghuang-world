@@ -67,7 +67,6 @@ dependencies = [
  "serde_json",
  "shihai_fu",
  "shijian_fu",
- "thiserror",
 ]
 
 [[package]]
@@ -621,7 +620,6 @@ name = "shijian_fu"
 version = "0.1.0"
 dependencies = [
  "rizhi_fu",
- "serde",
  "serde_json",
 ]
 
@@ -731,7 +729,6 @@ dependencies = [
  "serde_json",
  "shihai_fu",
  "shijian_fu",
- "thiserror",
  "zhuangtai_fu",
 ]
 
