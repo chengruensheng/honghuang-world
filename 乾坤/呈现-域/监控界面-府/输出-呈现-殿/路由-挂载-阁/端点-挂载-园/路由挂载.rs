@@ -213,8 +213,13 @@ struct 回放参数 {
 }
 
 /// §11.f 九卡片摘要 —— 按 monitor.rooms.json 抓 9 府关切字段。
+/// §17 写回识海：抓完后调 写回识海_结构 把 9 卡片写到 shihai_fu 的「结构」格位（§8.1）。
 async fn 卡片列表() -> impl IntoResponse {
     let 卡片们 = crate::数据_抓取_殿::抓全部卡片();
+    // §17 写回识海（失败不阻塞响应 — §11.6.3 异常兼容）
+    if let Err(e) = crate::数据_抓取_殿::写回识海_结构(&卡片们) {
+        rizhi_fu::warn!(错误 = %e, "§17 写回识海 卡片失败");
+    }
     axum::response::Json(serde_json::json!({ "cards": 卡片们 }))
 }
 
@@ -937,6 +942,11 @@ async fn 自检(Query(参数): Query<自检参数>) -> impl IntoResponse {
     // §十三.e 写入自检历史快照（append-only）
     if let Err(_e) = 追加自检历史(&报告_总) {
         // 写入失败不影响响应（用户能看到本次自检结果）
+    }
+
+    // §17 写回识海·结构格位（让监控界面的「看见」进入项目心智模型）
+    if let Err(e) = crate::数据_抓取_殿::写回自检_结构(&报告_json.to_string()) {
+        rizhi_fu::warn!(错误 = %e, "§17 写回识海·自检失败");
     }
 
     axum::response::Json(报告_json).into_response()

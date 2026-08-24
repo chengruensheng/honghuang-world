@@ -159,6 +159,41 @@ fn count_lines(path: &std::path::Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// §17 写回识海 36 格位（结构格位）：把 9 卡片摘要写到 shihai_fu 的结构格位。
+///
+/// 依据：融合蓝图 §17（第二十二次演进·本次新增）+ §8.1 复用结构格位。
+/// 让监控界面的「看见」进入项目心智模型（识海承载-府 36 格位），供其他角色（鸿钧/女娲 等）
+/// 通过「回想」检索三档回看。
+///
+/// 失败时返回 Result 不 panic（§11.6.3 异常兼容 — 监控界面可读可不写）。
+pub fn 写回识海_结构(卡片们: &[卡片摘要]) -> Result<(), String> {
+    let 工作区 = shihai_fu::工作区::定位();
+    let 存储 = shihai_fu::模型存储::在工作区(&工作区);
+    let now_ms = shihai_fu::当前毫秒();
+    let 实体键 = format!("监控·卡片·{}", now_ms);
+    // 序列化为紧凑 JSON
+    let 摘要: std::collections::BTreeMap<&str, &str> = std::collections::BTreeMap::new();
+    let _ = 摘要; // suppress unused
+    let 内容 = serde_json::to_string(卡片们).map_err(|e| format!("序列化卡片失败: {e}"))?;
+    let 记录 = shihai_fu::记录::新("结构", &内容, "监控界面-府/§17", "监控界面-府/§17");
+    存储
+        .写记录(&记录)
+        .map_err(|e| format!("写回识海·结构格位失败: {e}"))?;
+    let _ = 实体键; // 暂保留实体键扩展点
+    Ok(())
+}
+
+/// §17 写回识海 36 格位（自检结构）：把自检报告写到 shihai_fu 的结构格位。
+pub fn 写回自检_结构(自检内容: &str) -> Result<(), String> {
+    let 工作区 = shihai_fu::工作区::定位();
+    let 存储 = shihai_fu::模型存储::在工作区(&工作区);
+    let 记录 = shihai_fu::记录::新("结构", 自检内容, "监控界面-府/§17", "监控界面-府/§17");
+    存储
+        .写记录(&记录)
+        .map_err(|e| format!("写回识海·自检失败: {e}"))?;
+    Ok(())
+}
+
 /// 数 .env 项数（key=value 形式非注释行）。
 fn count_env_items() -> u64 {
     let 工作区 = shihai_fu::工作区::定位();
