@@ -145,14 +145,20 @@ pub fn 校验涉及路径(原始: &str, 涉及路径: &[String]) -> Result<(), S
         return Ok(());
     }
     let 目标 = 原始.trim().replace('\\', "/");
-    // 预先把涉及路径全部 normalize 一次成 Vec<String>，循环内直接比较，
-    // 避免 iter().any() 每次都 replace('\\',"/") 分配新 String。
-    let 涉及规范: Vec<String> = 涉及路径
+    // 预先把涉及路径全部 normalize 一次成 Vec<(String, String)>：
+    // (归一化路径, 归一化前缀含结尾斜杠)。
+    // 循环内直接 .starts_with(归一化前缀)，避免 iter().any() 每次都 replace('\\',"/") 分配新 String、
+    // 也避免 &format!("{涉及}/") 每轮分配新 String（要求-40 性能优化，2026-08-25 落地）。
+    let 涉及规范: Vec<(String, String)> = 涉及路径
         .iter()
-        .map(|涉及| 涉及.replace('\\', "/"))
+        .map(|涉及| {
+            let 归一 = 涉及.replace('\\', "/");
+            let 前缀 = format!("{归一}/");
+            (归一, 前缀)
+        })
         .collect();
-    let 在内 = 涉及规范.iter().any(|涉及| {
-        if 目标 == 涉及.as_str() || 目标.starts_with(&format!("{涉及}/")) {
+    let 在内 = 涉及规范.iter().any(|(涉及, 前缀)| {
+        if 目标 == 涉及.as_str() || 目标.starts_with(前缀.as_str()) {
             return true;
         }
         // 同目录：仅当涉及路径形态为文件（末段含扩展名）时，允许改/建同目录文件（补测试/同园场景）；
