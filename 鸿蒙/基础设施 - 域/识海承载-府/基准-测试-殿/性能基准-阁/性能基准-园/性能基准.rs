@@ -1,6 +1,8 @@
-//! §B.3.6 性能基准（用 tests + std::time — 不需 criterion/nightly）
+//! §B.3.6 性能基准（用 std::time — 不需 criterion/nightly）
 //!
-//! 跑：`cargo test -p shihai_fu --release 我的基准 -- --nocapture`
+//! 跑：`cargo test -p shihai_fu --release 我的基准 -- --include-ignored --nocapture`
+//!
+//! 落位：基准-测试-殿/性能基准-阁/性能基准-园/（按 §AGENTS.10 六层落点）。
 //!
 //! 衡量 4 个关键操作（μs/op）：
 //! 1. 工作区::定位（OnceLock 缓存 — 冷启动 vs 热调用）

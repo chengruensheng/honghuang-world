@@ -16,3 +16,8 @@ moxing_fu = { path = "../模型连接-府" }
 rizhi_fu = { path = "../日志记录-府" }
 jiance_fu = { path = "../观测探针-府" }
 chajian_fu = { path = "../插件承载-府" }
+
+# §AGENTS.10 测试 源按六层落点；cargo 默认的 tests/ 目录禁止，故显式 [[test]] 配置
+[[test]]
+name = "性能基准"
+path = "基准-测试-殿/性能基准-阁/性能基准-园/性能基准.rs"
