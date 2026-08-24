@@ -90,6 +90,56 @@ pub enum 优先级 {
     高,
 }
 
+/// 本质类别（18 类穷举自代码世界所有可能的需求/故障类型）。
+/// 依据：多智能体架构设计.md §19.2 18 类本质 → 12 档映射。
+/// 本质打分是稳态映射（18 类→12 档，纯函数），不让 LLM 运行时判定。
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum 本质类别 {
+    // S0~S5 补救类（事故已发生）
+    #[default]
+    崩溃级,
+    数据完整性违逆,
+    运行死锁,
+    安全漏洞,
+    资源耗尽,
+    契约破坏,
+    // S6~S10 预防类（事故风险信号）
+    崩溃预防,
+    数据损坏预防,
+    死锁预防,
+    安全漏洞预防,
+    资源耗尽预防,
+    // S11 改进类
+    性能瓶颈,
+    新能力缺口,
+    失败模式反复,
+    占位骨架,
+    覆盖率不足,
+    规则违逆,
+    配置漂移,
+    质量改进,
+}
+
+/// 本质档位（12 档，双轨：补救 S0~S5 + 预防 S6~S10 + 改进 S11）。
+/// 调度算法按档位优先：S0 抢占 → S1~S5 升序 → S6~S10 → S11 队尾。
+/// 补救永远优先于预防，S0 兜底防止全项目崩溃。
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum 本质档位 {
+    #[default]
+    S11,
+    S10,
+    S9,
+    S8,
+    S7,
+    S6,
+    S5,
+    S4,
+    S3,
+    S2,
+    S1,
+    S0,
+}
+
 /// 项目成熟度。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum 成熟度 {
@@ -201,6 +251,12 @@ pub struct 巡世候选 {
     pub 依据: String,
     pub 建议类别: 要求类别,
     pub 优先级: 优先级,
+    /// 本质类别（18 类穷举；候选入池时由 本质打分 稳态赋值，2026-08-24 §19 调度 v2）。
+    #[serde(default)]
+    pub 本质类别: 本质类别,
+    /// 本质档位（12 档；与优先级共存：本质档位用于调度排序，优先级作为兼容保留字段）。
+    #[serde(default)]
+    pub 本质档位: 本质档位,
 }
 
 /// 法则违逆（六层/命名/契约违规）。
