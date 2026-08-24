@@ -1,0 +1,14 @@
+[package]
+name = "世界"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "世界"
+path = "入口.rs"
+
+[dependencies]
+# 跨府 API 重新导出（每个府作为依赖）
+shihai_fu = { path = "../鸿蒙/基础设施 - 域/识海承载-府" }
+# 后续 B.2.6 抽象后逐步加其他府
