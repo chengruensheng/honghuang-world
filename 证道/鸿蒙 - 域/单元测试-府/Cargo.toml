@@ -15,13 +15,8 @@ rizhi_fu = { path = "../../../鸿蒙/基础设施 - 域/日志记录-府" }
 moxing_fu = { path = "../../../鸿蒙/基础设施 - 域/模型连接-府" }
 peizhi_fu = { path = "../../../鸿蒙/世界配置 - 域/配置管理-府" }
 mingling_fu = { path = "../../../乾坤/呈现-域/命令操作-府" }
-jiankong_fu = { path = "../../../乾坤/呈现-域/监控界面-府" }
 chajian_fu = { path = "../../../鸿蒙/基础设施 - 域/插件承载-府" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "std", "registry"] }
-axum = "0.7"
-tower = { version = "0.5", features = ["util"] }
-tokio = { version = "1", features = ["full"] }
-http-body-util = "0.1"
