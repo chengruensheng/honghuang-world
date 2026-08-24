@@ -27,10 +27,8 @@ fn 按行尾归一(原文: Option<&str>, 内容: &str) -> String {
 /// §B.1.5 沙箱校验：拒绝 .. 跳出 + 符号链接跳出工作区根。
 /// 错误：路径在工作区根外 → 返回 Err 不写盘。
 pub fn 沙箱校验(工作区根: &Path, 目标: &Path) -> Result<(), String> {
-    // 解析 .. 路径段（不依赖 symlink follow）
     let 目标 = std::path::Path::new(目标).components().collect::<Vec<_>>();
     let 根段 = 工作区根.components().collect::<Vec<_>>();
-    // 目标必须以工作区根为前缀
     if 目标.len() < 根段.len() || 目标[..根段.len()] != 根段[..] {
         return Err(format!("沙箱拒绝：路径 {:?} 不在工作区根 {:?} 内", 目标, 根段));
     }

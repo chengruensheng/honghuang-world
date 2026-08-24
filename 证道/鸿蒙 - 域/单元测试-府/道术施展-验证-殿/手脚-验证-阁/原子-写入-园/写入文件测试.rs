@@ -60,4 +60,26 @@ mod 测试 {
         let _ = std::fs::remove_dir_all(&根);
         drop(_锁);
     }
+
+    /// §B.3.8 沙箱拒绝工作区根外的绝对路径（组件级比较 — .. 算 ParentDir 不展开）
+    #[test]
+    fn 写文件_沙箱拒绝跳出工作区根() {
+        let (根, _锁) = 临时工作区("写文件", "沙箱拒绝");
+        // 构造一个工作区根外的绝对路径（在根的父目录）
+        let 跳出路径 = 根.parent().unwrap().parent().unwrap().join("sandbox_blocked.txt");
+        let 结果 = 写文件(跳出路径.to_str().unwrap(), "恶意");
+        assert!(结果.is_err(), "跳出工作区根的绝对路径应被拒绝");
+        let 错误 = 结果.unwrap_err();
+        assert!(错误.contains("沙箱拒绝"), "错误信息应含沙箱拒绝：{}", 错误);
+    }
+
+    /// §B.3.8 沙箱接受工作区根内路径
+    #[test]
+    fn 写文件_沙箱接受工作区根内路径() {
+        let (根, _锁) = 临时工作区("写文件", "沙箱接受");
+        let 内路径 = 根.join("内文件.txt");
+        let 结果 = 写文件(内路径.to_str().unwrap(), "OK");
+        assert!(结果.is_ok(), "工作区根内写入应通过：{:?}", 结果);
+        assert_eq!(std::fs::read_to_string(&内路径).unwrap(), "OK");
+    }
 }
