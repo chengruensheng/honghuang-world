@@ -123,21 +123,23 @@ pub enum 本质类别 {
 /// 本质档位（12 档，双轨：补救 S0~S5 + 预防 S6~S10 + 改进 S11）。
 /// 调度算法按档位优先：S0 抢占 → S1~S5 升序 → S6~S10 → S11 队尾。
 /// 补救永远优先于预防，S0 兜底防止全项目崩溃。
+/// 2026-08-25 修：变体顺序必须是升序（S0..=S11），让 PartialOrd 与「数字越大越低」一致；
+/// 旧顺序 S11..=S0 导致 PartialOrd 反向，让 "档位 ≤ S6" 误判为「最紧急」接受，与设计相反。
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum 本质档位 {
     #[default]
-    S11,
-    S10,
-    S9,
-    S8,
-    S7,
-    S6,
-    S5,
-    S4,
-    S3,
-    S2,
-    S1,
     S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
 }
 
 /// 项目成熟度。
