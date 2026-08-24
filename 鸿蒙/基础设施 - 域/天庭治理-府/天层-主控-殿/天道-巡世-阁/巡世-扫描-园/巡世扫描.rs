@@ -3,7 +3,9 @@
 //! 四项检查统一入口（设计稿 §12 P2-7，Line 1114）：
 //! ① 园无测试检测 ② clippy 警告检测 ③ 教训重复模式检测 ④ 规模启发。
 
-use crate::类型_定义_殿::{优先级, 本质类别, 本质档位, 巡世候选, 巡世报告, 法则违逆, 要求类别};
+use crate::类型_定义_殿::{
+    优先级, 巡世候选, 巡世报告, 本质档位, 本质类别, 法则违逆, 要求类别,
+};
 use rizhi_fu::{info, warn};
 use shihai_fu::{工作区, 扫描违逆};
 use std::collections::HashMap;
@@ -242,7 +244,10 @@ fn 检clippy警告(根目录: &Path) -> Vec<巡世候选> {
         info!(警告数, "clippy 警告检测完成");
         let (本质类别, 本质档位) = 本质打分(
             &format!("清理clippy警告（{}条）", 警告数),
-            &format!("cargo clippy --workspace --all-targets 输出 {} 条 warning", 警告数),
+            &format!(
+                "cargo clippy --workspace --all-targets 输出 {} 条 warning",
+                警告数
+            ),
         );
         vec![巡世候选 {
             目标: format!("清理clippy警告（{警告数}条）"),
