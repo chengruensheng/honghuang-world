@@ -115,13 +115,10 @@ pub struct 观测记录 {
     pub 关联: 关联,
 }
 
-/// 观测根目录（工作区根/.上下文/观测），默认 .上下文；可用环境覆盖。
+/// 观测根目录（§B.2.5 — 改用 shihai_fu 统一 fn）。
 fn 观测目录() -> PathBuf {
-    if let Ok(根) = std::env::var("WORLD_WORKSPACE_ROOT") {
-        PathBuf::from(根).join(".上下文").join("观测")
-    } else {
-        PathBuf::from(".上下文").join("观测")
-    }
+    let 根 = std::env::var("WORLD_WORKSPACE_ROOT").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(".上下文"));
+    根.join("观测")
 }
 
 /// 是否记录完整观测内容（**默认关**——B.1.6 脱敏载荷：避免敏感内容落盘）。
