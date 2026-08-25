@@ -115,12 +115,17 @@ pub struct 观测记录 {
     pub 关联: 关联,
 }
 
-/// 观测根目录（§B.2.5 — 改用 shihai_fu 统一 fn）。
+/// 观测根目录：`{工作区根}/.上下文/观测`。
+///
+/// §十（2026-08-25 修正）观测数据属 `.上下文/` 子树，与格位/状态/事件流/回滚垫/依赖图
+/// 同层级。`WORLD_WORKSPACE_ROOT` 已设置时，根目录即该环境变量；未设置时回落当前目录。
+/// 旧实现的回退分支把 `.上下文` 当根，导致环境变量设置后写出 `<root>/观测/` 漂移到根目录，
+/// 已修正为本实现的统一格式。
 fn 观测目录() -> PathBuf {
     let 根 = std::env::var("WORLD_WORKSPACE_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(".上下文"));
-    根.join("观测")
+        .unwrap_or_else(|_| PathBuf::from("."));
+    根.join(".上下文").join("观测")
 }
 
 /// 是否记录完整观测内容（**默认关**——B.1.6 脱敏载荷：避免敏感内容落盘）。
@@ -501,4 +506,49 @@ mod 测试 {
         );
         assert!(摘要结果.contains("已截断为摘要"), "摘要应标注截断");
     }
+
+    /// §十（2026-08-25）：观测目录必须落在 `.上下文/观测`，不能在根目录裸放。
+    /// 验证设了 WORLD_WORKSPACE_ROOT 时，路径为 `<root>/.上下文/观测`。
+    /// 通过临时环境变量 + 顺序锁避免与其他 cargo test 并发污染。
+    #[test]
+    fn 观测目录_设了_world_workspace_root_落在上下文目录下() {
+        let _锁 = crate::测试设施::观测根环境锁
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let 原值 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", "D:\\临时\\测试工作区");
+        let 目录 = 观测目录();
+        match 原值 {
+            Some(v) => std::env::set_var("WORLD_WORKSPACE_ROOT", v),
+            None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
+        }
+        assert_eq!(目录, PathBuf::from("D:\\临时\\测试工作区\\.上下文\\观测"));
+    }
+
+    /// §十（2026-08-25）：未设 WORLD_WORKSPACE_ROOT 时，观测目录回落当前目录的
+    /// `.上下文/观测`，避免历史实现的 `<root>/观测` 漂移到根目录。
+    #[test]
+    fn 观测目录_未设_world_workspace_root_落在当前目录下上下文() {
+        let _锁 = crate::测试设施::观测根环境锁
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let 原值 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        std::env::remove_var("WORLD_WORKSPACE_ROOT");
+        let 目录 = 观测目录();
+        match 原值 {
+            Some(v) => std::env::set_var("WORLD_WORKSPACE_ROOT", v),
+            None => {}
+        }
+        assert_eq!(目录, PathBuf::from(".\\.上下文\\观测"));
+    }
+}
+
+/// 观测探针-府测试设施：环境变量测试并发锁。
+///
+/// §十（2026-08-25）观测目录的环境变量测试（设/不设 WORLD_WORKSPACE_ROOT）并发跑会互相覆盖，
+/// 借用 crate 级锁防撞。与 mingling_fu::工作区测试锁 模式一致。
+#[cfg(test)]
+pub mod 测试设施 {
+    /// 顺序锁：观测目录的 WORLD_WORKSPACE_ROOT 设/不设测试串行执行。
+    pub static 观测根环境锁: std::sync::Mutex<()> = std::sync::Mutex::new(());
 }
