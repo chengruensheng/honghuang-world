@@ -174,12 +174,20 @@ pub struct 名单消费报告 {
     pub 待执行总数: usize,
 }
 
-/// 消费待修正-测试标识.jsonl 名单（§19.4.2.3 实施规范）。
+/// 消费待修正-测试标识.jsonl 名单（§19.4.2.3 实施规范 + §19.4.2.7 P0-3 完整版）。
 ///
-/// 当前为最小骨架：读 .jsonl + 按 实体键 去重 + 报告统计。
-/// TODO（待后续 commit 补全）：
-/// - 每条事务：① 回滚垫备份 ② edit 修改 ③ cargo check 验证 ④ 失败回滚
-/// - 全部跑完：清空名单 / 归档到 .上下文/归档/
+/// 完整流程（事务 4 步 + 归档）：
+/// 1. 读 `.上下文/状态/待修正-测试标识.jsonl`
+/// 2. 过滤 `执行状态 = "待执行"` + 按 实体键 去重（§14.20 reducer 链头）
+/// 3. 对每条「待执行」项执行 4 步事务：
+///    ① 回滚垫备份（`shihai_fu::回滚垫::备份`）
+///    ② edit 修改（按 `动作` 字段：加 `#[test]` / 去 `#[test]` / 加注释审）
+///    ③ cargo check 验证（受影响 crate）
+///    ④ 失败回滚（`撤销任务前缀`）+ 标记 `执行状态`
+/// 4. 全部跑完：归档名单到 `.上下文/归档/待修正-测试标识-{时间}.jsonl`
+///
+/// **dry_run 默认 true**——`WORLD_TEST_PATCH_DRY_RUN=false` 才真改文件。
+/// 依据：§19.7 LLM 调用不在热路径 + §6.4 不开新线程 + AGENTS §16 不可擅动用户数据。
 pub fn 消费待修正名单() -> Option<名单消费报告> {
     let 工作区根 = match std::env::var("WORLD_WORKSPACE_ROOT") {
         Ok(p) if !p.is_empty() => PathBuf::from(p),
@@ -231,20 +239,299 @@ pub fn 消费待修正名单() -> Option<名单消费报告> {
     if 待执行总数 == 0 {
         return Some(名单消费报告::default());
     }
-    // 报告（TODO：未来 commit 在此加回滚垫 + cargo check 事务）
-    info!(
-        待执行总数,
-        路径 = %名单路径.display(),
-        "调度驱动：识别待修正条目（占位阶段，实际修改待后续 commit）"
-    );
-    // TODO 占位：等错误处理 agent 完工后做
-    // - 实体键去重已做
-    // - 待后续 commit 接入回滚垫 + cargo check 验证
-    // - 跑完清空名单 / 归档
-    Some(名单消费报告 {
+
+    // §19.4.2.7 P0-3 完整版：事务 4 步 + 归档。
+    // dry_run 默认 true（防误改）；环境变量 WORLD_TEST_PATCH_DRY_RUN=false 关闭。
+    let dry_run = std::env::var("WORLD_TEST_PATCH_DRY_RUN")
+        .map(|v| v != "false")
+        .unwrap_or(true);
+    let 任务id_prefix = format!("待修正-{}", shihai_fu::当前毫秒());
+
+    let 工作区 = shihai_fu::工作区::定位();
+    let 回滚垫_句柄 = shihai_fu::回滚垫::在工作区(&工作区);
+
+    let mut 报告 = 名单消费报告 {
         待执行总数,
         ..Default::default()
-    })
+    };
+
+    for (实体键, 值) in &实体键表 {
+        let 文件路径 = 值["文件路径"].as_str().unwrap_or("").to_string();
+        let 动作 = 值["动作"].as_str().unwrap_or("").to_string();
+        if 文件路径.is_empty() || 动作.is_empty() {
+            warn!(实体键 = %实体键, "调度驱动：待修正行缺文件路径/动作，跳过");
+            报告.已失败 += 1;
+            continue;
+        }
+
+        // ① 回滚垫备份（dry_run 也备份，方便后续 dry_run=false 时启用）
+        let 任务id = format!("{}-{}", 任务id_prefix, 实体键);
+        let 绝对路径 = 工作区根.join(&文件路径);
+        if let Err(错误) = 回滚垫_句柄.备份(&任务id, 绝对路径.to_string_lossy().as_ref())
+        {
+            warn!(任务id, 文件路径 = %文件路径, "调度驱动：回滚备份失败：{错误}");
+            报告.已失败 += 1;
+            continue;
+        }
+
+        // ② edit 修改（按动作字段；dry_run 不真改）
+        if dry_run {
+            info!(
+                任务id, 文件路径 = %文件路径, 动作 = %动作,
+                "调度驱动 [DRY_RUN] 待改（未真改文件）"
+            );
+            报告.已跳过 += 1;
+            // dry_run 不跑 cargo check，不动名单（待后续 dry_run=false 时再消费）
+            continue;
+        }
+        if let Err(错误) = 应用动作(&绝对路径, &动作) {
+            warn!(任务id, 文件路径 = %文件路径, 动作 = %动作, "调度驱动：edit 修改失败：{错误}");
+            // 失败回滚
+            let _ = 回滚垫_句柄.撤销任务前缀(&任务id);
+            报告.已失败 += 1;
+            continue;
+        }
+
+        // ③ cargo check 验证（受影响 crate）
+        let crate名 = 路径转crate名(&文件路径);
+        let 验证结果 = match crate名 {
+            Some(名) => crate_check(&名),
+            None => {
+                warn!(文件路径 = %文件路径, "调度驱动：无法推导 crate 名，兜底整 workspace");
+                crate_check_workspace()
+            }
+        };
+        if !验证结果 {
+            warn!(任务id, 文件路径 = %文件路径, "调度驱动：cargo check 失败，回滚");
+            let _ = 回滚垫_句柄.撤销任务前缀(&任务id);
+            报告.已失败 += 1;
+            continue;
+        }
+
+        info!(任务id, 文件路径 = %文件路径, 动作 = %动作, "调度驱动：edit 已成功");
+        报告.已成功 += 1;
+    }
+
+    // 归档名单（全部跑完——不论成功失败）
+    if let Err(错误) = 归档名单(&名单路径) {
+        warn!(错误 = %错误, "调度驱动：归档名单失败");
+    }
+
+    Some(报告)
+}
+
+/// 应用动作（编辑文件）：按 §19.9 定义的三种动作。
+///
+/// - `加#[test]`：在第一行 `pub fn` 上方插入 `#[test]\n`
+/// - `去#[test]`：删第一个 `#[test]` 行
+/// - `加注释审`：在第一行 `pub fn` 上方插入 `// §19.4.2.5 LLM 判定：边缘（人工可审）\n`
+fn 应用动作(文件路径: &Path, 动作: &str) -> Result<(), String> {
+    let 内容 = fs::read_to_string(文件路径).map_err(|e| format!("读文件失败: {e}"))?;
+    let 新内容 = match 动作 {
+        "加#[test]" => 加测试标记(&内容),
+        "去#[test]" => 去测试标记(&内容),
+        "加注释审" => 加边缘注释(&内容),
+        其他 => return Err(format!("未知动作: {其他}")),
+    }?;
+    fs::write(文件路径, &新内容).map_err(|e| format!("写文件失败: {e}"))?;
+    Ok(())
+}
+
+/// 在第一个 `pub fn` 上方插入 `#[test]`。
+fn 加测试标记(内容: &str) -> Result<String, String> {
+    let 行们: Vec<&str> = 内容.lines().collect();
+    if let Some(索引) = 行们
+        .iter()
+        .position(|行| 行.trim_start().starts_with("pub fn "))
+    {
+        // 已存在 #[test] 标记？跳过
+        if 索引 > 0 && 行们[索引 - 1].trim_start().starts_with("#[test]") {
+            return Ok(内容.to_string());
+        }
+        let mut 新行们 = 行们.clone();
+        新行们.insert(索引, "#[test]");
+        let mut 结果 = 新行们.join("\n");
+        if 内容.ends_with('\n') {
+            结果.push('\n');
+        }
+        Ok(结果)
+    } else {
+        Err("未找到 pub fn".to_string())
+    }
+}
+
+/// 删除第一个 `#[test]` 行（若存在）。
+fn 去测试标记(内容: &str) -> Result<String, String> {
+    let 行们: Vec<&str> = 内容.lines().collect();
+    if let Some(索引) = 行们
+        .iter()
+        .position(|行| 行.trim_start().starts_with("#[test]"))
+    {
+        let mut 新行们 = 行们.clone();
+        新行们.remove(索引);
+        let mut 结果 = 新行们.join("\n");
+        if 内容.ends_with('\n') {
+            结果.push('\n');
+        }
+        Ok(结果)
+    } else {
+        // 没有 #[test] 也是「成功」（已正确）
+        Ok(内容.to_string())
+    }
+}
+
+/// 在第一个 `pub fn` 上方插入「边缘」注释（人工可审）。
+fn 加边缘注释(内容: &str) -> Result<String, String> {
+    let 行们: Vec<&str> = 内容.lines().collect();
+    if let Some(索引) = 行们
+        .iter()
+        .position(|行| 行.trim_start().starts_with("pub fn "))
+    {
+        let 注释 = "// §19.4.2.5 LLM 判定：边缘（人工可审）";
+        // 已存在同样注释？跳过
+        if 索引 > 0 && 行们[索引 - 1].trim() == 注释 {
+            return Ok(内容.to_string());
+        }
+        let mut 新行们 = 行们.clone();
+        新行们.insert(索引, 注释);
+        let mut 结果 = 新行们.join("\n");
+        if 内容.ends_with('\n') {
+            结果.push('\n');
+        }
+        Ok(结果)
+    } else {
+        Err("未找到 pub fn".to_string())
+    }
+}
+
+/// 路径前缀 → Cargo.toml lib name 映射（10 府 1 世界）。
+///
+/// 简化硬编码：路径首段 + 第二段「府」名 → lib name。
+fn 路径转crate名(路径: &str) -> Option<String> {
+    let 正斜杠 = 路径.replace('\\', "/");
+    if 正斜杠.starts_with("鸿蒙/基础设施 - 域/") {
+        if let Some(rest) = 正斜杠.strip_prefix("鸿蒙/基础设施 - 域/") {
+            let 府 = rest.split('/').next()?;
+            return 映射_鸿蒙_基础设施_域(府);
+        }
+    }
+    if 正斜杠.starts_with("鸿蒙/世界配置 - 域/") {
+        if let Some(rest) = 正斜杠.strip_prefix("鸿蒙/世界配置 - 域/") {
+            let 府 = rest.split('/').next()?;
+            return 映射_鸿蒙_世界配置_域(府);
+        }
+    }
+    if 正斜杠.starts_with("乾坤/呈现-域/") {
+        if let Some(rest) = 正斜杠.strip_prefix("乾坤/呈现-域/") {
+            let 府 = rest.split('/').next()?;
+            return 映射_乾坤_呈现_域(府);
+        }
+    }
+    if 正斜杠.starts_with("证道/鸿蒙 - 域/") {
+        if let Some(rest) = 正斜杠.strip_prefix("证道/鸿蒙 - 域/") {
+            let 府 = rest.split('/').next()?;
+            return 映射_证道_鸿蒙_域(府);
+        }
+    }
+    if 正斜杠.starts_with("世界/") {
+        return Some("世界".to_string());
+    }
+    None
+}
+
+fn 映射_鸿蒙_基础设施_域(府: &str) -> Option<String> {
+    match 府 {
+        "识海承载-府" => Some("shihai_fu".to_string()),
+        "天庭治理-府" => Some("tianting_fu".to_string()),
+        "道术施展-府" => Some("daoshu_fu".to_string()),
+        "模型连接-府" => Some("moxing_fu".to_string()),
+        "日志记录-府" => Some("rizhi_fu".to_string()),
+        "事件总线-府" => Some("shijian_fu".to_string()),
+        "状态共享-府" => Some("zhuangtai_fu".to_string()),
+        "插件承载-府" => Some("chajian_fu".to_string()),
+        "观测探针-府" => Some("jiance_fu".to_string()),
+        _ => None,
+    }
+}
+
+fn 映射_鸿蒙_世界配置_域(府: &str) -> Option<String> {
+    match 府 {
+        "配置管理-府" => Some("peizhi_fu".to_string()),
+        _ => None,
+    }
+}
+
+fn 映射_乾坤_呈现_域(府: &str) -> Option<String> {
+    match 府 {
+        "命令操作-府" => Some("mingling_fu".to_string()),
+        _ => None,
+    }
+}
+
+fn 映射_证道_鸿蒙_域(府: &str) -> Option<String> {
+    match 府 {
+        "单元测试-府" => Some("zhengdao_fu".to_string()),
+        _ => None,
+    }
+}
+
+/// cargo check -p <crate>（子进程调 cargo）。
+/// 返 true 表示编译通过。
+fn crate_check(crate名: &str) -> bool {
+    let 输出 = match std::process::Command::new("cargo")
+        .args(["check", "-p", crate名, "--quiet"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(错误) => {
+            warn!(crate名, "调度驱动：cargo check 子进程启动失败：{错误}");
+            return false;
+        }
+    };
+    if !输出.status.success() {
+        let 错误串 = String::from_utf8_lossy(&输出.stderr);
+        warn!(
+            crate名,
+            错误摘要 = %错误串.lines().take(5).collect::<Vec<_>>().join(" | "),
+            "调度驱动：cargo check 失败"
+        );
+        return false;
+    }
+    true
+}
+
+/// cargo check --workspace 兜底（路径无法推导 crate 名时使用）。
+fn crate_check_workspace() -> bool {
+    let 输出 = match std::process::Command::new("cargo")
+        .args(["check", "--workspace", "--quiet"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(错误) => {
+            warn!("调度驱动：cargo check --workspace 启动失败：{错误}");
+            return false;
+        }
+    };
+    输出.status.success()
+}
+
+/// 归档名单到 `.上下文/归档/待修正-测试标识-{时间}.jsonl`。
+///
+/// 归档后原名单**保留**（不删）——保留给人工复查与回溯；
+/// 「清空名单」留给 §19.4.2.3 之外的单独 commit 决策（避免误清）。
+fn 归档名单(名单路径: &Path) -> Result<(), String> {
+    let 工作区根 = 名单路径
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .ok_or_else(|| "无法推导工作区根".to_string())?;
+    let 归档目录 = 工作区根.join(".上下文").join("归档");
+    fs::create_dir_all(&归档目录).map_err(|e| format!("建归档目录失败: {e}"))?;
+    let 时间戳 = shihai_fu::当前毫秒();
+    let 归档路径 = 归档目录.join(format!("待修正-测试标识-{时间戳}.jsonl"));
+    fs::copy(名单路径, &归档路径).map_err(|e| format!("归档失败: {e}"))?;
+    info!(归档路径 = %归档路径.display(), "调度驱动：已归档待修正名单");
+    Ok(())
 }
 
 /// 追加待修正-测试标识条目到 .上下文/状态/待修正-测试标识.jsonl。
@@ -279,4 +566,208 @@ pub fn 追加待修正测试标识(条目: serde_json::Value) -> Result<(), Stri
         .map_err(|e| format!("打开名单文件失败: {e}"))?;
     writeln!(文件, "{行}").map_err(|e| format!("写失败: {e}"))?;
     Ok(())
+}
+
+// ─────────── §19.4.2.7 P0-3：步骤 5 完整版 4 步事务回归测试（2026-08-25）───────────
+//
+// 覆盖：
+// - 应用动作：3 种动作（加/去 #[test] / 加注释审）
+// - 路径转crate名：5 维（鸿蒙基础设施 / 鸿蒙世界配置 / 乾坤呈现 / 证道鸿蒙 / 世界）
+// - 消费待修正名单 dry_run 路径：dry_run 不真改文件
+//
+// 依据：上下文 §8.5 + 多智能体 §19.4.2.3 + §19.4.2.7 P0-3 + AGENTS §16。
+
+#[cfg(test)]
+mod 测试 {
+    use super::*;
+    use crate::测试设施::工作区测试锁;
+
+    #[test]
+    fn 应用动作_加测试标记_在pubfn上方插入() {
+        let 原内容 = "fn main() {}\npub fn 业务() {}\n";
+        let 新内容 = 加测试标记(原内容).expect("应成功");
+        assert!(
+            新内容.contains("#[test]\npub fn 业务"),
+            "应在 pub fn 上方插入 #[test]，实为：{新内容}"
+        );
+    }
+
+    #[test]
+    fn 应用动作_加测试标记_已存在则跳过() {
+        let 原内容 = "#[test]\npub fn 业务() {}\n";
+        let 新内容 = 加测试标记(原内容).expect("应成功");
+        assert_eq!(新内容, 原内容, "已存在 #[test] 时应跳过，不重复添加");
+    }
+
+    #[test]
+    fn 应用动作_去测试标记_删除第一个测试标记行() {
+        let 原内容 = "#[test]\npub fn 业务() {}\n其他内容\n";
+        let 新内容 = 去测试标记(原内容).expect("应成功");
+        assert!(
+            !新内容.starts_with("#[test]"),
+            "应删除第一个 #[test] 行，实为：{新内容}"
+        );
+        assert!(
+            新内容.contains("pub fn 业务"),
+            "应保留 pub fn 业务，实为：{新内容}"
+        );
+    }
+
+    #[test]
+    fn 应用动作_去测试标记_不存在则返原内容() {
+        let 原内容 = "pub fn 业务() {}\n";
+        let 新内容 = 去测试标记(原内容).expect("应成功（无测试标记也算成功）");
+        assert_eq!(新内容, 原内容, "没有 #[test] 时应返原内容（已正确）");
+    }
+
+    #[test]
+    fn 应用动作_加边缘注释_插入人工可审注释() {
+        let 原内容 = "pub fn 业务() {}\n";
+        let 新内容 = 加边缘注释(原内容).expect("应成功");
+        assert!(
+            新内容.contains("§19.4.2.5 LLM 判定：边缘"),
+            "应插入 LLM 边缘判定注释，实为：{新内容}"
+        );
+        assert!(
+            新内容.contains("pub fn 业务"),
+            "应保留 pub fn 业务，实为：{新内容}"
+        );
+    }
+
+    #[test]
+    fn 应用动作_加边缘注释_已存在则跳过() {
+        let 注释 = "// §19.4.2.5 LLM 判定：边缘（人工可审）";
+        let 原内容 = format!("{注释}\npub fn 业务() {{}}\n");
+        let 新内容 = 加边缘注释(&原内容).expect("应成功");
+        assert_eq!(新内容, 原内容, "已存在同样注释时跳过");
+    }
+
+    #[test]
+    fn 路径转crate名_鸿蒙基础设施域() {
+        assert_eq!(
+            路径转crate名("鸿蒙/基础设施 - 域/识海承载-府/.../某.rs"),
+            Some("shihai_fu".to_string())
+        );
+        assert_eq!(
+            路径转crate名("鸿蒙/基础设施 - 域/天庭治理-府/.../某.rs"),
+            Some("tianting_fu".to_string())
+        );
+        assert_eq!(
+            路径转crate名("鸿蒙/基础设施 - 域/道术施展-府/.../某.rs"),
+            Some("daoshu_fu".to_string())
+        );
+        assert_eq!(
+            路径转crate名("鸿蒙/基础设施 - 域/观测探针-府/.../某.rs"),
+            Some("jiance_fu".to_string())
+        );
+    }
+
+    #[test]
+    fn 路径转crate名_鸿蒙世界配置域() {
+        assert_eq!(
+            路径转crate名("鸿蒙/世界配置 - 域/配置管理-府/.../某.rs"),
+            Some("peizhi_fu".to_string())
+        );
+    }
+
+    #[test]
+    fn 路径转crate名_乾坤呈现域() {
+        assert_eq!(
+            路径转crate名("乾坤/呈现-域/命令操作-府/.../某.rs"),
+            Some("mingling_fu".to_string())
+        );
+    }
+
+    #[test]
+    fn 路径转crate名_证道鸿蒙域() {
+        assert_eq!(
+            路径转crate名("证道/鸿蒙 - 域/单元测试-府/.../某.rs"),
+            Some("zhengdao_fu".to_string())
+        );
+    }
+
+    #[test]
+    fn 路径转crate名_世界顶级包() {
+        assert_eq!(路径转crate名("世界/入口.rs"), Some("世界".to_string()));
+    }
+
+    #[test]
+    fn 路径转crate名_未知路径返无() {
+        assert_eq!(路径转crate名("某未知域/某府/.../某.rs"), None);
+    }
+
+    #[test]
+    fn 消费待修正名单_名单不存在返空报告() {
+        // 用 mingling_fu 测试设施的工作区锁序列化环境变量修改，避免并发污染。
+        let _锁 = 工作区测试锁.lock().unwrap_or_else(|e| e.into_inner());
+        let 临时根 = std::env::temp_dir().join(format!(
+            "调度驱动-测试-不存在-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        ));
+        let _ = std::fs::remove_dir_all(&临时根);
+        std::fs::create_dir_all(&临时根).unwrap();
+        let 原根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &临时根);
+        let 报告 = 消费待修正名单();
+        // 还原（避免污染后续测试）
+        match 原根 {
+            Some(v) => std::env::set_var("WORLD_WORKSPACE_ROOT", v),
+            None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
+        }
+        assert!(报告.is_none(), "名单不存在应返 None");
+        let _ = std::fs::remove_dir_all(&临时根);
+    }
+
+    #[test]
+    fn 消费待修正名单_dry_run_不真改文件() {
+        let _锁 = 工作区测试锁.lock().unwrap_or_else(|e| e.into_inner());
+        let 临时根 = std::env::temp_dir().join(format!(
+            "调度驱动-测试-dryrun-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        ));
+        let _ = std::fs::remove_dir_all(&临时根);
+        std::fs::create_dir_all(临时根.join(".上下文").join("状态")).unwrap();
+        std::fs::create_dir_all(临时根.join(".上下文").join("回滚垫")).unwrap();
+
+        let 原根 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
+        let 原dry = std::env::var("WORLD_TEST_PATCH_DRY_RUN").ok();
+        std::env::set_var("WORLD_WORKSPACE_ROOT", &临时根);
+        std::env::set_var("WORLD_TEST_PATCH_DRY_RUN", "true");
+
+        let 目标 = 临时根.join("目标.rs");
+        std::fs::write(&目标, "pub fn 业务() {}\n").unwrap();
+        let 原内容 = std::fs::read_to_string(&目标).unwrap();
+
+        let 名单路径 = 临时根
+            .join(".上下文")
+            .join("状态")
+            .join("待修正-测试标识.jsonl");
+        let 目标路径字符串 = 目标.to_string_lossy().replace('\\', "\\\\");
+        let 行 = format!(
+            "{{\"文件路径\":\"{}\",\"实体键\":\"目标.rs\",\"动作\":\"加#[test]\",\"执行状态\":\"待执行\",\"时间戳\":0}}",
+            目标路径字符串,
+        );
+        std::fs::write(&名单路径, 行).unwrap();
+
+        let 报告 = 消费待修正名单().expect("消费应返 Some");
+
+        let 改后内容 = std::fs::read_to_string(&目标).unwrap();
+        assert_eq!(改后内容, 原内容, "dry_run 不应修改文件");
+        assert_eq!(报告.已跳过, 1, "dry_run 应报 1 已跳过");
+
+        // 还原环境变量
+        match 原根 {
+            Some(v) => std::env::set_var("WORLD_WORKSPACE_ROOT", v),
+            None => std::env::remove_var("WORLD_WORKSPACE_ROOT"),
+        }
+        match 原dry {
+            Some(v) => std::env::set_var("WORLD_TEST_PATCH_DRY_RUN", v),
+            None => std::env::remove_var("WORLD_TEST_PATCH_DRY_RUN"),
+        }
+        let _ = std::fs::remove_dir_all(&临时根);
+    }
+
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 }
