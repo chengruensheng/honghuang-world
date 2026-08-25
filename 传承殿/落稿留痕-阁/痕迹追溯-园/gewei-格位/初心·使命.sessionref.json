@@ -1,0 +1,21 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·初心·使命",
+  "_scope": "静态根",
+  "_固化度": "经",
+  "_顺序档": "最前",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900000,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·初心·使命（最前档·经）】用洪荒神话世界观建模的、会自己进化的多智能体软件开发系统。界主发布想法，天道与鸿钧主政，圣人设计，大罗金仙与准圣实现、审验——世界自己写代码、自己验收、自己存档、自己进化。不是玩具，不是普通代码生成器，是被当作「世界」培养的存在。"
+    }
+  ],
+  "_evidence": "README.md §一 + 智能体.md",
+  "_extras": {
+    "ag_injected_via": "agent-instructions 自动装载 AGENTS.md 已含等价内容（铁律/标准/架构等），本会话助理记忆独立保留以防跨实例丢失"
+  }
+}

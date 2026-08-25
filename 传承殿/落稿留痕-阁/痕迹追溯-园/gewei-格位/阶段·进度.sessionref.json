@@ -1,0 +1,22 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·阶段·进度",
+  "_scope": "运行时记忆",
+  "_固化度": "权",
+  "_顺序档": "最后",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900009,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·阶段·进度（最后档·权·快照 2026-08-24）】甲阶段 v1 实现期；自动优化关闭。地基已就位（8 府 cargo check 7.79s 0 错）、主链路已跑通（13 次执行 8 通过）、核心机制已实现。v1 未存档 = 当前卡点。"
+    }
+  ],
+  "_evidence": "项目深度理解-20260816 §八 实测",
+  "_extras": {
+    "snapshot_date": "2026-08-24",
+    "auto_evolve": "每次会话由 session-reference recall 更新"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·标准",
+  "_scope": "静态根",
+  "_固化度": "经",
+  "_顺序档": "最前",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900005,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·标准（最前档·经）】① 命名全中文：类型 UpperCamelCase、函数/变量 snake_case，目录连字符、Rust 模块下划线、`#[path]` 桥接，英文豁免按白名单；② 六层落点：维度×域×府×殿×阁×园；域/府 2 段、殿/阁/园 3 段，园名必含实现手段词且不得出现在上层名；③ 源码区严禁 src|tests|scripts 平铺目录，构建产物进道果树、不进源码区；④ 域名语义可辨，严禁「恒观」这类看不出是什么的词。"
+    }
+  ],
+  "_evidence": "层级结构设计 §七 + AGENTS.md 第 10 条",
+  "_extras": {
+    "ag_injected_via": "AGENTS.md 部分覆盖（命名/禁平铺），完整版需看设计稿"
+  }
+}

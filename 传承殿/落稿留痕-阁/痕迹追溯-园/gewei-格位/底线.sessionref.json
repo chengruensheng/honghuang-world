@@ -1,0 +1,22 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·底线",
+  "_scope": "静态根",
+  "_固化度": "经",
+  "_顺序档": "最前",
+  "_私有": true,
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900003,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·底线（最前档·经·私有）】安全红线：①LLM 不得改写代码扫描出的事实；②进化环不得自动改「经」格位，触及必须走⑤级结构级 + 界主确认；③临时测试/脚本只在「临时文件夹」执行，不污染项目。"
+    }
+  ],
+  "_evidence": "界主批准引用世界格位原文一次（.上下文/格位/底线.jsonl 界主录入）",
+  "_extras": {
+    "quote_boundary": "仅引用一次，refuse 跨边界二次引用"
+  }
+}

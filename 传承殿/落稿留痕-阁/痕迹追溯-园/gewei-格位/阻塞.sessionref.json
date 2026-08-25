@@ -1,0 +1,21 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·阻塞",
+  "_scope": "运行时记忆",
+  "_固化度": "权",
+  "_顺序档": "最后",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900010,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·阻塞（最后档·权·快照 2026-08-24）】六卡点（按风险递降排序）：① v1 范围未定义；② AI 令牌未解决（写命令被拒）；③ v1 存档未跑（版本库空）；④ 大罗金仙未分道；⑤ 准圣未六维；⑥ 天道常驻线程未起；另 ⑦ 想法池不清理（16 条积压）。"
+    }
+  ],
+  "_evidence": "项目深度理解-20260816 §八 实测",
+  "_extras": {
+    "snapshot_date": "2026-08-24"
+  }
+}

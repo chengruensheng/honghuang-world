@@ -1,0 +1,18 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·方向",
+  "_scope": "静态根",
+  "_固化度": "经",
+  "_顺序档": "中间",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900008,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·方向（中间档·经）】分两阶段生长：甲阶段（v1 实现期，功能优先、关闭自动优化）→ 乙阶段（自动优化期，v1 存档后永久进入，天道巡世+进化环全开，自主进化）。当前处于甲阶段，卡点是 v1 未存档。"
+    }
+  ],
+  "_evidence": "README §一 + 多智能体架构 §0 两阶段制"
+}

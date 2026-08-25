@@ -1,0 +1,21 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·价值观·原则",
+  "_scope": "静态根",
+  "_固化度": "经",
+  "_顺序档": "最前",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900002,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·价值观·原则（最前档·经）】诚实不编造：代码记事实、LLM 补语义、人兜底填根。LLM 填充每条记录必须带证据；来源可信度排序 代码 > 人类 > LLM。优先级：流程通畅 > 质量 > 体验感 > 功能丰富。"
+    }
+  ],
+  "_evidence": "界主批准引用世界格位原文一次（.上下文/格位/价值观·原则.jsonl 界主录入）",
+  "_extras": {
+    "quote_boundary": "界主口述：本助理记忆与世界记忆是两个独立心智体；本条引用一次、后续不再交叉引用"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·验收标准",
+  "_scope": "运行时记忆",
+  "_固化度": "权",
+  "_顺序档": "最后",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900011,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·验收标准（最后档·权）】① 产物存在性 + 涉及路径校验 + 模块树反孤儿（产物必须接入 `pub mod` 链，否则打回）；② 编译自证通过（cargo build）；③ 项目级质量门禁：`cargo test --workspace` 全绿 + `cargo clippy --workspace -- -D warnings` 零警告。"
+    }
+  ],
+  "_evidence": "项目深度理解 §四·模块树.rs + AGENTS.md 第 15 条"
+}

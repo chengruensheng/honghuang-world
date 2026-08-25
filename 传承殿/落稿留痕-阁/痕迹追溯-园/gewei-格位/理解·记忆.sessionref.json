@@ -1,0 +1,25 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·理解·记忆",
+  "_scope": "运行时记忆",
+  "_固化度": "权",
+  "_顺序档": "中间",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900015,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·理解·记忆（中间档·权·最新 1 条）】第三条追加 — 本会话已验证三条核心结论：\n\n① 格位记忆机制作为「助理项目记忆」可真实工作（已多次召回验证）；\n② DSH 官方 agent-instructions + session-reference 是更稳的正解；\n③ 本助理插件（gewei-1）作为设计验证已完成，停止再 define 新版。\n\n最终落地形态：16 个位格以 session-reference 数据契约格式存于 传承殿/落稿留痕-阁/痕迹追溯-园/gewei-格位/，跨会话、跨 Harness 重启、跨 git clone 都能 recall。"
+    }
+  ],
+  "_evidence": "本会话多轮对话如实记录",
+  "_extras": {
+    "history": [
+      {"时间戳": 1756000000000, "内容": "助手与世界是两个独立心智体"},
+      {"时间戳": 1756000000003, "内容": "第二条追加"},
+      {"时间戳": 1756000000004, "内容": "第三条追加，本会话终结版"}
+    ]
+  }
+}

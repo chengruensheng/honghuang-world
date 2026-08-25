@@ -1,0 +1,21 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·铁律·总纲",
+  "_scope": "静态根",
+  "_固化度": "经",
+  "_顺序档": "最前",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900001,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·铁律·总纲（最前档·经）】① 严禁过度使用 AI 语气（避免 AI 味的命名与注释）；② 严禁粪代码（烂代码/垃圾代码一律杜绝，质量唯一标尺=cargo test --workspace 全绿 + cargo clippy --workspace -- -D warnings 零警告）；③ 日志统一落地不重复实现（技术走 rizhi_fu、业务走识海承载，两者勿混）；④ 先入稿再落码（设计先并入设计稿再实现，溯源不到视为补丁）；⑤ 六层结构不压缩不跳层，能力只在园落地；⑥ 跨府止步 lib 根、跨维经鸿蒙、单向向下；⑦ 甲阶段冻结令（v1 存档前：太初/混沌/道韵/量劫四根冻结，不新增实现，UI 权重最低）。\n\n附：AGENTS.md 第 13 条「文档收割门」：任何 .md 设计稿被 AI 迭代后必须与迭代前对比；出现 [object Object]、内容断崖式缩水（<50%）、首尾丢失、章节级损坏，一律视为「文档污染事故」——立即回滚该文件并停止当轮自动优化。"
+    }
+  ],
+  "_evidence": "AGENTS.md 第 2-15 条 归纳 + 界主口述追加「严禁粪代码」",
+  "_extras": {
+    "ag_injected_via": "agent-instructions 装载 AGENTS.md 时全文注入"
+  }
+}

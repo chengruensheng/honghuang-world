@@ -1,0 +1,22 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·事件",
+  "_scope": "运行时记忆",
+  "_固化度": "权",
+  "_顺序档": "中间",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900013,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·事件（中间档·权）】测试写盘：验证插件 fs 经 sandboxPolicy 显式传 workspace-write 后能否真正落盘。pkg-11 修复 fs 只读后首测。"
+    }
+  ],
+  "_evidence": "实测 gewei_record 调用结果（2026-08-24 助理插件运行期间）",
+  "_extras": {
+    "snapshot_date": "2026-08-24",
+    "category": "调试事件"
+  }
+}

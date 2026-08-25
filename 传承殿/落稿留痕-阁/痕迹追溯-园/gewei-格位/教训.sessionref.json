@@ -1,0 +1,18 @@
+{
+  "_format": "dsh-session-reference-v1",
+  "_kind": "recall",
+  "_sessionId": "gewei-1-stable-memory",
+  "_label": "格位·教训",
+  "_scope": "运行时记忆",
+  "_固化度": "权",
+  "_顺序档": "中间",
+  "_可信度": "code>human>llm",
+  "_write_time": 1787570900014,
+  "content": [
+    {
+      "type": "text",
+      "text": "【格位·教训（中间档·权·6 条已固化摘要）】\n\n1. fs 写盘需 sandboxPolicy：插件内 fs.writeText 必须显式传 { mode:'workspace-write', workspaceRoot }，否则 sandbox 拒绝。\n\n2. 结构格位需下探园级 fn 签名：仅扫 lib 根不够防脑补 API，要扫到园级 pub fn 完整签名。\n\n3. timeoutMs 必声明：Cordis 插件工具 execute 必须显式 timeoutMs，否则无超时上限，串行 await 链路让 Harness 实例挂起，只能进程级 kill。\n\n4. output 必须结构化对象，render 只做 markdown：enum 必配 type:string、嵌套对象必显式 additionalProperties:true|false、DSH DSL 不支持 required 字段。\n\n5. description 必带「何时用 / 何时不调」：纯功能描述不够，模型靠 description 判断是否触发该工具。\n\n6. 扫描类操作三件套：限深 + 超时 + 用户主动调。459 个 .rs 全扫 → 实例挂起；3 层深只数到 19。\n\n根本教训：在 sandbox 里写复杂 execute 边际收益极低、崩盘风险高。DSH 官方 agent-instructions + session-reference 才是「项目记忆」的正解。本助理插件（gewei-1）作为设计验证已完成使命，应停止 define 新版。"
+    }
+  ],
+  "_evidence": "本会话 6 次实测记录"
+}
