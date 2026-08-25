@@ -11,15 +11,6 @@ use shihai_fu::{工作区, 扫描违逆};
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
-
-/// 巡世 - 扫描 - 园 · 模块级注册守护：与文件级幂等分支（mod.rs pub mod 巡世扫描;）形成双重防御。
-/// 防并发注册场景下多线程同时首次调用的 data race：
-/// OnceLock 提供 lazy 一次性初始化（线程安全 first-writer-wins），Mutex<()> 提供并发互斥守卫。
-/// 等同 once_cell::sync::Lazy<Mutex<()>> 语义（用标准库自实现，避免引入外部 crate）。
-// IDE 占位代码：未来并发注册场景启用前不引用，先以 allow 标注静默通过 clippy 门禁
-#[allow(dead_code)]
-static 巡世扫描_注册守护: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// 园无测试检测跳过项：证道 / 单元测试-府 本就是测试集合，不要求园内再嵌测试。
 const 园无测试跳过: &[&str] = &["证道", "单元测试-府"];
@@ -77,24 +68,6 @@ pub fn 扫描世界(根目录: &Path) -> 巡世报告 {
         候选,
         违逆: 法则违逆们,
     }
-}
-
-/// 巡世 - 扫描 - 园 · 占位契约函数（§任务 mod 根文件幂等声明+占位契约落盘）。
-/// 签名固化：`Result<(), Box<dyn std::error::Error + Send + Sync>>` 单一错误类型，
-/// 删去同步空体回退分支，避免契约二选一与二次返工。
-/// `#[cold]` 显式声明占位语义：防误内联、被热路径误调。
-/// 运行时通过模块级 `OnceLock<Mutex<()>>` 注册守护（防并发注册 data race），
-/// 与文件级幂等分支（模块.rs `pub mod 巡世扫描;`）形成双重防御。
-#[cold]
-pub fn 巡世扫描_占位() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let 守护 = 巡世扫描_注册守护.get_or_init(|| Mutex::new(()));
-    let _锁 = 守护
-        .lock()
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-            format!("巡世扫描_占位：注册守护锁中毒：{e}").into()
-        })?;
-    info!("巡世扫描_占位：模块级注册守护就位，占位契约成立");
-    Ok(())
 }
 
 /// ① 园无测试检测：园目录下 .rs 未含测试标记（跳过 证道/单元测试-府）→ 产候选，优先级=中。
