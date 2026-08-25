@@ -18,6 +18,8 @@
 .vscode/
 .idea/
 .codegraph/
+# trae agent 工具产物（旧架构 §11.7 删除前的 pre-termination 备份，新仓库不收）
+.trae-html-share-packages/
 
 # 观测探针-府根目录脏落点（§十 2026-08-25 修正：观测数据统一在 .上下文/观测/）
 观测/
