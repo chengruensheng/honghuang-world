@@ -12,6 +12,7 @@ doctest = false
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 json5 = "0.4"
 
 moxing_fu = { path = "../模型连接-府" }
