@@ -3,7 +3,7 @@
 $根 = 找工作区根
 $空目录 = @()
 Get-ChildItem $根 -Recurse -Directory | Where-Object {
-    $_.FullName -notmatch '\\道果树\\|\\\.上下文\\|\\临时文件夹\\|\\\.git\\'
+    $_.FullName -notmatch '\\道果树\\|\\\.上下文\\|\\临时文件夹\\|临时文件夹$|\\\.git\\'
 } | ForEach-Object {
     $子项 = Get-ChildItem $_.FullName -Force
     if ($子项.Count -eq 0) {
