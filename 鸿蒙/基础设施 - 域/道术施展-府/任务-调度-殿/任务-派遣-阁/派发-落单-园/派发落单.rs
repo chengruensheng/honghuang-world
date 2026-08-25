@@ -20,6 +20,7 @@ use crate::{
 use jiance_fu::{当前关联, 观测角色, 记构建};
 use moxing_fu::{对话消息, 提取对象, 模型配置, 用量, 调用模型};
 use rizhi_fu::{debug, error, info, warn};
+use shihai_fu::世界结果;
 use shihai_fu::{
     事件流, 保存执行基线, 全量基线, 回滚垫, 增量变更, 工作区, 当前任务, 文件索引, 进入任务,
 };
@@ -252,7 +253,7 @@ impl 任务调度 {
         涉及路径: &[String],
         设计方案: &str,
         验收标准: &str,
-    ) -> Result<执行回执, String> {
+    ) -> 世界结果<执行回执> {
         info!(任务id, 目标 = %任务.目标, "开始派遣执行");
         // 阶段 3 在途登记：派遣开始登记角色在途，结束（Drop）自动清除（角色卸载软保护）。
         let _在途 = 在途守卫::登记(&任务.角色们);
@@ -452,7 +453,8 @@ impl 任务调度 {
             尝试 += 1;
             // 构建报错：产物未入编译树时用检查原因，否则用构建标准错误。续跑据此提示模型修正。
             let 构建报错 = 产物未入编译树
-                .clone()
+                .as_ref()
+                .map(|e| e.to_string())
                 .unwrap_or_else(|| 构建结果.标准错误.clone());
             warn!(任务id, 尝试, 剩余预算, 累计轮数, 退出码 = ?构建结果.退出码, "构建失败");
             if 尝试 >= 最大重试次数() {
@@ -534,7 +536,7 @@ impl 任务调度 {
         &self,
         产物们: &[产物条目],
         涉及路径: &[String],
-    ) -> Result<(), String> {
+    ) -> 世界结果<()> {
         if 涉及路径.is_empty() {
             return Ok(());
         }
@@ -556,7 +558,8 @@ impl 任务调度 {
             Err(format!(
                 "产物未入编译树（不在 workspace members 覆盖范围，未经编译验证）：{}",
                 脱靶们.join(", ")
-            ))
+            )
+            .into())
         }
     }
 
@@ -611,16 +614,16 @@ impl 任务调度 {
         if 文本.contains("<<<文件:") {
             let 文件们 = match 解析落盘文本(&文本) {
                 Ok(文件们) => 文件们,
-                Err(错误) => return Err((错误, 轮数, 产物们, 用量)),
+                Err(错误) => return Err((错误.to_string(), 轮数, 产物们, 用量)),
             };
             for 文件 in &文件们 {
                 // 纯文本回退同样过落盘护栏（空/超长/越界）+ 涉及路径护栏，与工具模式约束一致。
                 if let Err(错误) = 校验落盘(&self.工作区根, &文件.路径, &文件.内容)
                 {
-                    return Err((错误, 轮数, 产物们, 用量));
+                    return Err((错误.to_string(), 轮数, 产物们, 用量));
                 }
                 if let Err(错误) = 校验涉及路径(&文件.路径, 涉及路径) {
-                    return Err((错误, 轮数, 产物们, 用量));
+                    return Err((错误.to_string(), 轮数, 产物们, 用量));
                 }
                 let 绝对路径 = self.工作区根.join(&文件.路径);
                 let 路径文本 = match 绝对路径.to_str() {
@@ -628,7 +631,7 @@ impl 任务调度 {
                     None => return Err(("路径含非 UTF-8 字符".to_string(), 轮数, 产物们, 用量)),
                 };
                 if let Err(错误) = 写文件(路径文本, &文件.内容) {
-                    return Err((错误, 轮数, 产物们, 用量));
+                    return Err((错误.to_string(), 轮数, 产物们, 用量));
                 }
                 debug!(路径 = %文件.路径, 字节数 = 文件.内容.len(), "文件已落盘");
                 产物们.push(产物条目 {

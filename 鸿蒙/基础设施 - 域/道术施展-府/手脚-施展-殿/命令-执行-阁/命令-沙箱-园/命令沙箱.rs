@@ -13,6 +13,7 @@
 
 use crate::{运行命令超时, 默认超时毫秒};
 use rizhi_fu::{debug, info, warn};
+use shihai_fu::世界结果;
 use shihai_fu::当前任务 as 取当前任务;
 use std::collections::HashMap;
 use std::fs;
@@ -94,7 +95,7 @@ impl 沙箱视图 {
     /// 对每个源文件取一次指纹存前真实表、硬链接到视图、复制到备份。
     /// 命令前遍历从 4 次（物化+备份+前视图+前真实）减到 2 次（本合并遍历+前视图快照）。
     /// 前视图快照必须独立遍历视图（视图可能有真实区已删除的残留文件，物化增量只新增不清理）。
-    fn 物化备份快照(&self) -> Result<HashMap<String, 指纹>, String> {
+    fn 物化备份快照(&self) -> 世界结果<HashMap<String, 指纹>> {
         fs::create_dir_all(&self.视图根)
             .map_err(|错误| format!("物化创建视图根失败：{}：{错误}", self.视图根.display()))?;
         let 来源们 = 遍历源码(&self.工作区根)?;
@@ -168,7 +169,7 @@ impl 沙箱视图 {
         参数们: &[&str],
         工作目录: Option<&str>,
         超时毫秒: Option<u64>,
-    ) -> Result<沙箱结果, String> {
+    ) -> 世界结果<沙箱结果> {
         let _锁 = self.锁.lock().map_err(|_| "沙箱锁中毒".to_string())?;
         // 物化+备份+前真实快照合并遍历（C3）：一次遍历工作区同时完成三事，返回前真实指纹表。
         let 前真实 = self.物化备份快照()?;
@@ -213,7 +214,7 @@ impl 沙箱视图 {
         &self,
         前视图: &HashMap<String, 指纹>,
         前真实: &HashMap<String, 指纹>,
-    ) -> Result<(u32, String), String> {
+    ) -> 世界结果<(u32, String)> {
         let 后视图 = self.快照(&self.视图根);
         let 后真实 = self.快照(&self.工作区根);
         let mut 越界们: Vec<String> = Vec::new();
@@ -286,7 +287,7 @@ impl 沙箱视图 {
     }
 
     /// 恢复：用备份内容覆盖 视图 与 真实（视图改为独立副本，断链防后续穿透）。
-    fn 恢复视图与真实(&self, 相对: &str) -> Result<(), String> {
+    fn 恢复视图与真实(&self, 相对: &str) -> 世界结果<()> {
         let 备份 = self.备份根.join(相对);
         self.覆盖(相对, &self.视图根)?;
         self.覆盖(相对, &self.工作区根)?;
@@ -297,7 +298,7 @@ impl 沙箱视图 {
     }
 
     /// 覆盖单个区：备份存在 → 复制覆盖；备份缺失 → 删除目标（当作新增前不存在）。
-    fn 覆盖(&self, 相对: &str, 区根: &Path) -> Result<(), String> {
+    fn 覆盖(&self, 相对: &str, 区根: &Path) -> 世界结果<()> {
         let 备份 = self.备份根.join(相对);
         let 目标 = 区根.join(相对);
         if 目标.exists() {
@@ -320,21 +321,21 @@ impl 沙箱视图 {
     }
 
     /// 恢复真实区：备份存在 → 覆盖；缺失 → 删除（当作新增前不存在）。
-    fn 恢复真实(&self, 相对: &str) -> Result<(), String> {
+    fn 恢复真实(&self, 相对: &str) -> 世界结果<()> {
         self.覆盖(相对, &self.工作区根)
     }
 
-    fn 删除视图与真实(&self, 相对: &str) -> Result<(), String> {
+    fn 删除视图与真实(&self, 相对: &str) -> 世界结果<()> {
         self.删除(相对, &self.视图根)?;
         self.删除(相对, &self.工作区根)?;
         Ok(())
     }
 
-    fn 删除真实(&self, 相对: &str) -> Result<(), String> {
+    fn 删除真实(&self, 相对: &str) -> 世界结果<()> {
         self.删除(相对, &self.工作区根)
     }
 
-    fn 删除(&self, 相对: &str, 区根: &Path) -> Result<(), String> {
+    fn 删除(&self, 相对: &str, 区根: &Path) -> 世界结果<()> {
         let 目标 = 区根.join(相对);
         if 目标.is_dir() {
             fs::remove_dir_all(&目标)
@@ -349,7 +350,7 @@ impl 沙箱视图 {
     }
 
     /// 清理：任务结束后整箱删除（视图 + 备份 + 快照）。
-    pub fn 清理(&self) -> Result<(), String> {
+    pub fn 清理(&self) -> 世界结果<()> {
         let 箱 = self.视图根.parent().unwrap_or(&self.视图根);
         if 箱.is_dir() {
             fs::remove_dir_all(箱)
@@ -361,7 +362,7 @@ impl 沙箱视图 {
 }
 
 /// 遍历源码区文件（相对路径列表）：跳过排除目录。
-fn 遍历源码(根: &Path) -> Result<Vec<PathBuf>, String> {
+fn 遍历源码(根: &Path) -> 世界结果<Vec<PathBuf>> {
     let mut 文件们 = Vec::new();
     let mut 栈 = vec![根.to_path_buf()];
     while let Some(目录) = 栈.pop() {

@@ -4,6 +4,7 @@
 
 use crate::类型_定义_殿::{执行角色, 角色状态};
 use rizhi_fu::{debug, error, info, warn};
+use shihai_fu::世界结果;
 use std::collections::HashMap;
 
 /// 角色副作用：生效时注册、卸载时撤销（可逆，对齐 Cordis disposer）。
@@ -11,16 +12,16 @@ use std::collections::HashMap;
 #[derive(Clone)]
 pub struct 角色副作用 {
     /// 生效时执行的注册动作（提示词片段/工具 schema 挂载）。
-    注册: std::sync::Arc<dyn Fn() -> Result<(), String> + Send + Sync>,
+    注册: std::sync::Arc<dyn Fn() -> 世界结果<()> + Send + Sync>,
     /// 卸载时执行的撤销动作。
-    撤销: std::sync::Arc<dyn Fn() -> Result<(), String> + Send + Sync>,
+    撤销: std::sync::Arc<dyn Fn() -> 世界结果<()> + Send + Sync>,
 }
 
 impl 角色副作用 {
     /// 构造副作用（注册 + 撤销 成对，保证可逆）。
     pub fn 新(
-        注册: impl Fn() -> Result<(), String> + Send + Sync + 'static,
-        撤销: impl Fn() -> Result<(), String> + Send + Sync + 'static,
+        注册: impl Fn() -> 世界结果<()> + Send + Sync + 'static,
+        撤销: impl Fn() -> 世界结果<()> + Send + Sync + 'static,
     ) -> Self {
         Self {
             注册: std::sync::Arc::new(注册),
@@ -29,12 +30,12 @@ impl 角色副作用 {
     }
 
     /// 执行注册动作。
-    fn 生效(&self) -> Result<(), String> {
+    fn 生效(&self) -> 世界结果<()> {
         (self.注册)()
     }
 
     /// 执行撤销动作。
-    fn 撤销(&self) -> Result<(), String> {
+    fn 撤销(&self) -> 世界结果<()> {
         (self.撤销)()
     }
 }
@@ -81,9 +82,9 @@ impl 角色册 {
 
     /// 就绪校验：依赖（模型池）可用 → 已就绪；缺失 → 留在 已登记 并返回缺失池。
     /// 对齐 Cordis inject 激活：声明依赖就绪后才可进入下一态。
-    pub fn 就绪(&mut self, 身份: &str, 可用模型池: &[&str]) -> Result<(), String> {
+    pub fn 就绪(&mut self, 身份: &str, 可用模型池: &[&str]) -> 世界结果<()> {
         let Some(条目) = self.角色们.get_mut(身份) else {
-            return Err(format!("角色「{身份}」未登记"));
+            return Err(format!("角色「{身份}」未登记").into());
         };
         let 池 = &条目.角色.模型池;
         if 池.is_empty() {
@@ -99,18 +100,19 @@ impl 角色册 {
             Err(format!(
                 "角色「{身份}」依赖模型池「{池}」不可用（可用：{}）",
                 可用模型池.join("/")
-            ))
+            )
+            .into())
         }
     }
 
     /// 生效：注册副作用 → 已生效（重复生效报错）。无副作用直接生效。
     /// 对齐 Cordis apply(ctx)：副作用注册是可逆的（卸载时撤销）。
-    pub fn 生效(&mut self, 身份: &str, 副作用: 角色副作用) -> Result<(), String> {
+    pub fn 生效(&mut self, 身份: &str, 副作用: 角色副作用) -> 世界结果<()> {
         let Some(条目) = self.角色们.get_mut(身份) else {
-            return Err(format!("角色「{身份}」未登记"));
+            return Err(format!("角色「{身份}」未登记").into());
         };
         if 条目.状态 == 角色状态::已生效 {
-            return Err(format!("角色「{身份}」已生效，重复生效"));
+            return Err(format!("角色「{身份}」已生效，重复生效").into());
         }
         副作用.生效()?;
         条目.副作用 = Some(副作用);
@@ -121,15 +123,16 @@ impl 角色册 {
 
     /// 卸载一张角色卡（生命周期：卸载）。在途任务未清 → 拒绝（软保护，防变更影响在途）。
     /// 副作用已注册则先撤销（可逆副作用），再移除条目。
-    pub fn 卸载(&mut self, 身份: &str) -> Result<执行角色, String> {
+    pub fn 卸载(&mut self, 身份: &str) -> 世界结果<执行角色> {
         if self.在途数(身份) > 0 {
             return Err(format!(
                 "角色「{身份}」仍有 {} 个在途任务，拒绝卸载（防变更影响在途）",
                 self.在途数(身份)
-            ));
+            )
+            .into());
         }
         let Some(条目) = self.角色们.remove(身份) else {
-            return Err(format!("角色「{身份}」未登记"));
+            return Err(format!("角色「{身份}」未登记").into());
         };
         if let Some(副作用) = &条目.副作用 {
             副作用.撤销().map_err(|说明| {
@@ -203,7 +206,7 @@ impl 角色册 {
     }
 
     /// 保存到 json 文件（只存角色卡；状态/副作用/在途为运行时态，不落盘）。
-    pub fn 保存(&self, 路径: &str) -> Result<(), String> {
+    pub fn 保存(&self, 路径: &str) -> 世界结果<()> {
         let 卡们: HashMap<String, 执行角色> = self
             .角色们
             .iter()
@@ -220,7 +223,7 @@ impl 角色册 {
     }
 
     /// 从 json 文件加载（条目状态初始化为 已登记，待 就绪/生效）。
-    pub fn 加载(路径: &str) -> Result<角色册, String> {
+    pub fn 加载(路径: &str) -> 世界结果<角色册> {
         let 文本 = std::fs::read_to_string(路径).map_err(|错误| {
             error!(路径, "读取角色册失败：{错误}");
             format!("读取角色册失败: {错误}")
@@ -326,7 +329,7 @@ mod 测试 {
         册.登记(造角色("女娲", "sage"));
         let 结果 = 册.就绪("女娲", &["executor"]);
         assert!(结果.is_err(), "依赖缺失应报错");
-        assert!(结果.unwrap_err().contains("sage"));
+        assert!(结果.unwrap_err().to_string().contains("sage"));
         assert_eq!(
             册.取状态("女娲"),
             Some(角色状态::已登记),
@@ -362,7 +365,7 @@ mod 测试 {
         册.在途登记("多宝");
         let 结果 = 册.卸载("多宝");
         assert!(结果.is_err(), "在途任务未清应拒绝卸载");
-        assert!(结果.unwrap_err().contains("在途"));
+        assert!(结果.unwrap_err().to_string().contains("在途"));
         assert!(册.取("多宝").is_some(), "拒绝后角色仍在册");
         // 在途清除后可卸载。
         册.在途清除("多宝");

@@ -9,6 +9,8 @@
 //! 3. starts_with 比对（基于规范化后的绝对路径，避免「`..` 逃逸」与「符号链接逃逸」漏判）；
 //! 4. 任一 canonicalize 失败 → 视为越界（路径不存在 / 无权限读取），报告逃逸目标。
 
+use shihai_fu::世界结果;
+
 use rizhi_fu::warn;
 use std::path::{Path, PathBuf};
 
@@ -71,7 +73,7 @@ pub fn 越界判定文本(结果: &越界判定结果) -> String {
 }
 
 /// 内部辅助：取规范化绝对路径（暴露供其他园复用；不直接判越界，只做 canonicalize 解析）。
-pub fn 规范化路径(路径: &Path) -> Result<PathBuf, String> {
+pub fn 规范化路径(路径: &Path) -> 世界结果<PathBuf> {
     路径
         .canonicalize()
         .map_err(|错误| format!("路径规范化失败：{}：{错误}", 路径.display()))

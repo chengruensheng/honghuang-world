@@ -3,7 +3,7 @@
 
 use crate::原子_写入_园::沙箱校验;
 use rizhi_fu::{debug, error, info, warn};
-use shihai_fu::{回滚垫, 工作区, 当前任务};
+use shihai_fu::{世界结果, 回滚垫, 工作区, 当前任务};
 use std::path::PathBuf;
 
 #[allow(dead_code)] // 测试用 — §B.1.5 沙箱兼容
@@ -14,7 +14,7 @@ fn 工作区根() -> PathBuf {
 /// 把文件里第一次出现的旧文替换为新文，旧文不存在则报错；写前先备份进回滚垫。
 /// 返回是否真的改写（false = 替换结果与原文相同，空操作跳过，未写盘）。
 /// 空操作优化：替换后内容与原文相同（旧文==新文 等）→ 返回 false，不备份不重写。
-pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<bool, String> {
+pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> 世界结果<bool> {
     let 根 = shihai_fu::工作区::定位();
     沙箱校验(根.根路径(), std::path::Path::new(路径))?;
     let 原文 = std::fs::read_to_string(路径).map_err(|错误| {
@@ -31,7 +31,7 @@ pub fn 改文件(路径: &str, 旧文: &str, 新文: &str) -> Result<bool, Strin
         return Err(format!(
             "改文件失败：{路径}：未找到待替换内容（文件长度 {} 字节，旧文长度 {} 字节，旧文前 80 字符 = {:?}，文件前 200 字符 = {:?}）",
             原文.len(), 旧文.len(), 旧文预览, 原文预览
-        ));
+        ).into());
     }
     let 改后 = if 原文.contains("\r\n") && !新文.contains("\r\n") {
         // 行尾保持（观察点 7）：原文 CRLF 时，替换片段的新文 LF→CRLF 归一，防混合行尾。
@@ -77,23 +77,27 @@ mod tests {
         assert!(结果.is_err());
         let 错误 = 结果.unwrap_err();
         assert!(
-            错误.contains("未找到待替换内容"),
+            错误.to_string().contains("未找到待替换内容"),
             "错误信息应含'未找到'：{}",
             错误
         );
         assert!(
-            错误.contains("文件长度"),
+            错误.to_string().contains("文件长度"),
             "错误信息应含文件长度便于 LLM 诊断：{}",
             错误
         );
-        assert!(错误.contains("旧文长度"), "错误信息应含旧文长度：{}", 错误);
         assert!(
-            错误.contains("旧文前 80 字符"),
+            错误.to_string().contains("旧文长度"),
+            "错误信息应含旧文长度：{}",
+            错误
+        );
+        assert!(
+            错误.to_string().contains("旧文前 80 字符"),
             "错误信息应含旧文前 80 字符：{}",
             错误
         );
         assert!(
-            错误.contains("文件前 200 字符"),
+            错误.to_string().contains("文件前 200 字符"),
             "错误信息应含文件前 200 字符：{}",
             错误
         );

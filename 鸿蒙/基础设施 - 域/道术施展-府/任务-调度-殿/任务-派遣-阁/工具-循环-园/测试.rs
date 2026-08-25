@@ -121,16 +121,27 @@ fn 命令护栏拦截进程终止与自身二进制() {
         );
         执行工具(&调用, &根, &mut 写入, &[]).expect_err("应被拦截")
     };
-    assert!(拦("taskkill", r#"["/F","/IM","号令.exe"]"#).contains("护栏拦截"));
+    assert!(拦("taskkill", r#"["/F","/IM","号令.exe"]"#)
+        .to_string()
+        .contains("护栏拦截"));
     assert!(拦(
         "powershell.exe",
         r#"["-Command","Stop-Process -Name 号令"]"#
     )
+    .to_string()
     .contains("护栏拦截"));
-    assert!(拦("cargo", r#"["run","--bin","号令","--","世界","时间"]"#).contains("护栏拦截"));
-    assert!(拦("cargo", r#"["build","--bin","号令"]"#).contains("护栏拦截"));
-    assert!(拦("cmd.exe", r#"["/c","号令.exe","世界","时间"]"#).contains("护栏拦截"));
-    assert!(拦("Get-Process", r#"["-Name","号令"]"#).contains("护栏拦截"));
+    assert!(拦("cargo", r#"["run","--bin","号令","--","世界","时间"]"#)
+        .to_string()
+        .contains("护栏拦截"));
+    assert!(拦("cargo", r#"["build","--bin","号令"]"#)
+        .to_string()
+        .contains("护栏拦截"));
+    assert!(拦("cmd.exe", r#"["/c","号令.exe","世界","时间"]"#)
+        .to_string()
+        .contains("护栏拦截"));
+    assert!(拦("Get-Process", r#"["-Name","号令"]"#)
+        .to_string()
+        .contains("护栏拦截"));
     let _ = fs::remove_dir_all(&根);
 }
 
@@ -163,11 +174,15 @@ fn 未知工具报错() {
 fn 护栏拒空拒超长拒越界() {
     let 根 = 临时目录("护栏");
     // 空内容 / 纯空白 拒写。
-    assert!(校验落盘(&根, "空.rs", "").unwrap_err().contains("空文件"));
+    assert!(校验落盘(&根, "空.rs", "")
+        .unwrap_err()
+        .to_string()
+        .contains("空文件"));
     assert!(校验落盘(&根, "空.rs", "  \n  ").is_err());
     // 超长拒写。
     assert!(校验落盘(&根, "大.rs", &"x".repeat(落盘内容上限 + 1))
         .unwrap_err()
+        .to_string()
         .contains("超长"));
     // 路径越界：../ 逃逸到工作区根之外拒写。
     let 逃逸 = 校验落盘(&根, "../../逃逸目标", "内容");
@@ -185,6 +200,7 @@ fn 工具护栏_统一入口解耦() {
     let 空内容: serde_json::Value = serde_json::from_str(r#"{"路径":"空.rs","内容":""}"#).unwrap();
     assert!(工具护栏(&根, "写文件", &空内容)
         .unwrap_err()
+        .to_string()
         .contains("空文件"));
     // 改文件越界：guard 拒绝。
     let 越界: serde_json::Value =
@@ -218,7 +234,7 @@ fn 源码维度白名单_拦根内越界() {
     // 根级非源码文件：拒写。
     let 根级 = 校验落盘(&根, "Cargo.toml", "成员");
     assert!(
-        根级.is_err() && 根级.unwrap_err().contains("根内越界"),
+        根级.is_err() && 根级.unwrap_err().to_string().contains("根内越界"),
         "根 Cargo.toml 应拒写"
     );
     let 根级md = 校验落盘(&根, "多智能体架构设计.md", "设计");
@@ -233,14 +249,14 @@ fn 源码维度白名单_拦根内越界() {
     // 隐藏目录：拒写（记忆/版本库等非源码资产）。
     let 隐 = 校验落盘(&根, ".上下文/事件流.jsonl", "{}");
     assert!(
-        隐.is_err() && 隐.unwrap_err().contains("隐藏目录"),
+        隐.is_err() && 隐.unwrap_err().to_string().contains("隐藏目录"),
         ".上下文 应拒写"
     );
 
     // 空壳维度：拒写（太初无源码，臆造目录的实测根因）。
     let 壳 = 校验落盘(&根, "太初/星宿-殿/星轨绘制.rs", "代码");
     assert!(
-        壳.is_err() && 壳.unwrap_err().contains("非源码维度"),
+        壳.is_err() && 壳.unwrap_err().to_string().contains("非源码维度"),
         "空壳维度应拒写"
     );
 

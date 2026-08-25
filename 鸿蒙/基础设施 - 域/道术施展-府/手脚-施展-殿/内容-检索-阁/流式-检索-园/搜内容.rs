@@ -1,6 +1,7 @@
 //! 流式 - 检索 - 园：在目录树下按字面串检索文本行。
 
 use rizhi_fu::{debug, error};
+use shihai_fu::世界结果;
 use std::fs;
 use std::path::Path;
 
@@ -18,7 +19,7 @@ fn 应跳过(名: &str) -> bool {
 }
 
 /// 在根目录下检索含指定字面串的文本行（跳过构建物与版本库目录）。
-pub fn 搜索内容(根: &str, 字面串: &str) -> Result<Vec<检索命中>, String> {
+pub fn 搜索内容(根: &str, 字面串: &str) -> 世界结果<Vec<检索命中>> {
     let 根路径 = Path::new(根);
     if !根路径.is_dir() {
         // 根填成文件路径时给出纠正提示（模型常把文件路径当根传）。
@@ -26,9 +27,10 @@ pub fn 搜索内容(根: &str, 字面串: &str) -> Result<Vec<检索命中>, Str
         if 根路径.is_file() {
             return Err(format!(
                 "根必须是目录，不能是文件路径：{根}。请把根改成文件所在目录，如 鸿蒙/基础设施 - 域"
-            ));
+            )
+            .into());
         }
-        return Err(format!("根目录不存在：{根}"));
+        return Err(format!("根目录不存在：{根}").into());
     }
     if 字面串.is_empty() {
         return Ok(Vec::new());

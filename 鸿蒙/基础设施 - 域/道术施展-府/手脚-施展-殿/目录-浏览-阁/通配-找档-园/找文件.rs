@@ -1,16 +1,17 @@
 //! 通配 - 找档 - 园：按通配符模式在目录树下找文件。
 
 use rizhi_fu::{debug, error};
+use shihai_fu::世界结果;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// 按通配模式找路径，支持 `*`（一段内任意字符）、`?`（单字符）、`**`（任意深度）。
 /// 返回匹配到的路径，分隔符统一用 `/` 与 `\`。
-pub fn 寻找文件(根: &str, 模式: &str) -> Result<Vec<String>, String> {
+pub fn 寻找文件(根: &str, 模式: &str) -> 世界结果<Vec<String>> {
     let 根路径 = Path::new(根);
     if !根路径.is_dir() {
         error!(根, "找档根目录不存在");
-        return Err(format!("根目录不存在：{根}"));
+        return Err(format!("根目录不存在：{根}").into());
     }
     let 段们 = 拆分路径段(模式);
     let 命中们 = 递归找(根路径, &段们);

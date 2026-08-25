@@ -1,6 +1,7 @@
 //! 批量 - 列目 - 园：列出一个目录下的条目。
 
 use rizhi_fu::{debug, error};
+use shihai_fu::世界结果;
 use std::fs;
 use std::path::Path;
 
@@ -13,11 +14,11 @@ pub struct 目录条目 {
 }
 
 /// 列出一个目录下的条目，按名称升序。
-pub fn 列举目录(路径: &str) -> Result<Vec<目录条目>, String> {
+pub fn 列举目录(路径: &str) -> 世界结果<Vec<目录条目>> {
     let 目录 = Path::new(路径);
     if !目录.is_dir() {
         error!(路径, "列目录失败：目录不存在");
-        return Err(format!("目录不存在：{路径}"));
+        return Err(format!("目录不存在：{路径}").into());
     }
     let 迭代 = fs::read_dir(目录).map_err(|错误| {
         error!(路径, "列目录失败：{错误}");

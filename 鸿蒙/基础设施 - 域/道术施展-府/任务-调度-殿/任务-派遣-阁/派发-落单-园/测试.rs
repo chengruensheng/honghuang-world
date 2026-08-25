@@ -288,7 +288,9 @@ fn 校验产物入编译树_产物不在成员内失败() {
     assert!(结果.is_err(), "产物不在成员内应失败");
     let 错误 = 结果.unwrap_err();
     assert!(
-        错误.contains("鸿蒙/基础设施-域/道术施展-府/某.rs"),
+        错误
+            .to_string()
+            .contains("鸿蒙/基础设施-域/道术施展-府/某.rs"),
         "错误信息应包含脱靶产物路径：{错误}"
     );
     let _ = std::fs::remove_dir_all(&根);
@@ -355,8 +357,11 @@ fn 校验产物入编译树_混合产物只报脱靶() {
     let 结果 = 调度.校验产物入编译树(&产物们, &涉及路径);
     assert!(结果.is_err(), "含脱靶产物应失败");
     let 错误 = 结果.unwrap_err();
-    assert!(错误.contains("乙.rs"), "应报脱靶产物：{错误}");
-    assert!(!错误.contains("甲.rs"), "不应报在成员内的产物：{错误}");
+    assert!(错误.to_string().contains("乙.rs"), "应报脱靶产物：{错误}");
+    assert!(
+        !错误.to_string().contains("甲.rs"),
+        "不应报在成员内的产物：{错误}"
+    );
     let _ = std::fs::remove_dir_all(&根);
 }
 

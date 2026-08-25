@@ -4,7 +4,7 @@
 //! 防模型生成的 LF 文本把整文件行尾污染（git diff 纯行尾噪音）。
 
 use rizhi_fu::{debug, error, info};
-use shihai_fu::{回滚垫, 工作区, 当前任务};
+use shihai_fu::{世界结果, 回滚垫, 工作区, 当前任务};
 use std::path::{Path, PathBuf};
 
 /// §B.1.5 沙箱兼容：临时目录放工作区根下（写入文件测试用）。
@@ -26,14 +26,11 @@ fn 按行尾归一(原文: Option<&str>, 内容: &str) -> String {
 
 /// §B.1.5 沙箱校验：拒绝 .. 跳出 + 符号链接跳出工作区根。
 /// 错误：路径在工作区根外 → 返回 Err 不写盘。
-pub fn 沙箱校验(工作区根: &Path, 目标: &Path) -> Result<(), String> {
+pub fn 沙箱校验(工作区根: &Path, 目标: &Path) -> 世界结果<()> {
     let 目标 = std::path::Path::new(目标).components().collect::<Vec<_>>();
     let 根段 = 工作区根.components().collect::<Vec<_>>();
     if 目标.len() < 根段.len() || 目标[..根段.len()] != 根段[..] {
-        return Err(format!(
-            "沙箱拒绝：路径 {:?} 不在工作区根 {:?} 内",
-            目标, 根段
-        ));
+        return Err(format!("沙箱拒绝：路径 {:?} 不在工作区根 {:?} 内", 目标, 根段).into());
     }
     Ok(())
 }
@@ -42,7 +39,7 @@ pub fn 沙箱校验(工作区根: &Path, 目标: &Path) -> Result<(), String> {
 /// 返回是否真的写入（false = 内容与现状相同，空操作跳过，未写盘）。
 /// 空操作优化：目标已存在且内容（按行尾归一后）与现状一致 → 直接返回 false。
 /// 行尾保持：原文件 CRLF 时写入内容先转 CRLF，防整文件行尾污染。
-pub fn 写文件(路径: &str, 内容: &str) -> Result<bool, String> {
+pub fn 写文件(路径: &str, 内容: &str) -> 世界结果<bool> {
     let 根 = shihai_fu::工作区::定位();
     let 目标 = Path::new(路径);
     沙箱校验(根.根路径(), 目标)?;

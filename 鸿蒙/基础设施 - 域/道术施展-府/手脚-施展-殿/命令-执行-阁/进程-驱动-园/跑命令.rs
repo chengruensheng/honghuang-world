@@ -8,6 +8,7 @@
 //! 4) 主线程 recv_timeout 监听完成信号，超时则走强杀分支。
 
 use rizhi_fu::{debug, error, warn};
+use shihai_fu::世界结果;
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, RecvTimeoutError};
@@ -48,7 +49,7 @@ pub fn 运行命令(
     命令: &str,
     参数们: &[&str],
     工作目录: Option<&str>,
-) -> Result<命令结果, String> {
+) -> 世界结果<命令结果> {
     运行命令超时(命令, 参数们, 工作目录, 默认超时毫秒, &[])
 }
 
@@ -60,7 +61,7 @@ pub fn 运行命令超时(
     工作目录: Option<&str>,
     超时毫秒: u64,
     额外环境: &[(&str, &str)],
-) -> Result<命令结果, String> {
+) -> 世界结果<命令结果> {
     // Windows shell 内置命令翻译：cat/ls 是 cmd/PowerShell 内置，Rust std::process::Command
     // 不识别（不会去 shell 解析），LLM 跑 `cat <file>` 撞「program not found」。
     // 走 cmd.exe /C 包装，让 shell 解析内建命令。
@@ -73,7 +74,7 @@ pub fn 运行命令超时(
         match 命令 {
             "cat" => {
                 if 参数们.iter().any(|s| 含cmd元字符(s)) {
-                    return Err("cat 参数含命令注入风险字符（&、|、>、<、^、%）".to_string());
+                    return Err("cat 参数含命令注入风险字符（&、|、>、<、^、%）".into());
                 }
                 let mut p = vec!["/C".to_string(), "type".to_string()];
                 p.extend(参数们.iter().map(|s| s.to_string()));
@@ -81,7 +82,7 @@ pub fn 运行命令超时(
             }
             "ls" => {
                 if 参数们.iter().any(|s| 含cmd元字符(s)) {
-                    return Err("ls 参数含命令注入风险字符（&、|、>、<、^、%）".to_string());
+                    return Err("ls 参数含命令注入风险字符（&、|、>、<、^、%）".into());
                 }
                 let mut p = vec!["/C".to_string(), "dir".to_string()];
                 p.extend(参数们.iter().map(|s| s.to_string()));
@@ -114,7 +115,7 @@ pub fn 运行命令超时(
         Ok(子) => 子,
         Err(错误) => {
             error!(命令, "运行命令失败：{错误}");
-            return Err(format!("运行命令失败：{命令}：{错误}"));
+            return Err(format!("运行命令失败：{命令}：{错误}").into());
         }
     };
 
@@ -131,7 +132,7 @@ pub fn 运行命令超时(
         let 取出 = match 句柄槽_w.lock() {
             Ok(mut 守卫) => 守卫.take(),
             Err(_) => {
-                let _ = tx.send(Err("句柄槽中毒".to_string()));
+                let _ = tx.send(Err("句柄槽中毒".into()));
                 return;
             }
         };
@@ -179,7 +180,7 @@ pub fn 运行命令超时(
         Ok(Ok(状态)) => 状态,
         Ok(Err(错误)) => {
             error!(命令, "运行命令失败：{错误}");
-            return Err(错误);
+            return Err(错误.into());
         }
         Err(RecvTimeoutError::Timeout) => {
             // 超时：一次性取出 child，kill 并 wait。
@@ -189,13 +190,13 @@ pub fn 运行命令超时(
                 let _ = 子进程.wait();
             }
             warn!(命令, 超时毫秒, "命令执行超时，已强杀子进程");
-            return Err(format!(
-                "命令执行超时被杀：{命令}（超时 {超时毫秒} 毫秒，子进程已强杀）"
-            ));
+            return Err(
+                format!("命令执行超时被杀：{命令}（超时 {超时毫秒} 毫秒，子进程已强杀）").into(),
+            );
         }
         Err(RecvTimeoutError::Disconnected) => {
             error!(命令, "等待线程失联");
-            return Err(format!("命令执行线程失联：{命令}"));
+            return Err(format!("命令执行线程失联：{命令}").into());
         }
     };
 
@@ -280,7 +281,11 @@ mod tests {
         // cat 无参数 → 走 cmd.exe /C type 无参数 → Windows 提示「系统找不到文件」并快速退出
         // 只需确认不挂死、不报超时
         let 结果 = 运行命令超时("cat", &[], None, 500, &[]);
-        let 通过 = 结果.is_ok() || 结果.as_ref().err().is_some_and(|e| e.contains("超时"));
+        let 通过 = 结果.is_ok()
+            || 结果
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.to_string().contains("超时"));
         assert!(通过, "cat 无参数应快速结束或超时被杀，实际：{:?}", 结果);
     }
 }

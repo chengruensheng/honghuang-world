@@ -7,16 +7,16 @@
 //! 超时护栏：原版「运行命令」无超时上限，命令可无限卡死挂起整轮执行。
 //! 模型传入的「超时毫秒」必须在 (0, 最大超时毫秒] 区间内，防指定 0 / 负数 / 极大值绕过护栏。
 
+use shihai_fu::世界结果;
+
 /// 最大超时上限（毫秒）：10 分钟。模型可调小，不可调大；防指定极大值挂死任务。
 pub const 最大超时毫秒: u64 = 600_000;
 
 /// 校验命令护栏：命令进沙箱前的最后拦截。
 /// 含超时校验：超时毫秒必须 > 0 且 <= 最大超时毫秒。
 pub fn 校验命令护栏(
-    命令: &str,
-    参数们: &[&str],
-    超时毫秒: Option<u64>,
-) -> Result<(), String> {
+    命令: &str, 参数们: &[&str], 超时毫秒: Option<u64>
+) -> 世界结果<()> {
     let 整行 = std::iter::once(命令)
         .chain(参数们.iter().copied())
         .collect::<Vec<_>>()
@@ -28,12 +28,14 @@ pub fn 校验命令护栏(
         if 超时 == 0 {
             return Err(format!(
                 "命令被护栏拦截：超时毫秒为 0 必须大于 0（最大上限 {最大超时毫秒}）"
-            ));
+            )
+            .into());
         }
         if 超时 > 最大超时毫秒 {
             return Err(format!(
                 "命令被护栏拦截：超时 {超时} 毫秒超过最大上限 {最大超时毫秒} 毫秒"
-            ));
+            )
+            .into());
         }
     }
 
@@ -46,20 +48,18 @@ pub fn 校验命令护栏(
         "killall",
     ] {
         if 小写.contains(词) {
-            return Err(format!(
-                "命令被护栏拦截：含进程终止操作「{词}」，不得终止任何进程"
-            ));
+            return Err(format!("命令被护栏拦截：含进程终止操作「{词}」，不得终止任何进程").into());
         }
     }
     if 命令.eq_ignore_ascii_case("kill") {
-        return Err("命令被护栏拦截：kill 命令不得执行".to_string());
+        return Err("命令被护栏拦截：kill 命令不得执行".into());
     }
 
     // cargo 系列：仅放行编译/检查/测试（不产出自身 exe 也不运行）；run 与 build 自身 bin 一律拦截。
     if 命令.eq_ignore_ascii_case("cargo") {
         let 首参 = 参数们.first().map(|s| s.to_lowercase()).unwrap_or_default();
         if 首参 == "run" {
-            return Err("命令被护栏拦截：cargo run 会运行项目自身二进制并撞文件锁，请改用 cargo build --workspace --lib 验证编译".to_string());
+            return Err("命令被护栏拦截：cargo run 会运行项目自身二进制并撞文件锁，请改用 cargo build --workspace --lib 验证编译".into());
         }
         if 首参 == "build" {
             let 撞自身 = 参数们.iter().any(|p| {
@@ -67,7 +67,7 @@ pub fn 校验命令护栏(
                 低.contains("号令") || 低.contains("--bin")
             });
             if 撞自身 {
-                return Err("命令被护栏拦截：cargo build 指定自身 bin 会重链接被占用的号令.exe 撞文件锁，请改用 cargo build --workspace --lib".to_string());
+                return Err("命令被护栏拦截：cargo build 指定自身 bin 会重链接被占用的号令.exe 撞文件锁，请改用 cargo build --workspace --lib".into());
             }
         }
         return Ok(());
@@ -76,8 +76,7 @@ pub fn 校验命令护栏(
     // 其余命令一律不得引用项目自身二进制名：运行号令.exe、探查其进程都会诱导模型误操作。
     if 小写.contains("号令") {
         return Err(
-            "命令被护栏拦截：不得运行或探查项目自身二进制（号令），命令功能验证由界主执行"
-                .to_string(),
+            "命令被护栏拦截：不得运行或探查项目自身二进制（号令），命令功能验证由界主执行".into(),
         );
     }
 
@@ -93,7 +92,7 @@ mod 测试 {
     fn 超时毫秒为0应被拒绝() {
         let 错 = 校验命令护栏("cargo", &["build"], Some(0)).expect_err("超时毫秒为 0 应被护栏拒绝");
         assert!(
-            错.contains("超时毫秒为 0"),
+            错.to_string().contains("超时毫秒为 0"),
             "错误信息应明示「超时毫秒为 0」：{错}"
         );
     }

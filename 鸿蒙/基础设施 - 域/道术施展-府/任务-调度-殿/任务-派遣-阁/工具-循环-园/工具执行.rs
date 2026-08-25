@@ -5,7 +5,7 @@ use crate::{
     写文件, 列举目录, 删文件, 寻找文件, 搜索内容, 改文件, 校验命令护栏, 沙箱视图, 读文件
 };
 use moxing_fu::工具调用;
-use shihai_fu::{工作区, 模型存储};
+use shihai_fu::{世界结果, 工作区, 模型存储};
 use shijian_fu::{守卫, 工具流水线, 工具结果, 工具请求, 裁决};
 use std::path::{Path, PathBuf};
 
@@ -57,24 +57,25 @@ fn 目录含源码(目录: &Path) -> bool {
 /// - 首段目录已存在但无源码（太初等空壳维度）拒写；
 /// - 首段目录尚不存在（新园/新阁首次落盘）放行，由调用方后续 canonicalize 根内校验把关。
 ///   写/改/删共用同一把尺；路径须已用 `/` 归一、去首尾空白。
-pub fn 校验路径范围(根: &Path, 路径: &str) -> Result<(), String> {
+pub fn 校验路径范围(根: &Path, 路径: &str) -> 世界结果<()> {
     let 首段 = 路径.split('/').next().unwrap_or("");
     if 路径.contains('/') {
         if 首段.starts_with('.') {
             return Err(format!(
                 "根内越界拒绝：{路径}（隐藏目录 {首段} 非源码资产，拒写；执行者只能写源码维度目录）"
-            ));
+            )
+            .into());
         }
         let 维度目录 = 根.join(首段);
         if 维度目录.is_dir() && !目录含源码(&维度目录) {
             return Err(format!(
                 "根内越界拒绝：{路径}（{首段} 为非源码维度，拒写；新文件只能建在含源码的维度目录内）"
-            ));
+            ).into());
         }
     } else if !路径.contains('/') && !首段.is_empty() && !首段.ends_with(".rs") {
         return Err(format!(
             "根内越界拒绝：{路径}（根级非源码文件拒写；源码 .rs 可建在根级，其余文件须在维度目录内）"
-        ));
+        ).into());
     }
     Ok(())
 }
@@ -85,19 +86,20 @@ pub fn 校验路径范围(根: &Path, 路径: &str) -> Result<(), String> {
 /// 3) 根内越界拒绝（源码维度白名单）——见 校验路径范围；
 /// 4) 路径越界拒绝——从目标路径逐级上溯最近已存在祖先，规范化后必须位于工作区根内（防 ../ 逃逸）。
 ///    工具模式与纯文本回退共用，保证两条落盘路径同等受约束。
-pub fn 校验落盘(根: &Path, 路径: &str, 内容: &str) -> Result<(), String> {
+pub fn 校验落盘(根: &Path, 路径: &str, 内容: &str) -> 世界结果<()> {
     let 路径 = 路径.trim().replace('\\', "/");
     if 路径.is_empty() {
-        return Err("拒写：路径为空".to_string());
+        return Err("拒写：路径为空".into());
     }
     if 内容.trim().is_empty() {
-        return Err(format!("拒写空文件：{路径}（内容为空）"));
+        return Err(format!("拒写空文件：{路径}（内容为空）").into());
     }
     if 内容.len() > 落盘内容上限 {
         return Err(format!(
             "拒写超长文件：{路径}（{} 字节，超上限 {落盘内容上限}）",
             内容.len()
-        ));
+        )
+        .into());
     }
     校验路径范围(根, &路径)?;
     校验路径越界(根, &路径)
@@ -107,7 +109,7 @@ pub fn 校验落盘(根: &Path, 路径: &str, 内容: &str) -> Result<(), String
 /// 规范化后必须位于工作区根内（防 `../` 逃逸）。
 /// 写/改/删共用同一把尺；路径须已用 `/` 归一、去首尾空白、经 校验路径范围 白名单把关。
 /// 提取自 校验落盘 第 4 段，供 删文件 对齐写/改的 canonicalize 越界校验（安全报告 L8）。
-fn 校验路径越界(根: &Path, 路径: &str) -> Result<(), String> {
+fn 校验路径越界(根: &Path, 路径: &str) -> 世界结果<()> {
     let 根规范 = 根
         .canonicalize()
         .map_err(|错误| format!("工作区根无法解析：{错误}"))?;
@@ -120,7 +122,8 @@ fn 校验路径越界(根: &Path, 路径: &str) -> Result<(), String> {
                     "路径越界拒绝：{路径}（已解析到 {}，超出工作区根 {}）",
                     规范.display(),
                     根规范.display()
-                ));
+                )
+                .into());
             }
             return Ok(());
         }
@@ -133,14 +136,15 @@ fn 校验路径越界(根: &Path, 路径: &str) -> Result<(), String> {
     Err(format!(
         "路径无法解析：{路径}（最近已存在祖先不在工作区根 {} 内）",
         根规范.display()
-    ))
+    )
+    .into())
 }
 
 /// 涉及路径护栏：目标路径必须落在要求书涉及路径内——
 /// ① 目标 == 涉及路径；② 目标在涉及路径（目录）树下；③ 目标与涉及路径（文件）同目录
 /// （同园新建/修改，如为被测文件补内联测试或同园新文件）。
 /// 涉及路径为空（审验/核查类）→ 放行（纪律靠执行提示）。机制性约束，不硬编码路径。
-pub fn 校验涉及路径(原始: &str, 涉及路径: &[String]) -> Result<(), String> {
+pub fn 校验涉及路径(原始: &str, 涉及路径: &[String]) -> 世界结果<()> {
     if 涉及路径.is_empty() {
         return Ok(());
     }
@@ -182,14 +186,14 @@ pub fn 校验涉及路径(原始: &str, 涉及路径: &[String]) -> Result<(), S
         Err(format!(
             "涉及路径外拒写：{目标}（只允许落在要求书涉及路径内或同目录：{}）——如需改其他文件，请界主把目标路径写进涉及路径",
             涉及路径.join("、")
-        ))
+        ).into())
     }
 }
 
 /// 工作目录根内校验：join 后 canonicalize 必须仍落在工作区根内，防 `../` 逃逸。
 /// 返回规范化后的绝对路径字符串（供沙箱运行直接用）。
 /// 校验对齐 校验落盘 的路径越界段：从目标逐级上溯最近已存在祖先，规范化后必须位于根内。
-fn 校验工作目录(根: &Path, 相对: &str) -> Result<String, String> {
+fn 校验工作目录(根: &Path, 相对: &str) -> 世界结果<String> {
     let 相对 = 相对.trim().replace('\\', "/");
     if 相对.is_empty() {
         return Ok(根
@@ -210,7 +214,8 @@ fn 校验工作目录(根: &Path, 相对: &str) -> Result<String, String> {
                     "工作目录越界拒绝：{相对}（已解析到 {}，超出工作区根 {}）",
                     规范.display(),
                     根规范.display()
-                ));
+                )
+                .into());
             }
             return Ok(规范.to_string_lossy().into_owned());
         }
@@ -223,15 +228,16 @@ fn 校验工作目录(根: &Path, 相对: &str) -> Result<String, String> {
     Err(format!(
         "工作目录无法解析：{相对}（最近已存在祖先不在工作区根 {} 内）",
         根规范.display()
-    ))
+    )
+    .into())
 }
 
 /// 格位名校验：只允许中文+字母+数字+下划线，拒路径分隔符（/和\）和 `..`。
 /// 读格位/查格位历史直接把格位名 join 到格位目录（识海承载-府 模型落盘-园 格位文件路径），
 /// 格位名未经校验可含 `../` 逃逸到格位目录之外，故在工具侧 join 前先校验。
-fn 校验格位名(格位名: &str) -> Result<(), String> {
+fn 校验格位名(格位名: &str) -> 世界结果<()> {
     if 格位名.is_empty() {
-        return Err("格位名为空".to_string());
+        return Err("格位名为空".into());
     }
     // 字符白名单：中文（CJK 基本区）+ ASCII 字母数字 + 下划线。
     // 此白名单已拒 `/`、`\`、`.`，故 `..` 与 `../` 自然被拒，错误信息一并提示。
@@ -242,7 +248,7 @@ fn 校验格位名(格位名: &str) -> Result<(), String> {
         if !合法 {
             return Err(format!(
                 "格位名含非法字符 {字符} 拒绝：{格位名}（只允许中文/字母/数字/下划线，拒路径分隔符和 ..）"
-            ));
+            ).into());
         }
     }
     Ok(())
@@ -252,23 +258,31 @@ fn 校验格位名(格位名: &str) -> Result<(), String> {
 /// 本质：任何项目的通用安全护栏——落盘非空/非超长/路径不越界，命令不越权。
 /// 读类工具（读文件/列举/寻找/搜索/读格位/查格位历史）天然只读，无护栏。
 pub(crate) fn 工具护栏(
-    根: &Path,
-    调用名: &str,
-    参数: &serde_json::Value,
-) -> Result<(), String> {
+    根: &Path, 调用名: &str, 参数: &serde_json::Value
+) -> 世界结果<()> {
     match 调用名 {
         "写文件" => {
-            let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
-            let 内容 = 参数["内容"].as_str().ok_or("缺参数 内容")?;
+            let 路径 = 参数["路径"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 路径"))?;
+            let 内容 = 参数["内容"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 内容"))?;
             校验落盘(根, 路径, 内容)
         }
         "改文件" => {
-            let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
-            let 新文 = 参数["新文"].as_str().ok_or("缺参数 新文")?;
+            let 路径 = 参数["路径"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 路径"))?;
+            let 新文 = 参数["新文"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 新文"))?;
             校验落盘(根, 路径, 新文)
         }
         "运行命令" => {
-            let 命令 = 参数["命令"].as_str().ok_or("缺参数 命令")?;
+            let 命令 = 参数["命令"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 命令"))?;
             let 参数们 = 参数["参数们"]
                 .as_array()
                 .map(|数组| 数组.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>())
@@ -307,7 +321,7 @@ impl 守卫 for 涉及路径守卫 {
         };
         for 路径 in &路径们 {
             if let Err(说明) = 校验涉及路径(路径, &请求.涉及路径) {
-                return 裁决::拒绝(说明);
+                return 裁决::拒绝(说明.to_string());
             }
         }
         裁决::弃权
@@ -322,21 +336,33 @@ impl 守卫 for 涉及路径守卫 {
 /// 已知边界：可读取 .env（含 API 密钥）、.上下文/观测（含提示词）。
 /// 缓解：.gitignore 已排除敏感数据不入库；观测探针正文封顶 200K 字符。
 /// 若需限制，可在此处加敏感目录拒绝（与 校验路径范围 的隐藏目录拒绝复用）。
-fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
+fn 执行器(请求: &工具请求) -> 世界结果<工具结果> {
     let 根 = &请求.工作区根;
     let 参数 = &请求.参数;
     let mut 写入文件们: Vec<(String, u64)> = Vec::new();
     let mut 尝试写入们: Vec<String> = Vec::new();
     let 文本 = match 请求.调用名.as_str() {
         "写文件" => {
-            let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
-            let 内容 = 参数["内容"].as_str().ok_or("缺参数 内容")?;
+            let 路径 = 参数["路径"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 路径"))?;
+            let 内容 = 参数["内容"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 内容"))?;
             let 绝对 = 根.join(路径);
             尝试写入们.push(路径.to_string());
-            let 已写入 = 写文件(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 内容)?;
+            let 已写入 = 写文件(
+                绝对.to_str().ok_or(shihai_fu::世界错误::世界错误::from(
+                    "路径含非 UTF-8 字符",
+                ))?,
+                内容,
+            )?;
             if 已写入 {
                 写入文件们.push((路径.to_string(), 内容.len() as u64));
-                Ok(format!("已写入 {路径}（{} 字节）", 内容.len()))
+                Ok::<_, shihai_fu::世界错误::世界错误>(format!(
+                    "已写入 {路径}（{} 字节）",
+                    内容.len()
+                ))
             } else {
                 // 空操作：内容与现状相同，未写盘（不入产物清单）。
                 Ok(format!(
@@ -346,18 +372,34 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
         }
         // 读类工具：开放读取全工作区，安全边界见 执行器 文档注释。
         "读文件" => {
-            let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
+            let 路径 = 参数["路径"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 路径"))?;
             let 绝对 = 根.join(路径);
-            let 内容 = 读文件(绝对.to_str().ok_or("路径含非 UTF-8 字符")?)?;
+            let 内容 = 读文件(绝对.to_str().ok_or(shihai_fu::世界错误::世界错误::from(
+                "路径含非 UTF-8 字符",
+            ))?)?;
             Ok(format!("【文件：{路径}】\n{内容}"))
         }
         "改文件" => {
-            let 路径 = 参数["路径"].as_str().ok_or("缺参数 路径")?;
-            let 旧文 = 参数["旧文"].as_str().ok_or("缺参数 旧文")?;
-            let 新文 = 参数["新文"].as_str().ok_or("缺参数 新文")?;
+            let 路径 = 参数["路径"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 路径"))?;
+            let 旧文 = 参数["旧文"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 旧文"))?;
+            let 新文 = 参数["新文"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 新文"))?;
             let 绝对 = 根.join(路径);
             尝试写入们.push(路径.to_string());
-            let 已改写 = 改文件(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 旧文, 新文)?;
+            let 已改写 = 改文件(
+                绝对.to_str().ok_or(shihai_fu::世界错误::世界错误::from(
+                    "路径含非 UTF-8 字符",
+                ))?,
+                旧文,
+                新文,
+            )?;
             if 已改写 {
                 写入文件们.push((路径.to_string(), 新文.len() as u64));
                 Ok(format!("已改写 {路径}"))
@@ -369,20 +411,22 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             }
         }
         "删文件" => {
-            let 路径们 = 参数["路径们"].as_array().ok_or("缺参数 路径们")?;
+            let 路径们 = 参数["路径们"]
+                .as_array()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 路径们"))?;
             let 文本们 = 路径们
                 .iter()
                 .filter_map(|值| 值.as_str())
                 .collect::<Vec<_>>();
             if 文本们.is_empty() {
-                return Err("路径们 为空".to_string());
+                return Err("路径们 为空".into());
             }
             // 删文件同走根内越界校验（源码维度白名单）+ canonicalize 路径越界校验，
             // 防执行者删根级/记忆/空壳维度资产，并防 `../` 逃逸（与写/改对齐，安全报告 L8）。
             for 路径 in &文本们 {
                 let 归一 = 路径.trim().replace('\\', "/");
                 if 归一.is_empty() {
-                    return Err("拒删：路径为空".to_string());
+                    return Err("拒删：路径为空".into());
                 }
                 校验路径范围(根, &归一)?;
                 校验路径越界(根, &归一)?;
@@ -403,7 +447,9 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
         "列举目录" => {
             let 路径 = 参数["路径"].as_str().unwrap_or("");
             let 绝对 = 根.join(路径);
-            let 条目们 = 列举目录(绝对.to_str().ok_or("路径含非 UTF-8 字符")?)?;
+            let 条目们 = 列举目录(绝对.to_str().ok_or(
+                shihai_fu::世界错误::世界错误::from("路径含非 UTF-8 字符"),
+            )?)?;
             let mut 行 = String::new();
             for 条目 in 条目们 {
                 行.push_str(&format!(
@@ -418,9 +464,16 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
         // 读类工具：开放全工作区文件查找，安全边界见 执行器 文档注释。
         "寻找文件" => {
             let 根参 = 参数["根"].as_str().unwrap_or("");
-            let 模式 = 参数["模式"].as_str().ok_or("缺参数 模式")?;
+            let 模式 = 参数["模式"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 模式"))?;
             let 绝对 = 根.join(根参);
-            let 文件们 = 寻找文件(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 模式)?;
+            let 文件们 = 寻找文件(
+                绝对.to_str().ok_or(shihai_fu::世界错误::世界错误::from(
+                    "路径含非 UTF-8 字符",
+                ))?,
+                模式,
+            )?;
             if 文件们.is_empty() {
                 return Ok(工具结果::新("（未找到匹配文件）"));
             }
@@ -434,9 +487,16 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
         // 读类工具：开放全工作区内容搜索，安全边界见 执行器 文档注释。
         "搜索内容" => {
             let 根参 = 参数["根"].as_str().unwrap_or("");
-            let 字面串 = 参数["字面串"].as_str().ok_or("缺参数 字面串")?;
+            let 字面串 = 参数["字面串"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 字面串"))?;
             let 绝对 = 根.join(根参);
-            let 命中们 = 搜索内容(绝对.to_str().ok_or("路径含非 UTF-8 字符")?, 字面串)?;
+            let 命中们 = 搜索内容(
+                绝对.to_str().ok_or(shihai_fu::世界错误::世界错误::from(
+                    "路径含非 UTF-8 字符",
+                ))?,
+                字面串,
+            )?;
             if 命中们.is_empty() {
                 return Ok(工具结果::新("（未检索到命中）"));
             }
@@ -452,7 +512,9 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             Ok(行)
         }
         "运行命令" => {
-            let 命令 = 参数["命令"].as_str().ok_or("缺参数 命令")?;
+            let 命令 = 参数["命令"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 命令"))?;
             let 参数们 = 参数["参数们"]
                 .as_array()
                 .map(|数组| 数组.iter().filter_map(|值| 值.as_str()).collect::<Vec<_>>())
@@ -482,7 +544,9 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             Ok(输出)
         }
         "读格位" => {
-            let 格位名 = 参数["格位名"].as_str().ok_or("缺参数 格位名")?;
+            let 格位名 = 参数["格位名"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 格位名"))?;
             校验格位名(格位名)?;
             let 上限 = 参数["上限"].as_u64().unwrap_or(20).min(200) as usize;
             let 工作区 = 工作区::定位();
@@ -510,7 +574,9 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             Ok(输出)
         }
         "查格位历史" => {
-            let 格位名 = 参数["格位名"].as_str().ok_or("缺参数 格位名")?;
+            let 格位名 = 参数["格位名"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 格位名"))?;
             校验格位名(格位名)?;
             let 起始 = 参数["起始"].as_u64().unwrap_or(0) as usize;
             let 上限 = 参数["上限"].as_u64().unwrap_or(50).min(500) as usize;
@@ -548,7 +614,7 @@ fn 执行器(请求: &工具请求) -> Result<工具结果, String> {
             }
             Ok(输出)
         }
-        _ => Err(format!("未知工具：{}", 请求.调用名)),
+        _ => Err(format!("未知工具：{}", 请求.调用名).into()),
     }?;
     Ok(工具结果 {
         文本,
@@ -563,7 +629,7 @@ static 工具流水线实例: std::sync::OnceLock<工具流水线> = std::sync::
 
 /// 预执行监听（pre-execute）：统一护栏——落盘非空/非超长/路径不越界，命令不越权。
 /// 本质：任何项目的通用安全护栏（对齐 dsh guard 阶段，与 execute 解耦）。
-fn 工具护栏监听(请求: &mut 工具请求) -> Result<(), String> {
+fn 工具护栏监听(请求: &mut 工具请求) -> 世界结果<()> {
     工具护栏(&请求.工作区根, &请求.调用名, &请求.参数)
 }
 
@@ -571,9 +637,11 @@ fn 工具护栏监听(请求: &mut 工具请求) -> Result<(), String> {
 /// 注册的注销句柄用 Box::leak 永久持有——静态流水线生命周期与进程一致，句柄不得 drop（drop 即注销监听）。
 pub(crate) fn 流水线() -> &'static 工具流水线 {
     工具流水线实例.get_or_init(|| {
-        let mut 流水线 = 工具流水线::新(执行器);
+        let 执行器适配 = |请求: &工具请求| 执行器(请求).map_err(|e| e.to_string());
+        let mut 流水线 = 工具流水线::新(执行器适配);
         // pre-execute：统一护栏（落盘校验/命令护栏）。句柄永久持有，防注册即注销。
-        let 护栏句柄 = 流水线.预执行注册(工具护栏监听);
+        let 护栏适配 = |请求: &mut 工具请求| 工具护栏监听(请求).map_err(|e| e.to_string());
+        let 护栏句柄 = 流水线.预执行注册(护栏适配);
         let _永久持有 = Box::leak(Box::new(护栏句柄));
         // guards：涉及路径守卫（单调 deny-or-abstain）。
         流水线.加守卫(std::sync::Arc::new(涉及路径守卫));
@@ -588,7 +656,7 @@ pub(crate) fn 执行工具(
     根: &Path,
     写入文件们: &mut Vec<(String, u64)>,
     涉及路径: &[String],
-) -> Result<String, String> {
+) -> 世界结果<String> {
     let 参数: serde_json::Value = serde_json::from_str(&调用.参数)
         .map_err(|错误| format!("参数解析失败: {错误}；原文：{}", 调用.参数))?;
     let 请求 = 工具请求::新(调用.名字.clone(), 参数, 根.to_path_buf(), 涉及路径.to_vec());
@@ -692,7 +760,10 @@ mod 测试 {
                 .to_string(),
         ];
         let 错 = 校验涉及路径("证道/鸿蒙 - 域/单元测试-府/Cargo.toml", &涉及).unwrap_err();
-        assert!(错.contains("涉及路径外拒写"), "涉及路径外应拒写：{错}");
+        assert!(
+            错.to_string().contains("涉及路径外拒写"),
+            "涉及路径外应拒写：{错}"
+        );
         assert!(
             校验涉及路径("鸿蒙/基础设施 - 域/天庭治理-府/Cargo.toml", &涉及).is_err(),
             "其他府文件拒写"
