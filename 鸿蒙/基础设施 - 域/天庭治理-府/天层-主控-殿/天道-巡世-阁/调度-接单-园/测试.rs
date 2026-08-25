@@ -5,7 +5,9 @@
 
 #![allow(clippy::useless_vec, dead_code, unused_imports)]
 
-use super::调度接单::{接单决策, 触碰红线, 评估接单};
+use super::调度接单::{
+    add, dispatch, 接单决策, 接单门示例闭包调用, 触碰红线, 评估接单
+};
 use crate::类型_定义_殿::{巡世候选, 本质档位};
 use std::path::PathBuf;
 
@@ -261,4 +263,23 @@ fn 维度5_闭包返回false_档位低_拒() {
         "闭包返回 false + 档位 S8 应被拒，但接受：{:?}",
         决策
     );
+}
+
+#[test]
+fn add_1_plus_1_eq_2() {
+    // 1+1=2 的字面量锚点：直接调用 + 通过调度门闭包调用，两路共验。
+    assert_eq!(add(1, 1), 2, "add(1,1) 应等于 2");
+    assert_eq!(接单门示例闭包调用(), 2, "接单闭包调用 add(1,1) 应等于 2");
+}
+
+/// 调度门 dispatch 入口内闭包调用 add(1,1) → 结果 == 2。
+///
+/// 任务依据（要求-70）：验收标准②「调度门 dispatch 入口内闭包调用 add(1,1) 可被 git diff 锚定」。
+/// - dispatch 是调度门公开入口，签名 `dispatch(命令: &str) -> i64`；
+/// - 函数体内定义闭包 `接单闭包`，捕获 `add`；
+/// - 闭包调用 `add(1, 1)` 字面量在源码中显式出现。
+#[test]
+fn dispatch_入口闭包调用_add_1_1_等于_2() {
+    let 结果 = dispatch("接单");
+    assert_eq!(结果, 2, "dispatch 闭包调用 add(1,1) 应等于 2");
 }
