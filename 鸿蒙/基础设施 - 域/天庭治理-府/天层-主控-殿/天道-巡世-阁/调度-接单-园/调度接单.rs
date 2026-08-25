@@ -84,10 +84,7 @@ where
     // - Some(闭包) → 4 层瀑布（接单门闭包查测试覆盖：路径前缀 → 代码符号 → LLM 现场确认 → 反向匹配）
     match 测试覆盖查询 {
         Some(f) => {
-            let 有覆盖 = 涉及路径
-                .iter()
-                .filter_map(|p| p.to_str())
-                .any(f);
+            let 有覆盖 = 涉及路径.iter().filter_map(|p| p.to_str()).any(f);
             if !有覆盖 && 候选.本质档位 >= 本质档位::S6 {
                 return 接单决策::拒绝("无 #[test] 覆盖，无法验证");
             }
