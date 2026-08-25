@@ -19,14 +19,14 @@ pub mod 服务占位 {
 }
 
 // 各府核心 API 重新导出（§B.2.1）
-pub use shihai_fu as 识海;
-pub use daoshu_fu as 道术;
-pub use tianting_fu as 天庭;
-pub use moxing_fu as 模型;
-pub use rizhi_fu as 日志;
-pub use shijian_fu as 事件;
 pub use chajian_fu as 插件;
-pub use zhuangtai_fu as 状态;
-pub use peizhi_fu as 配置;
+pub use daoshu_fu as 道术;
 pub use jiance_fu as 观测;
 pub use mingling_fu as 命令;
+pub use moxing_fu as 模型;
+pub use peizhi_fu as 配置;
+pub use rizhi_fu as 日志;
+pub use shihai_fu as 识海;
+pub use shijian_fu as 事件;
+pub use tianting_fu as 天庭;
+pub use zhuangtai_fu as 状态;
