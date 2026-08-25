@@ -4,7 +4,7 @@
 use crate::{
     写文件, 列举目录, 删文件, 寻找文件, 搜索内容, 改文件, 校验命令护栏, 沙箱视图, 读文件
 };
-use moxing_fu::工具调用;
+use moxing_fu::{对话消息, 工具调用, 模型配置, 调用模型};
 use shihai_fu::{世界结果, 工作区, 模型存储};
 use shijian_fu::{守卫, 工具流水线, 工具结果, 工具请求, 裁决};
 use std::path::{Path, PathBuf};
@@ -254,6 +254,41 @@ fn 校验格位名(格位名: &str) -> 世界结果<()> {
     Ok(())
 }
 
+/// 从 unified diff 文本提取「应用后的目标路径」（+++ b/path 行）。
+///
+/// 应用补丁 工具的目标路径不在标准 schema 里（参数是整段 diff 文本），
+/// 涉及路径守卫与护栏需要知道 diff 会改哪些文件——故在两个调用点都先调本函数。
+/// 仅取 `+++` 行（应用后的状态）；`---` 代表原状，跳过避免重复与误判。
+/// `a/` `b/` 前缀按 git diff 约定去掉；`/dev/null`（删除文件）跳过；
+/// 时间戳（+++ b/path\t时间戳）按 \t 截断。
+fn 提取diff路径们(补丁: &str) -> Vec<String> {
+    let mut 路径们: Vec<String> = Vec::new();
+    for 行 in 补丁.lines() {
+        let Some(余) = 行.strip_prefix("+++ ") else {
+            continue;
+        };
+        let 余 = 余.trim();
+        if 余.is_empty() || 余 == "/dev/null" {
+            continue;
+        }
+        // 去掉 b/ 或 a/ 前缀（git 风格）；都不是则原样保留。
+        let 去前缀 = 余
+            .strip_prefix("b/")
+            .or_else(|| 余.strip_prefix("a/"))
+            .unwrap_or(余);
+        // 去时间戳：+++ b/path\t时间戳 → 截到首个 \t 前。
+        let 归一 = if let Some(区位) = 去前缀.find('\t') {
+            &去前缀[..区位]
+        } else {
+            去前缀
+        };
+        if !归一.is_empty() {
+            路径们.push(归一.to_string());
+        }
+    }
+    路径们
+}
+
 /// 工具护栏（guard 阶段）：执行前统一护栏，与 execute 解耦（对齐 DeepSeek 工具流水线）。
 /// 本质：任何项目的通用安全护栏——落盘非空/非超长/路径不越界，命令不越权。
 /// 读类工具（读文件/列举/寻找/搜索/读格位/查格位历史）天然只读，无护栏。
@@ -278,6 +313,21 @@ pub(crate) fn 工具护栏(
                 .as_str()
                 .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 新文"))?;
             校验落盘(根, 路径, 新文)
+        }
+        "应用补丁" => {
+            let 补丁 = 参数["补丁"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 补丁"))?;
+            if 补丁.trim().is_empty() {
+                return Err("拒写空补丁：补丁内容为空".into());
+            }
+            // 解析 diff 中的目标路径，逐个走 校验路径范围（源码维度白名单）。
+            // canonicalize 越界段留给 execute 段：补丁可能描述尚不存在的文件（新建场景），
+            // 与 写文件 对齐——父目录已存在 → canonicalize 上溯。
+            for 路径 in 提取diff路径们(补丁) {
+                校验路径范围(根, &路径)?;
+            }
+            Ok(())
         }
         "运行命令" => {
             let 命令 = 参数["命令"]
@@ -614,6 +664,58 @@ fn 执行器(请求: &工具请求) -> 世界结果<工具结果> {
             }
             Ok(输出)
         }
+        // ===== 新增 3 工具（任务 2 落位）=====
+        // 应用补丁（apply_patch）：v1 stub——校验 diff 格式合法 + 列出目标路径，
+        // 不实际解析 hunk 落盘（v2 阶段接入完整 unified diff 解析器）。
+        "应用补丁" => {
+            let 补丁 = 参数["补丁"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 补丁"))?;
+            let 干跑 = 参数["干跑"].as_bool().unwrap_or(false);
+            let 路径们 = 提取diff路径们(补丁);
+            if 路径们.is_empty() {
+                return Err("补丁解析失败：未找到 +++ b/path 行".into());
+            }
+            let mut 输出 = format!(
+                "【应用补丁 stub】v1 阶段：已解析 {} 个目标文件（{}）。完整 hunk 解析与落盘待 v2 阶段接入。\n目标文件：\n",
+                路径们.len(),
+                if 干跑 { "干跑模式" } else { "落盘模式" }
+            );
+            for 路径 in &路径们 {
+                输出.push_str(&format!("  - {路径}\n"));
+                尝试写入们.push(路径.clone());
+            }
+            Ok(输出)
+        }
+        // 任务规划（plan_task）：v1 stub——返回「请直接编码完成本任务（任务规划暂为 stub）」。
+        "任务规划" => {
+            let 目标 = 参数["目标"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 目标"))?;
+            let 上限步数 = 参数["上限步数"].as_u64().unwrap_or(5).min(20) as usize;
+            let mut 输出 = format!(
+                "【任务规划 stub】v1 阶段：LLM 子规划尚未接入，请直接编码完成本任务。目标：{目标}\n\n推荐拆解步数上限：{上限步数}\n"
+            );
+            输出.push_str("v2 接入后，此工具会调 moxing_fu::调用模型 让模型把目标拆成可串/并行的子步骤（含依赖列表），供编排器按依赖调度。\n");
+            Ok(输出)
+        }
+        // 查询大模型（query_llm）：递归调 LLM。复用 moxing_fu::调用模型 把发。
+        "查询大模型" => {
+            let 提示词 = 参数["提示词"]
+                .as_str()
+                .ok_or(shihai_fu::世界错误::世界错误::from("缺参数 提示词"))?;
+            let 最大输出 = 参数["最大输出"].as_u64().unwrap_or(1024).min(8192) as u32;
+            let 工作区根 = 根.to_string_lossy().into_owned();
+            let 配置项 = peizhi_fu::读模型配置(&工作区根);
+            let 配置 = 模型配置 {
+                密钥: 配置项.密钥,
+                地址: 配置项.地址,
+                模型: 配置项.模型,
+            };
+            let 消息们 = vec![对话消息::用户(提示词.to_string())];
+            let (文本, _用量) = 调用模型(&配置, &消息们, 最大输出)?;
+            Ok(format!("【查询大模型】回复：\n{文本}"))
+        }
         _ => Err(format!("未知工具：{}", 请求.调用名).into()),
     }?;
     Ok(工具结果 {
@@ -633,6 +735,23 @@ fn 工具护栏监听(请求: &mut 工具请求) -> 世界结果<()> {
     工具护栏(&请求.工作区根, &请求.调用名, &请求.参数)
 }
 
+/// 应用补丁涉及路径守卫：从 diff 文本提取目标路径 + 校验涉及路径。
+/// 与 涉及路径守卫 解耦：原守卫只处理 schema 里 路径/路径们 字段，
+/// 应用补丁 没有这两个字段，需要从 diff 中提取。
+struct 应用补丁涉及路径守卫;
+
+impl 守卫 for 应用补丁涉及路径守卫 {
+    fn 裁决(&self, 请求: &工具请求) -> 裁决 {
+        let 补丁 = 请求.参数["补丁"].as_str().unwrap_or("");
+        for 路径 in 提取diff路径们(补丁) {
+            if let Err(说明) = 校验涉及路径(&路径, &请求.涉及路径) {
+                return 裁决::拒绝(说明.to_string());
+            }
+        }
+        裁决::弃权
+    }
+}
+
 /// 取全局工具流水线（首次构造并注册护栏/守卫；后执行段由后续阶段挂观测留痕）。
 /// 注册的注销句柄用 Box::leak 永久持有——静态流水线生命周期与进程一致，句柄不得 drop（drop 即注销监听）。
 pub(crate) fn 流水线() -> &'static 工具流水线 {
@@ -645,6 +764,8 @@ pub(crate) fn 流水线() -> &'static 工具流水线 {
         let _永久持有 = Box::leak(Box::new(护栏句柄));
         // guards：涉及路径守卫（单调 deny-or-abstain）。
         流水线.加守卫(std::sync::Arc::new(涉及路径守卫));
+        // guards：应用补丁涉及路径守卫（从 diff 文本提取目标 + 校验涉及路径）。
+        流水线.加守卫(std::sync::Arc::new(应用补丁涉及路径守卫));
         流水线
     })
 }
@@ -703,13 +824,45 @@ pub(crate) fn 参数摘要(调用: &工具调用) -> String {
             参数["起始"].as_u64().unwrap_or(0),
             参数["上限"].as_u64().unwrap_or(50)
         ),
+        "应用补丁" => {
+            let 路径预览 = 提取diff路径们(参数["补丁"].as_str().unwrap_or(""))
+                .into_iter()
+                .take(3)
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "补丁={}字节 目标={}{}",
+                参数["补丁"].as_str().map(|s| s.len()).unwrap_or(0),
+                路径预览,
+                if 路径预览.is_empty() {
+                    "（无）"
+                } else {
+                    ""
+                }
+            )
+        }
+        "任务规划" => format!(
+            "目标={} 上限步数={}",
+            参数["目标"]
+                .as_str()
+                .unwrap_or("?")
+                .chars()
+                .take(40)
+                .collect::<String>(),
+            参数["上限步数"].as_u64().unwrap_or(5)
+        ),
+        "查询大模型" => format!(
+            "提示词={}字节 最大输出={}",
+            参数["提示词"].as_str().map(|s| s.len()).unwrap_or(0),
+            参数["最大输出"].as_u64().unwrap_or(1024)
+        ),
         _ => 调用.参数.chars().take(80).collect(),
     }
 }
 
 #[cfg(test)]
 mod 测试 {
-    use super::{参数摘要, 校验格位名, 校验涉及路径};
+    use super::{参数摘要, 提取diff路径们, 校验格位名, 校验涉及路径};
     use moxing_fu::工具调用;
 
     #[test]
@@ -986,5 +1139,42 @@ mod 测试 {
         assert!(校验格位名("a<b").is_err(), "尖括号非法");
         assert!(校验格位名("a>b").is_err(), "尖括号非法");
         assert!(校验格位名("a\"b").is_err(), "引号非法");
+    }
+
+    /// diff 路径提取 · 标准 unified diff：从 +++ b/path 行取应用后路径。
+    /// 任务 2 新增：应用补丁 工具的目标路径识别依据。
+    #[test]
+    fn 提取diff路径们_标准diff() {
+        let 补丁 = "--- a/甲.rs\n+++ b/甲.rs\n@@ -1,1 +1,1 @@\n-旧\n+新\n";
+        assert_eq!(提取diff路径们(补丁), vec!["甲.rs".to_string()]);
+    }
+
+    /// diff 路径提取 · 多个文件 + git 风格 + 时间戳：覆盖实战场景。
+    #[test]
+    fn 提取diff路径们_多文件带时间戳() {
+        let 补丁 = "--- a/src/lib.rs\t2026-08-25\n+++ b/src/lib.rs\t2026-08-25\n@@ -1 +1 @@\n-a\n+b\n--- a/测试/test.rs\n+++ b/测试/test.rs\n";
+        let 路径们 = 提取diff路径们(补丁);
+        assert_eq!(
+            路径们,
+            vec!["src/lib.rs".to_string(), "测试/test.rs".to_string()],
+            "应取两个目标文件，去掉 a/b/ 前缀与时间戳"
+        );
+    }
+
+    /// diff 路径提取 · /dev/null 跳过：删除文件场景。
+    #[test]
+    fn 提取diff路径们_devnull跳过() {
+        let 补丁 = "--- a/废弃.rs\n+++ /dev/null\n@@ -1 +0,0 @@\n-旧\n";
+        assert!(
+            提取diff路径们(补丁).is_empty(),
+            "/dev/null 应跳过，不计入目标路径"
+        );
+    }
+
+    /// diff 路径提取 · 空补丁返回空列表。
+    #[test]
+    fn 提取diff路径们_空补丁返回空() {
+        assert!(提取diff路径们("").is_empty());
+        assert!(提取diff路径们("无 +++ 行的内容\n@@ -1 +1 @@\n-a\n+b\n").is_empty());
     }
 }
