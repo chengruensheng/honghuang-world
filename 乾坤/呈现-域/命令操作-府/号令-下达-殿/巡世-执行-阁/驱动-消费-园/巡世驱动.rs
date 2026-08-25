@@ -12,13 +12,23 @@
 use crate::号令_下达_殿::想法_投递_阁::原子_入池_园::投递想法;
 use crate::状态目录;
 use rizhi_fu::{error, info, warn};
-use std::path::Path;
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 /// 调度驱动：档位优先 + 接单门 + 润色注入。
 ///
 /// 命名：原 `巡世驱动`，因语义升级（含接单门+润色注入），改名 `调度驱动`。
 /// 老接口 `巡世驱动` 保留为 alias（向后兼容号令分发）。
 pub fn 调度驱动() -> String {
+    // 步骤 0 (2026-08-25 接替错误处理 agent)：消费待修正-测试标识名单（§19.4.2.3 + §19.8 实施规范）
+    let 名单结果 = 消费待修正名单();
+    if let Some(报告) = 名单结果 {
+        if 报告.待执行总数 > 0 {
+            info!(待执行总数 = 报告.待执行总数, "调度驱动：识别待修正条目（占位阶段）");
+        }
+    }
+
     let 状态目录路径 = 状态目录();
     let mut 状态 = match tianting_fu::确保世界状态初始化(&状态目录路径) {
         Ok(状态) => 状态,
@@ -121,4 +131,126 @@ fn 档位优先选下一个(
 /// 向后兼容：原 `巡世驱动` 命令分发仍可调。
 pub fn 巡世驱动() -> String {
     调度驱动()
+}
+
+// 待修正-测试标识 条目（§19.9 入稿，§19.4.2.3 实施规范）。
+// 注：mingling_fu 只依赖 serde_json（按 §16 红线 4 不加 serde derive），本类型
+// 用 `serde_json::Value` 处理 jsonl：写入时 `json!({...})`，读取时
+// `Value["字段"]` 提取。jsonl 字段对齐 §19.8：
+// - 文件路径: str
+// - 实体键: str（按实体键幂等去重）
+// - 动作: str（加 `#[test]` | 去 `#[test]` | 加注释审）
+// - LLM摘录: str
+// - 时间戳: int
+// - 执行状态: str（待执行 | 已成功 | 已失败 | 已跳过）
+
+/// 待修正名单消费报告（§19.4.2.3 实施规范的返回值）。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct 名单消费报告 {
+    /// 成功执行数。
+    pub 已成功: usize,
+    /// 失败回滚数。
+    pub 已失败: usize,
+    /// 跳过数（人工已加 "已跳过" 标记的）。
+    pub 已跳过: usize,
+    /// 读取到的 待执行 条目总数。
+    pub 待执行总数: usize,
+}
+
+/// 消费待修正-测试标识.jsonl 名单（§19.4.2.3 实施规范）。
+///
+/// 当前为最小骨架：读 .jsonl + 按 实体键 去重 + 报告统计。
+/// TODO（待后续 commit 补全）：
+/// - 每条事务：① 回滚垫备份 ② edit 修改 ③ cargo check 验证 ④ 失败回滚
+/// - 全部跑完：清空名单 / 归档到 .上下文/归档/
+pub fn 消费待修正名单() -> Option<名单消费报告> {
+    let 工作区根 = match std::env::var("WORLD_WORKSPACE_ROOT") {
+        Ok(p) if !p.is_empty() => PathBuf::from(p),
+        _ => {
+            // 退回 .上下文/状态/ 父目录
+            状态目录().parent()?.to_path_buf()
+        }
+    };
+    let 名单路径 = 工作区根.join(".上下文").join("状态").join("待修正-测试标识.jsonl");
+    if !名单路径.exists() {
+        return None;
+    }
+    let 内容 = match fs::read_to_string(&名单路径) {
+        Ok(c) => c,
+        Err(错误) => {
+            error!(错误 = %错误, 路径 = %名单路径.display(), "调度驱动：读待修正名单失败");
+            return None;
+        }
+    };
+    // 按行解析 jsonl（容错：单行解析失败跳过该行）
+    let mut 实体键表: std::collections::HashMap<String, serde_json::Value> =
+        std::collections::HashMap::new();
+    for 行 in 内容.lines() {
+        if 行.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<serde_json::Value>(行) {
+            Ok(值) => {
+                // 字段提取（serde_json::Value 容错：缺字段返回空串/false）
+                let 实体键 = 值["实体键"].as_str().unwrap_or("").to_string();
+                let 执行状态 = 值["执行状态"].as_str().unwrap_or("");
+                if 实体键.is_empty() {
+                    warn!(行 = 行, "调度驱动：待修正名单行缺实体键，跳过");
+                    continue;
+                }
+                if 执行状态 == "待执行" {
+                    实体键表.insert(实体键, 值);
+                }
+            }
+            Err(错误) => {
+                warn!(错误 = %错误, 行 = 行, "调度驱动：待修正名单行解析失败，跳过");
+            }
+        }
+    }
+    let 待执行总数 = 实体键表.len();
+    if 待执行总数 == 0 {
+        return Some(名单消费报告::default());
+    }
+    // 报告（TODO：未来 commit 在此加回滚垫 + cargo check 事务）
+    info!(
+        待执行总数,
+        路径 = %名单路径.display(),
+        "调度驱动：识别待修正条目（占位阶段，实际修改待后续 commit）"
+    );
+    // TODO 占位：等错误处理 agent 完工后做
+    // - 实体键去重已做
+    // - 待后续 commit 接入回滚垫 + cargo check 验证
+    // - 跑完清空名单 / 归档
+    Some(名单消费报告 {
+        待执行总数,
+        ..Default::default()
+    })
+}
+
+/// 追加待修正-测试标识条目到 .上下文/状态/待修正-测试标识.jsonl。
+///
+/// 实体键 = 文件路径（链头去重，由消费端 §14.20 reducer 处理）。
+/// 当前为骨架（不接回滚垫 + cargo check，调用方在批量阶段处理）。
+///
+/// 参数：serde_json::Value（用 `serde_json::json!({...})` 宏构造）。
+pub fn 追加待修正测试标识(条目: serde_json::Value) -> Result<(), String> {
+    let 工作区根 = match std::env::var("WORLD_WORKSPACE_ROOT") {
+        Ok(p) if !p.is_empty() => PathBuf::from(p),
+        _ => {
+            // 退回 .上下文/状态/ 父目录
+            状态目录().parent().ok_or_else(|| "无法定位工作区根".to_string())?.to_path_buf()
+        }
+    };
+    let 名单路径 = 工作区根.join(".上下文").join("状态").join("待修正-测试标识.jsonl");
+    if let Some(父) = 名单路径.parent() {
+        fs::create_dir_all(父).map_err(|e| format!("建目录失败: {e}"))?;
+    }
+    let 行 = 条目.to_string();
+    let mut 文件 = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&名单路径)
+        .map_err(|e| format!("打开名单文件失败: {e}"))?;
+    writeln!(文件, "{行}").map_err(|e| format!("写失败: {e}"))?;
+    Ok(())
 }
