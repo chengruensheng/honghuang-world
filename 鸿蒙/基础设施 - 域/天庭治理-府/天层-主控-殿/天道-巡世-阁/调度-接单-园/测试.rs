@@ -34,6 +34,7 @@ fn 维度1_s0候选_候选池非空_仍接受() {
         false,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::接受),
@@ -53,6 +54,7 @@ fn 维度1_非s0候选_候选池空_接受() {
         true,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::接受),
@@ -73,6 +75,7 @@ fn 维度1_非s0候选_候选池非空_接受() {
         false,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::接受),
@@ -92,6 +95,7 @@ fn 维度5_无测试覆盖_档位低_拒绝() {
         true,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::拒绝(_)),
@@ -118,6 +122,7 @@ fn 维度5_有测试覆盖_档位低_接受() {
         true,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::接受),
@@ -137,6 +142,7 @@ fn 红线1_路径含git_拒绝() {
         true,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::拒绝(_)),
@@ -156,6 +162,7 @@ fn 红线2_md设计稿_拒绝() {
         true,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::拒绝(_)),
@@ -174,6 +181,7 @@ fn 红线5_env文件_拒绝() {
         true,
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区,
+        None::<fn(&str) -> bool>,
     );
     assert!(
         matches!(决策, 接单决策::拒绝(_)),
@@ -211,4 +219,47 @@ fn 触碰红线_cargo_toml_触发() {
         &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
         &工作区
     ));
+}
+
+
+#[test]
+fn 维度5_闭包返回true_档位低_接受() {
+    // 依据：测试覆盖查询 Some(闭包) + 闭包返回 true → 接单门接受。
+    // §19.4.1/§8.5/§19.4.2.2：4 层瀑布判定，闭包封装路径/依赖图/证道域/LLM 查询。
+    let 候选 = 造候选("某改进", "补某覆盖", 本质档位::S8);
+    let 涉及: Vec<PathBuf> = vec![PathBuf::from("D:\\洪荒 - 世界\\some_file.rs")];
+    let 工作区 = std::env::temp_dir();
+    let 决策 = 评估接单(
+        &候选,
+        false,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+        Some(|_路径: &str| true),
+    );
+    assert!(
+        matches!(决策, 接单决策::接受),
+        "闭包返回 true + 档位 S8 应被接受，但被拒：{:?}",
+        决策
+    );
+}
+
+#[test]
+fn 维度5_闭包返回false_档位低_拒() {
+    // 依据：测试覆盖查询 Some(闭包) + 闭包返回 false + 档位 ≥ S6 → 拒绝。
+    // S0~S5 补救类即使无测试也接受（接单门闭包不拒），档位 ≥ S6 才严格要求。
+    let 候选 = 造候选("某优化", "优化某处", 本质档位::S8);
+    let 涉及: Vec<PathBuf> = vec![PathBuf::from("D:\\洪荒 - 世界\\some_file.rs")];
+    let 工作区 = std::env::temp_dir();
+    let 决策 = 评估接单(
+        &候选,
+        false,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+        Some(|_路径: &str| false),
+    );
+    assert!(
+        matches!(决策, 接单决策::拒绝(_)),
+        "闭包返回 false + 档位 S8 应被拒，但接受：{:?}",
+        决策
+    );
 }
