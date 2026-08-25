@@ -8,6 +8,8 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
+use shihai_fu::世界结果;
+
 /// 状态共享——跨府运行时状态，按类型 ID 索引。
 pub struct 状态共享 {
     状态表: RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
@@ -21,7 +23,7 @@ impl 状态共享 {
     }
 
     /// 写入状态：按类型 ID 覆盖（后写覆盖先写）。
-    pub fn 写入<T: Any + Send + Sync>(&self, 状态: T) -> Result<(), String> {
+    pub fn 写入<T: Any + Send + Sync>(&self, 状态: T) -> 世界结果<()> {
         let mut 表 = self.状态表.write().unwrap_or_else(|毒| 毒.into_inner());
         表.insert(TypeId::of::<T>(), Arc::new(状态));
         Ok(())
@@ -36,7 +38,7 @@ impl 状态共享 {
     }
 
     /// 移除状态：按类型 ID 积除。
-    pub fn 移除<T: Any + Send + Sync>(&self) -> Result<(), String> {
+    pub fn 移除<T: Any + Send + Sync>(&self) -> 世界结果<()> {
         let mut 表 = self.状态表.write().unwrap_or_else(|毒| 毒.into_inner());
         表.remove(&TypeId::of::<T>());
         Ok(())

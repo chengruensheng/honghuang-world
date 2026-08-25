@@ -1103,6 +1103,7 @@ name = "zhuangtai_fu"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "shihai_fu",
 ]
 
 [[package]]
