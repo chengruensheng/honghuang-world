@@ -535,9 +535,8 @@ mod 测试 {
         let 原值 = std::env::var("WORLD_WORKSPACE_ROOT").ok();
         std::env::remove_var("WORLD_WORKSPACE_ROOT");
         let 目录 = 观测目录();
-        match 原值 {
-            Some(v) => std::env::set_var("WORLD_WORKSPACE_ROOT", v),
-            None => {}
+        if let Some(v) = &原值 {
+            std::env::set_var("WORLD_WORKSPACE_ROOT", v);
         }
         assert_eq!(目录, PathBuf::from(".\\.上下文\\观测"));
     }
