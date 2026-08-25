@@ -621,6 +621,7 @@ version = "0.1.0"
 dependencies = [
  "rizhi_fu",
  "serde_json",
+ "shihai_fu",
 ]
 
 [[package]]

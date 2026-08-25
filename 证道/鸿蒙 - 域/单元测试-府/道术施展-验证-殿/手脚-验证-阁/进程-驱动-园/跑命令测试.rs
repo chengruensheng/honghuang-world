@@ -37,8 +37,11 @@ mod 测试 {
             &[],
         )
         .unwrap_err();
-        assert!(错.contains("超时"), "应返回超时错误：{错}");
-        assert!(错.contains("强杀"), "应说明子进程已被强杀：{错}");
+        assert!(错.to_string().contains("超时"), "应返回超时错误：{错}");
+        assert!(
+            错.to_string().contains("强杀"),
+            "应说明子进程已被强杀：{错}"
+        );
     }
 
     #[test]

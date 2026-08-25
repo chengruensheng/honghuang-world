@@ -74,7 +74,7 @@ mod 测试 {
         let 次数 = std::cell::Cell::new(0);
         let 拼装 = || {
             次数.set(次数.get() + 1);
-            Ok::<_, String>("投影结果".to_string())
+            Ok::<_, shihai_fu::世界错误::世界错误>("投影结果".to_string())
         };
         assert_eq!(缓存.拼装("指纹A", 拼装).unwrap(), "投影结果");
         assert_eq!(缓存.拼装("指纹A", 拼装).unwrap(), "投影结果");
