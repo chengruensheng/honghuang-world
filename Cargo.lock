@@ -1116,5 +1116,15 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 name = "世界"
 version = "0.1.0"
 dependencies = [
+ "chajian_fu",
+ "daoshu_fu",
+ "jiance_fu",
+ "mingling_fu",
+ "moxing_fu",
+ "peizhi_fu",
+ "rizhi_fu",
  "shihai_fu",
+ "shijian_fu",
+ "tianting_fu",
+ "zhuangtai_fu",
 ]

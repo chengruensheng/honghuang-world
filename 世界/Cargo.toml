@@ -10,6 +10,16 @@ name = "世界"
 path = "入口.rs"
 
 [dependencies]
-# 跨府 API 重新导出（每个府作为依赖）
+# 跨府 API 重新导出（§B.2.1：11 个生产 crate 的核心 API 单一入口）
+# 注：zhengdao_fu 是测试集合（依 AGENTS §10 整合证道测试），不进 re-export
 shihai_fu = { path = "../鸿蒙/基础设施 - 域/识海承载-府" }
-# 后续 B.2.6 抽象后逐步加其他府
+daoshu_fu = { path = "../鸿蒙/基础设施 - 域/道术施展-府" }
+tianting_fu = { path = "../鸿蒙/基础设施 - 域/天庭治理-府" }
+moxing_fu = { path = "../鸿蒙/基础设施 - 域/模型连接-府" }
+rizhi_fu = { path = "../鸿蒙/基础设施 - 域/日志记录-府" }
+shijian_fu = { path = "../鸿蒙/基础设施 - 域/事件总线-府" }
+chajian_fu = { path = "../鸿蒙/基础设施 - 域/插件承载-府" }
+zhuangtai_fu = { path = "../鸿蒙/基础设施 - 域/状态共享-府" }
+peizhi_fu = { path = "../鸿蒙/世界配置 - 域/配置管理-府" }
+jiance_fu = { path = "../鸿蒙/基础设施 - 域/观测探针-府" }
+mingling_fu = { path = "../乾坤/呈现-域/命令操作-府" }
