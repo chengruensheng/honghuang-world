@@ -9,6 +9,8 @@
 
 use crate::类型_定义_殿::{分发模式, 回调, 注销句柄, 载荷};
 use rizhi_fu::{debug, warn};
+use shihai_fu::世界结果;
+use shihai_fu::世界错误::世界错误;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, RwLock};
@@ -83,7 +85,7 @@ impl 事件总线 {
     }
 
     /// 串行分发（serial）：按注册顺序调用；任一 Err 即中止（由事件声明方决定语义）。
-    pub fn 串行(&self, 事件: &str, 载荷: &mut 载荷) -> Result<(), String> {
+    pub fn 串行(&self, 事件: &str, 载荷: &mut 载荷) -> 世界结果<()> {
         // 读锁 poison 容错：同通知分发，poison 后数据仍可用，避免级联 panic。
         let 表 = self.注册表.read().unwrap_or_else(|e| e.into_inner());
         let Some(项们) = 表.get(事件) else {
@@ -92,8 +94,9 @@ impl 事件总线 {
         let mut 项们: Vec<&注册项> = 项们.iter().filter(|项| 项.模式 == 分发模式::串行).collect();
         项们.sort_by_key(|项| 项.序号);
         for 项 in 项们 {
-            (项.回调)(载荷)
-                .map_err(|说明| format!("事件「{事件}」监听器 #{} 失败：{说明}", 项.序号))?;
+            (项.回调)(载荷).map_err(|说明| {
+                世界错误::from(format!("事件「{事件}」监听器 #{} 失败：{说明}", 项.序号))
+            })?;
         }
         Ok(())
     }
@@ -120,7 +123,7 @@ pub fn 全局总线() -> &'static 事件总线 {
 // ── 类型化流水线（waterfall）──
 
 /// 流水线监听器：`Fn(&mut T) -> Result<(), String>`（waterfall 语义）。
-type 流水线监听<T> = Box<dyn Fn(&mut T) -> Result<(), String> + Send + Sync>;
+type 流水线监听<T> = Box<dyn Fn(&mut T) -> 世界结果<()> + Send + Sync>;
 
 struct 流水线项<T> {
     回调: 流水线监听<T>,
@@ -151,7 +154,7 @@ impl<T: 'static> 流水线<T> {
     /// 注册监听：返回注销句柄（drop 自动移除）。
     pub fn 注册(
         &mut self,
-        监听: impl Fn(&mut T) -> Result<(), String> + Send + Sync + 'static,
+        监听: impl Fn(&mut T) -> 世界结果<()> + Send + Sync + 'static,
     ) -> 注销句柄 {
         let 序号 = self
             .下一序号
@@ -178,7 +181,7 @@ impl<T: 'static> 流水线<T> {
     }
 
     /// 执行链：按注册顺序执行，任一 Err 即中止（waterfall 语义）。
-    pub fn 执行(&self, 载荷: &mut T) -> Result<(), String> {
+    pub fn 执行(&self, 载荷: &mut T) -> 世界结果<()> {
         // 读锁 poison 容错：poison 后数据仍可用，避免级联 panic 中断 waterfall 执行。
         let 项们 = self.项们.read().unwrap_or_else(|e| e.into_inner());
         let mut 项们: Vec<&流水线项<T>> = 项们.iter().collect();
@@ -217,7 +220,7 @@ mod 测试 {
         let _甲 = 总线.注册(
             "测试/事件",
             分发模式::通知,
-            Box::new(|_| Err("故意失败".to_string())),
+            Box::new(|_| Err("故意失败".into())),
         );
         let _乙 = 总线.注册("测试/事件", 分发模式::通知, Box::new(|_| Ok(())));
         let mut 载荷: Box<载荷> = Box::new(0u32);
@@ -245,7 +248,7 @@ mod 测试 {
             分发模式::串行,
             Box::new(move |_| {
                 序乙.lock().unwrap().push(2);
-                Err("中止".to_string())
+                Err("中止".into())
             }),
         );
         let 序丙 = 序.clone();
@@ -270,7 +273,7 @@ mod 测试 {
         let 句柄 = 总线.注册(
             "测试/注销",
             分发模式::串行,
-            Box::new(|_| Err("不该执行".to_string())),
+            Box::new(|_| Err("不该执行".into())),
         );
         assert_eq!(总线.监听数("测试/注销"), 1);
         drop(句柄);
@@ -296,7 +299,7 @@ mod 测试 {
         let 序乙 = 序.clone();
         let _乙 = 链.注册(move |_| {
             序乙.lock().unwrap().push(99);
-            Err("中止".to_string())
+            Err("中止".into())
         });
         let mut 载荷 = 0u32;
         let 结果 = 链.执行(&mut 载荷);
@@ -324,7 +327,7 @@ mod 测试 {
             跑了探针.store(true, std::sync::atomic::Ordering::SeqCst);
             Ok(工具结果::新("结果"))
         });
-        let _护栏 = 链.预执行注册(|_| Err("预执行拒绝".to_string()));
+        let _护栏 = 链.预执行注册(|_| Err("预执行拒绝".into()));
         let 结果 = 链.执行(&造请求("写文件"));
         assert!(结果.is_err());
         assert!(
@@ -354,7 +357,7 @@ mod 测试 {
         }));
         let 结果 = 链.执行(&造请求("运行命令"));
         assert!(结果.is_err(), "守卫拒绝应拦截");
-        assert!(结果.unwrap_err().contains("该命令被禁"));
+        assert!(结果.unwrap_err().to_string().contains("该命令被禁"));
         // 无关调用：弃权 → 放行
         let 结果 = 链.执行(&造请求("读文件"));
         assert!(结果.is_ok(), "弃权守卫不拦无关调用");

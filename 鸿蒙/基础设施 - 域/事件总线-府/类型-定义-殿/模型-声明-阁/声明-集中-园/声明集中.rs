@@ -8,6 +8,8 @@
 
 use std::path::PathBuf;
 
+use shihai_fu::世界结果;
+
 /// 分发模式（命名事件总线）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum 分发模式 {
@@ -21,9 +23,9 @@ pub enum 分发模式 {
 /// 载荷须 Send（回调可跨线程），注册/分发在同一进程内完成。
 pub type 载荷 = dyn std::any::Any + Send;
 
-/// 监听回调：`Fn(&mut 载荷) -> Result<(), String>`。
+/// 监听回调：`Fn(&mut 载荷) -> 世界结果<()>`。
 /// Err 语义由事件声明方定义（通知 = 记录不中止；串行 = 中止链）。
-pub type 回调 = Box<dyn Fn(&mut 载荷) -> Result<(), String> + Send + Sync>;
+pub type 回调 = Box<dyn Fn(&mut 载荷) -> 世界结果<()> + Send + Sync>;
 
 /// 注销句柄：drop 或手动 `.注销()` 时执行删除闭包（从注册表实际移除监听）。
 /// 可逆副作用，对齐 Cordis disposer。删除动作由 分发-执行-殿 构造时捕获（事件名/序号/注册表弱引用）。
@@ -119,7 +121,7 @@ impl 工具结果 {
 }
 
 /// 工具执行器：execute 段的真实工具函数体（映射 手脚-施展-殿 的函数）。
-pub type 执行器 = Box<dyn Fn(&工具请求) -> Result<工具结果, String> + Send + Sync>;
+pub type 执行器 = Box<dyn Fn(&工具请求) -> 世界结果<工具结果> + Send + Sync>;
 
 /// 工具流水线：四段（预执行 → 守卫们 → 执行 → 后执行）→ 落定。
 /// 时序对齐 dsh tool-execution-pipeline：pre-execute → guards → execute → post-execute → result。
@@ -137,7 +139,7 @@ pub struct 工具流水线 {
 impl 工具流水线 {
     /// 构造流水线（执行器必填；预执行/守卫/后执行默认空，可后注册）。
     pub fn 新(
-        执行: impl Fn(&工具请求) -> Result<工具结果, String> + Send + Sync + 'static,
+        执行: impl Fn(&工具请求) -> 世界结果<工具结果> + Send + Sync + 'static
     ) -> Self {
         Self {
             预执行: crate::流水线::新(),
@@ -150,7 +152,7 @@ impl 工具流水线 {
     /// 预执行段注册监听（审批/护栏挂这里）。
     pub fn 预执行注册(
         &mut self,
-        监听: impl Fn(&mut 工具请求) -> Result<(), String> + Send + Sync + 'static,
+        监听: impl Fn(&mut 工具请求) -> 世界结果<()> + Send + Sync + 'static,
     ) -> crate::注销句柄 {
         self.预执行.注册(监听)
     }
@@ -163,20 +165,20 @@ impl 工具流水线 {
     /// 后执行段注册监听（结果改写/观测留痕挂这里）。
     pub fn 后执行注册(
         &mut self,
-        监听: impl Fn(&mut 工具结果) -> Result<(), String> + Send + Sync + 'static,
+        监听: impl Fn(&mut 工具结果) -> 世界结果<()> + Send + Sync + 'static,
     ) -> crate::注销句柄 {
         self.后执行.注册(监听)
     }
 
     /// 执行完整流水线：预执行 → 守卫们 → 执行 → 后执行 → 落定。
-    pub fn 执行(&self, 请求: &工具请求) -> Result<工具结果, String> {
+    pub fn 执行(&self, 请求: &工具请求) -> 世界结果<工具结果> {
         let mut 请求 = 请求.clone();
         // pre-execute：任一拒绝 → 工具体跳过。
         self.预执行.执行(&mut 请求)?;
         // guards：monotonic deny-or-abstain（放行即止；全部弃权则放行）。
         for 守卫 in &self.守卫们 {
             match 守卫.裁决(&请求) {
-                裁决::拒绝(原因) => return Err(format!("守卫拒绝：{原因}")),
+                裁决::拒绝(原因) => return Err(format!("守卫拒绝：{原因}").into()),
                 裁决::弃权 => continue,
                 裁决::放行 => break,
             }

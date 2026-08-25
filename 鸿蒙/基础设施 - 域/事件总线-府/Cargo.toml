@@ -12,3 +12,4 @@ doctest = false
 
 serde_json = "1"
 rizhi_fu = { path = "../日志记录-府" }
+shihai_fu = { path = "../识海承载-府" }
