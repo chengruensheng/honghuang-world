@@ -1,4 +1,4 @@
-//! workspace 成员缓存——读根 Cargo.toml 的 workspace members + 各府 [lib] name/[dependencies]，
+//! workspace 成员缓存——读根 Cargo.toml 的 workspace members + 各府 `[lib]` name/`[dependencies]`，
 //! 带文件指纹缓存，避免三档拼装与模板生成重复读盘解析。
 //!
 //! 落本园因三档拼装首用此能力，园内多文件允许（层级结构-设计 §8.6）；
@@ -28,11 +28,11 @@ pub struct 工作区成员摘要 {
 pub struct 府依赖 {
     /// 府名（member 路径末段）。
     pub 府名: String,
-    /// [lib] name，未声明时为 None。
+    /// `[lib]` name，未声明时为 None。
     pub lib名: Option<String>,
-    /// [dependencies] 段的依赖名列表。
+    /// `[dependencies]` 段的依赖名列表。
     pub 依赖们: Vec<String>,
-    /// 库根文件名（从 [lib] path 获取，未声明用 Cargo 默认 lib.rs）。
+    /// 库根文件名（从 `[lib]` path 获取，未声明用 Cargo 默认 lib.rs）。
     pub 库根文件名: String,
 }
 

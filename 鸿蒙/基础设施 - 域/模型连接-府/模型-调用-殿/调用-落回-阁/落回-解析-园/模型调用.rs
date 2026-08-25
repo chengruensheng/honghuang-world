@@ -407,7 +407,7 @@ pub fn 构造工具请求体(
     .to_string()
 }
 
-/// 从 OpenAI 兼容响应解析 choices[0].message.content。
+/// 从 OpenAI 兼容响应解析 `choices[0].message.content`。
 pub fn 解析回复(文本: &str) -> Result<String, String> {
     let 解析: serde_json::Value =
         serde_json::from_str(文本).map_err(|错误| format!("解析响应失败: {错误}"))?;
@@ -426,7 +426,7 @@ pub fn 解析回复(文本: &str) -> Result<String, String> {
     }
 }
 
-/// 从 OpenAI 兼容响应解析 choices[0].message：优先取工具调用，否则取文本内容。
+/// 从 OpenAI 兼容响应解析 `choices[0].message`：优先取工具调用，否则取文本内容。
 pub fn 解析工具回复(文本: &str) -> Result<模型回复, String> {
     let 解析: serde_json::Value =
         serde_json::from_str(文本).map_err(|错误| format!("解析响应失败: {错误}"))?;

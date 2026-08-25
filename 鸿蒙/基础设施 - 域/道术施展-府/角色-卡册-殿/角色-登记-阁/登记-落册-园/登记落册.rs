@@ -8,7 +8,7 @@ use shihai_fu::世界结果;
 use std::collections::HashMap;
 
 /// 角色副作用：生效时注册、卸载时撤销（可逆，对齐 Cordis disposer）。
-/// 回调用 Arc<dyn Fn> 包裹——副作用可 Clone（条目/角色册可 Clone），语义与 Box 一致。
+/// 回调用 `Arc<dyn Fn>` 包裹——副作用可 Clone（条目/角色册可 Clone），语义与 Box 一致。
 #[derive(Clone)]
 pub struct 角色副作用 {
     /// 生效时执行的注册动作（提示词片段/工具 schema 挂载）。

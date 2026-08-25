@@ -47,7 +47,7 @@ impl 事件 {
 }
 
 /// 事件流：append-only 落盘读写（.上下文/事件流.jsonl）。
-/// 批量缓冲刷盘：追加先进 Arc<Mutex> 缓冲，达阈值/定时触发批量写，省每条抢锁开文件开销。
+/// 批量缓冲刷盘：追加先进 `Arc<Mutex>` 缓冲，达阈值/定时触发批量写，省每条抢锁开文件开销。
 /// Clone 共享缓冲（Arc）；Drop 独占时 flush 剩余，保证进程退出落盘。
 pub struct 事件流 {
     路径: std::path::PathBuf,
