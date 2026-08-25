@@ -52,7 +52,11 @@ pub fn 评估接单(
     let 涉及府: std::collections::HashSet<&str> = 涉及路径
         .iter()
         .filter_map(|p| p.to_str())
-        .filter_map(|s| s.split("鸿蒙/\\").nth(1).map(|rest| rest.split('/').next().unwrap_or("")))
+        .filter_map(|s| {
+            s.split("鸿蒙/\\")
+                .nth(1)
+                .map(|rest| rest.split('/').next().unwrap_or(""))
+        })
         .collect();
     if 涉及府.len() >= 2 {
         return 接单决策::拒绝("跨 ≥2 府改动须界主确认");
@@ -71,7 +75,10 @@ pub fn 评估接单(
     // 维度 5：可验证性（无测试覆盖）—— 末判
     // 2026-08-25 修复：原 <= S6 因 PartialOrd 实际反向导致判断反（紧急的反而被放行）。
     // 正确语义：档位 ≥ S6（预防/改进类）要求有测试；S0~S5（补救类）紧急可无测试。
-    if !候选.依据.contains("测试") && !候选.依据.contains("验证") && 候选.本质档位 >= 本质档位::S6 {
+    if !候选.依据.contains("测试")
+        && !候选.依据.contains("验证")
+        && 候选.本质档位 >= 本质档位::S6
+    {
         return 接单决策::拒绝("无 #[test] 覆盖，无法验证");
     }
 

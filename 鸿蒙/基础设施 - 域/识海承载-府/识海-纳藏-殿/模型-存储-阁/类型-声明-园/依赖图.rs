@@ -8,6 +8,7 @@ use std::collections::HashSet;
 /// - 是测试：代码本身就是测试（含 #[test]/#[cfg(test)] 或路径命中测试域）
 /// - 不是测试：代码被误判（路径前缀/符号扫描命中但实际不是测试，记录待修正名单）
 /// - 边缘：测试 helper/示例/fixture 等 LLM 看不出，需人工审
+///
 /// 设计：依赖图已读全文 → 零额外 IO 算字段值；LLM 现场确认写回；下次扫描保留（不覆盖）。
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum 测试覆盖判定 {
@@ -394,9 +395,7 @@ pub fn 是_测试文件(路径: &str) -> bool {
     if 归一.starts_with("证道/") {
         return true;
     }
-    if 归一.contains("/验证殿/")
-        || 归一.contains("/验证阁/")
-        || 归一.contains("/验证园/")
+    if 归一.contains("/验证殿/") || 归一.contains("/验证阁/") || 归一.contains("/验证园/")
     {
         return true;
     }
@@ -411,7 +410,8 @@ pub fn 是_测试文件(路径: &str) -> bool {
     if 文件名.starts_with("测试") || 文件名.starts_with("tests") {
         return true;
     }
-    if 文件名.ends_with("测试.rs") || 文件名.ends_with("Test.rs") || 文件名.ends_with("Tests.rs") {
+    if 文件名.ends_with("测试.rs") || 文件名.ends_with("Test.rs") || 文件名.ends_with("Tests.rs")
+    {
         return true;
     }
     false
@@ -814,12 +814,16 @@ mod 测试 {
 
     #[test]
     fn 是_测试文件_命中测试域_证道_过() {
-        assert!(是_测试文件("证道/鸿蒙-域/单元测试-府/验证殿/某阁/某验证园/某测试.rs"));
+        assert!(是_测试文件(
+            "证道/鸿蒙-域/单元测试-府/验证殿/某阁/某验证园/某测试.rs"
+        ));
     }
 
     #[test]
     fn 是_测试文件_命中验证殿_过() {
-        assert!(是_测试文件("鸿蒙/基础设施 - 域/某府/验证殿/某阁/某测试.rs"));
+        assert!(是_测试文件(
+            "鸿蒙/基础设施 - 域/某府/验证殿/某阁/某测试.rs"
+        ));
     }
 
     #[test]
@@ -845,12 +849,12 @@ mod 测试 {
     #[test]
     fn 扫测试符号_命中test和mod测试_计数() {
         let 行们 = vec![
-            "pub fn x() {}",                                  // 0
-            "#[test]",                                         // +1 测试标记
-            "fn 用例() {}",                                     // 0
-            "#[cfg(test)]",                                    // +1 测试标记
-            "mod tests {",                                     // +1 测试模块
-            "mod 测试 { #[test] fn y() {} }",                  // +2 (test + mod 测试)
+            "pub fn x() {}",                  // 0
+            "#[test]",                        // +1 测试标记
+            "fn 用例() {}",                   // 0
+            "#[cfg(test)]",                   // +1 测试标记
+            "mod tests {",                    // +1 测试模块
+            "mod 测试 { #[test] fn y() {} }", // +2 (test + mod 测试)
         ];
         let (测试标记, 测试模块) = 依赖图::扫测试符号(&行们);
         assert_eq!(测试标记, 3, "应命中 #[test] 3 次");

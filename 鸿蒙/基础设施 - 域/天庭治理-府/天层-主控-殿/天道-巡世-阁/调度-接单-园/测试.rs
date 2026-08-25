@@ -5,8 +5,8 @@
 
 #![allow(clippy::useless_vec, dead_code, unused_imports)]
 
-use super::调度接单::{触碰红线, 评估接单, 接单决策};
-use crate::类型_定义_殿::{本质档位, 巡世候选};
+use super::调度接单::{接单决策, 触碰红线, 评估接单};
+use crate::类型_定义_殿::{巡世候选, 本质档位};
 use std::path::PathBuf;
 
 // 造候选 辅助函数：被所有 #[test] 调用，clippy 误报 dead_code。
@@ -29,8 +29,17 @@ fn 维度1_s0候选_候选池非空_仍接受() {
     let 候选 = 造候选("崩溃", "项目起不来", 本质档位::S0);
     let 涉及: Vec<PathBuf> = Vec::new();
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, false, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::接受), "S0 候选 + 候选池非空应被接受，但被拒：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        false,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::接受),
+        "S0 候选 + 候选池非空应被接受，但被拒：{:?}",
+        决策
+    );
 }
 
 #[test]
@@ -39,8 +48,17 @@ fn 维度1_非s0候选_候选池空_接受() {
     let 候选 = 造候选("崩溃修复", "修复崩溃", 本质档位::S5); // S5=补救类,不要求测试
     let 涉及: Vec<PathBuf> = Vec::new();
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, true, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::接受), "S5 候选 + 候选池空应被接受，但被拒：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        true,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::接受),
+        "S5 候选 + 候选池空应被接受，但被拒：{:?}",
+        决策
+    );
 }
 
 #[test]
@@ -50,8 +68,17 @@ fn 维度1_非s0候选_候选池非空_接受() {
     let 候选 = 造候选("补测试", "为某园补测试", 本质档位::S11);
     let 涉及: Vec<PathBuf> = Vec::new();
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, false, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::接受), "S11 候选 + 候选池非空应被接受（档位优先已选过），但被拒：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        false,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::接受),
+        "S11 候选 + 候选池非空应被接受（档位优先已选过），但被拒：{:?}",
+        决策
+    );
 }
 
 #[test]
@@ -60,10 +87,23 @@ fn 维度5_无测试覆盖_档位低_拒绝() {
     let 候选 = 造候选("性能优化", "优化某处", 本质档位::S8);
     let 涉及: Vec<PathBuf> = Vec::new();
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, true, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::拒绝(_)), "S8 候选 + 无测试覆盖应被拒，但接受：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        true,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::拒绝(_)),
+        "S8 候选 + 无测试覆盖应被拒，但接受：{:?}",
+        决策
+    );
     if let 接单决策::拒绝(原因) = 决策 {
-        assert!(原因.contains("test") || 原因.contains("#[test]"), "拒绝原因应含 'test' 或 '#[test]'，实为：{}", 原因);
+        assert!(
+            原因.contains("test") || 原因.contains("#[test]"),
+            "拒绝原因应含 'test' 或 '#[test]'，实为：{}",
+            原因
+        );
     }
 }
 
@@ -73,8 +113,17 @@ fn 维度5_有测试覆盖_档位低_接受() {
     let 候选 = 造候选("性能优化", "某处已加测试覆盖", 本质档位::S8);
     let 涉及: Vec<PathBuf> = Vec::new();
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, true, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::接受), "S8 候选 + 依据含'测试'应被接受，但被拒：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        true,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::接受),
+        "S8 候选 + 依据含'测试'应被接受，但被拒：{:?}",
+        决策
+    );
 }
 
 #[test]
@@ -83,8 +132,17 @@ fn 红线1_路径含git_拒绝() {
     let 候选 = 造候选("提交", "改 commit", 本质档位::S0); // S0 也挡不住红线
     let 涉及 = vec![PathBuf::from("D:\\洪荒 - 世界\\.git\\config")];
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, true, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::拒绝(_)), ".git/ 路径应被红线拒，但接受：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        true,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::拒绝(_)),
+        ".git/ 路径应被红线拒，但接受：{:?}",
+        决策
+    );
 }
 
 #[test]
@@ -93,8 +151,17 @@ fn 红线2_md设计稿_拒绝() {
     let 候选 = 造候选("改设计稿", "修 AGENTS.md", 本质档位::S0);
     let 涉及 = vec![PathBuf::from("D:\\洪荒 - 世界\\AGENTS.md")];
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, true, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::拒绝(_)), "AGENTS.md 应被红线拒，但接受：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        true,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::拒绝(_)),
+        "AGENTS.md 应被红线拒，但接受：{:?}",
+        决策
+    );
 }
 
 #[test]
@@ -102,8 +169,17 @@ fn 红线5_env文件_拒绝() {
     let 候选 = 造候选("改 env", "更新 API key", 本质档位::S0);
     let 涉及 = vec![PathBuf::from("D:\\洪荒 - 世界\\.env")];
     let 工作区 = std::env::temp_dir();
-    let 决策 = 评估接单(&候选, true, &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区);
-    assert!(matches!(决策, 接单决策::拒绝(_)), ".env 应被红线拒，但接受：{:?}", 决策);
+    let 决策 = 评估接单(
+        &候选,
+        true,
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区,
+    );
+    assert!(
+        matches!(决策, 接单决策::拒绝(_)),
+        ".env 应被红线拒，但接受：{:?}",
+        决策
+    );
 }
 
 #[test]
@@ -111,19 +187,28 @@ fn 触碰红线_md排除_当前架构现状() {
     // 唯一例外：当前架构现状.md 不被红线拦。
     let 涉及 = vec![PathBuf::from("D:\\洪荒 - 世界\\当前架构现状.md")];
     let 工作区 = std::env::temp_dir();
-    assert!(!触碰红线(&涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区));
+    assert!(!触碰红线(
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区
+    ));
 }
 
 #[test]
 fn 触碰红线_md非当前架构现状_触发() {
     let 涉及 = vec![PathBuf::from("D:\\洪荒 - 世界\\多智能体架构设计.md")];
     let 工作区 = std::env::temp_dir();
-    assert!(触碰红线(&涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区));
+    assert!(触碰红线(
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区
+    ));
 }
 
 #[test]
 fn 触碰红线_cargo_toml_触发() {
     let 涉及 = vec![PathBuf::from("D:\\洪荒 - 世界\\Cargo.toml")];
     let 工作区 = std::env::temp_dir();
-    assert!(触碰红线(&涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(), &工作区));
+    assert!(触碰红线(
+        &涉及.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
+        &工作区
+    ));
 }

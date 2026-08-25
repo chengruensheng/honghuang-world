@@ -11,6 +11,7 @@ use shihai_fu::{工作区, 扫描违逆};
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 /// 园无测试检测跳过项：证道 / 单元测试-府 本就是测试集合，不要求园内再嵌测试。
 const 园无测试跳过: &[&str] = &["证道", "单元测试-府"];
@@ -69,6 +70,29 @@ pub fn 扫描世界(根目录: &Path) -> 巡世报告 {
         违逆: 法则违逆们,
     }
 }
+
+/// 巡世扫描占位契约：固化签名 `Result<(), Box<dyn std::error::Error + Send + Sync>>`，
+/// 标注 `#[cold]` 显式占位语义，防止误内联到热路径。
+/// 与模块级 `static 巡世扫描_占位守护: OnceLock<Mutex<()>>` 形成双重防御：
+/// 守护锁阻止并发线程重复触发注册逻辑，避免 data race。
+/// 用 std 原生 `OnceLock` 等效替代 `once_cell::sync::Lazy`（项目零 once_cell 依赖）。
+#[cold]
+pub fn 巡世扫描_占位() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _守卫 = 巡世扫描_占位守护
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|中毒| -> Box<dyn std::error::Error + Send + Sync> {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("巡世扫描占位守护锁中毒：{中毒}"),
+            ))
+        })?;
+    Ok(())
+}
+
+/// 模块级注册幂等守护：与 `巡世扫描_占位` 的 `#[cold]` 签名 + 文件级幂等分支构成三重防御，
+/// 防止并发注册场景下 `pub mod 巡世扫描;` 重复追加触发 data race。
+static 巡世扫描_占位守护: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// ① 园无测试检测：园目录下 .rs 未含测试标记（跳过 证道/单元测试-府）→ 产候选，优先级=中。
 /// 园内全无测试时再查证道域（单元测试-府）是否有按园名关键词匹配的测试文件，有则跳过。

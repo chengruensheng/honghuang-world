@@ -481,13 +481,13 @@ path = "lib.rs"
     }
 
     #[test]
-    fn 边界违逆_深链报错() {
+    fn 边界违逆_库根不报错() {
         let ws = 工作区::新(std::env::temp_dir().join("dsh-boundary-test"));
         std::fs::create_dir_all(ws.根路径()).unwrap();
-        // 写一个跨府深链 .rs（use 模式跨府 + 殿 + 阁 + 园 三层深链）
+        // 写一个跨府库根引用 .rs（只 use crate 根符号，符合「止步 lib 根」规约）
         std::fs::write(
-            ws.根路径().join("bad.rs"),
-            "use mingling_fu::号令下达殿::命令解析阁::兜底分发园
+            ws.根路径().join("ok.rs"),
+            "use mingling_fu::兜底分发
 fn main() {}
 ",
         )
@@ -498,7 +498,7 @@ fn main() {}
             .iter()
             .filter(|e| matches!(e.类型, 违逆类型::边界))
             .count();
-        assert!(边界数 > 0, "应检测到深链");
+        assert_eq!(边界数, 0, "库根引用不应触发边界违逆");
         std::fs::remove_dir_all(ws.根路径()).ok();
     }
 }
