@@ -25,7 +25,10 @@ pub fn 调度驱动() -> String {
     let 名单结果 = 消费待修正名单();
     if let Some(报告) = 名单结果 {
         if 报告.待执行总数 > 0 {
-            info!(待执行总数 = 报告.待执行总数, "调度驱动：识别待修正条目（占位阶段）");
+            info!(
+                待执行总数 = 报告.待执行总数,
+                "调度驱动：识别待修正条目（占位阶段）"
+            );
         }
     }
 
@@ -171,7 +174,10 @@ pub fn 消费待修正名单() -> Option<名单消费报告> {
             状态目录().parent()?.to_path_buf()
         }
     };
-    let 名单路径 = 工作区根.join(".上下文").join("状态").join("待修正-测试标识.jsonl");
+    let 名单路径 = 工作区根
+        .join(".上下文")
+        .join("状态")
+        .join("待修正-测试标识.jsonl");
     if !名单路径.exists() {
         return None;
     }
@@ -238,10 +244,16 @@ pub fn 追加待修正测试标识(条目: serde_json::Value) -> Result<(), Stri
         Ok(p) if !p.is_empty() => PathBuf::from(p),
         _ => {
             // 退回 .上下文/状态/ 父目录
-            状态目录().parent().ok_or_else(|| "无法定位工作区根".to_string())?.to_path_buf()
+            状态目录()
+                .parent()
+                .ok_or_else(|| "无法定位工作区根".to_string())?
+                .to_path_buf()
         }
     };
-    let 名单路径 = 工作区根.join(".上下文").join("状态").join("待修正-测试标识.jsonl");
+    let 名单路径 = 工作区根
+        .join(".上下文")
+        .join("状态")
+        .join("待修正-测试标识.jsonl");
     if let Some(父) = 名单路径.parent() {
         fs::create_dir_all(父).map_err(|e| format!("建目录失败: {e}"))?;
     }
