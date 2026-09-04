@@ -1,0 +1,10 @@
+[package]
+name = "hm-contract"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-error = { path = "../错误定义-府" }

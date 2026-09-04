@@ -1,0 +1,212 @@
+use std::sync::{Arc, Mutex};
+use hm_contract::Component;
+use hm_signal::{信号总线, 信号类型, 载荷键};
+use hm_signal_bus::内存信号总线;
+use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
+use hm_container::组件容器;
+use crate::{克制金克木, 克制木克土, 克制土克水, 克制水克火, 克制火克金};
+use tc_task::{Task, TaskStatus, TaskStore};
+use lj_iteration::{Iteration, Version, IterationLog, 迭代状态};
+use qk_memory::{Memory, MemoryStore};
+use dy_rule::{Rule, RuleSet};
+use hd_event::{Event, EventBus};
+
+/// 火生土写入记忆时的默认标签（迭代产出的经验），跨桥接与自检共用
+pub const 迭代产出标签: &str = "迭代产出";
+/// 五行引擎默认容量上限（相克：过盛才约束新增）
+const 默认容量上限: usize = 100;
+/// 水生木生成任务标题的前缀
+const 事件驱动前缀: &str = "事件驱动: ";
+/// 木生火生成迭代变更说明的前缀
+const 任务完成前缀: &str = "任务完成: ";
+/// 土生金生成规则的优先级（记忆生成 = 低优先级，人工添加可传更高）
+const 记忆生成规则优先级: u32 = 1;
+
+/// 五行装配：持有五引擎（领域契约 trait 对象）与信号总线的完整装配体
+///
+/// 府可插拔：各引擎字段均为 `Arc<Mutex<dyn 领域契约>>`，
+/// 生产路径装配真实实现，测试路径注入 mock，核心无特权。
+pub struct 五行装配 {
+    pub 容器: 组件容器,
+    pub 信号总线: Arc<dyn 信号总线>,
+    pub 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>>,
+    pub 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>>,
+    pub 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>>,
+    pub 规则库: Arc<Mutex<dyn 规则库契约<Rule>>>,
+    pub 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>>,
+}
+
+impl 五行装配 {
+    /// 装配五行（生产路径）：默认容量上限，创建五引擎 + 信号总线，串成闭环
+    pub fn 装配() -> Self {
+        Self::装配带上限(默认容量上限)
+    }
+
+    /// 装配五行并指定容量上限（相克约束：过盛才约束新增，而非删除已有）
+    pub fn 装配带上限(容量上限: usize) -> Self {
+        let 容器 = 组件容器::new();
+
+        let 信号总线 = Arc::new(内存信号总线::new());
+        容器.注册(信号总线.clone());
+        let 信号: Arc<dyn 信号总线> = 信号总线.clone();
+
+        let 任务仓库 = Arc::new(Mutex::new(TaskStore::new()));
+        {
+            let mut 引擎 = 任务仓库.lock().expect("引擎锁中毒");
+            容器.注册命名(引擎.name());
+            引擎.设置信号总线(信号.clone());
+        }
+        克制金克木(&任务仓库, 容量上限);
+        let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = 任务仓库;
+
+        let 迭代日志 = Arc::new(Mutex::new(IterationLog::new()));
+        {
+            let mut 引擎 = 迭代日志.lock().expect("引擎锁中毒");
+            容器.注册命名(引擎.name());
+            引擎.设置信号总线(信号.clone());
+        }
+        克制水克火(&迭代日志, 容量上限);
+        let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = 迭代日志;
+
+        let 记忆库 = Arc::new(Mutex::new(MemoryStore::new()));
+        {
+            let mut 引擎 = 记忆库.lock().expect("引擎锁中毒");
+            容器.注册命名(引擎.name());
+            引擎.设置信号总线(信号.clone());
+        }
+        克制木克土(&记忆库, 容量上限);
+        let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = 记忆库;
+
+        let 规则库 = Arc::new(Mutex::new(RuleSet::new()));
+        {
+            let mut 引擎 = 规则库.lock().expect("引擎锁中毒");
+            容器.注册命名(引擎.name());
+            引擎.设置信号总线(信号.clone());
+        }
+        克制火克金(&规则库, 容量上限);
+        let 规则库: Arc<Mutex<dyn 规则库契约<Rule>>> = 规则库;
+
+        let 事件总线 = Arc::new(Mutex::new(EventBus::new()));
+        {
+            let mut 引擎 = 事件总线.lock().expect("引擎锁中毒");
+            容器.注册命名(引擎.name());
+            引擎.设置信号总线(信号.clone());
+        }
+        let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = 事件总线;
+
+        桥接木生火(&信号, &迭代日志);
+        桥接火生土(&信号, &记忆库);
+        桥接土生金(&信号, &规则库);
+        桥接金生水(&信号, &事件总线);
+        桥接水生木(&信号, &任务仓库);
+
+        // 五行相克：土克水（事件去重）保留信号驱动；其余约束已通过容量上限内置引擎
+        克制土克水(&信号, &事件总线);
+
+        五行装配 {
+            容器,
+            信号总线: 信号,
+            任务仓库,
+            迭代日志,
+            记忆库,
+            规则库,
+            事件总线,
+        }
+    }
+
+
+}
+
+/// 木生火：任务完成 → 开启迭代
+fn 桥接木生火(总线: &Arc<dyn 信号总线>, 迭代日志: &Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>>) {
+    let 迭代日志 = 迭代日志.clone();
+    总线.订阅(信号类型::任务完成, Arc::new(move |sig| {
+        if let Some(title) = sig.载荷.标题.clone() {
+            let 描述 = sig.载荷.描述.clone().unwrap_or_default();
+            let 变更说明 = if 描述.is_empty() {
+                format!("{任务完成前缀}{title}")
+            } else {
+                format!("{任务完成前缀}{title}：{描述}")
+            };
+            let mut log = 迭代日志.lock().expect("引擎锁中毒");
+            // 防重复：已有进行中迭代时不再开启新迭代
+            if log.全部().iter().any(|it| it.status == 迭代状态::进行中) {
+                tracing::warn!("木生火跳过：已有进行中迭代，避免重复开启");
+                return;
+            }
+            let version = log.当前版本().递增次();
+            if let Err(e) = log.开启(version, 变更说明) {
+                tracing::warn!("木生火开启迭代失败: {e}");
+            }
+        }
+    }));
+}
+
+/// 火生土：迭代完成 → 写入记忆
+fn 桥接火生土(总线: &Arc<dyn 信号总线>, 记忆库: &Arc<Mutex<dyn 记忆库契约<Memory>>>) {
+    let 记忆库 = 记忆库.clone();
+    总线.订阅(信号类型::迭代完成, Arc::new(move |sig| {
+        if let Some(说明) = sig.载荷.变更说明.clone() {
+            if let Err(e) = 记忆库
+                .lock()
+                .expect("引擎锁中毒")
+                .写入(说明, 迭代产出标签.to_string())
+            {
+                tracing::warn!("火生土写入记忆失败: {e}");
+            }
+        }
+    }));
+}
+
+/// 土生金：记忆写入 → 添加规则（条件取自记忆标签，非空，评估时需事实匹配）
+fn 桥接土生金(总线: &Arc<dyn 信号总线>, 规则库: &Arc<Mutex<dyn 规则库契约<Rule>>>) {
+    let 规则库 = 规则库.clone();
+    总线.订阅(信号类型::记忆写入, Arc::new(move |sig| {
+        let 内容 = sig.载荷.内容.clone().unwrap_or_default();
+        let 标签 = sig.载荷.标签.clone().unwrap_or_default();
+        if 标签.is_empty() {
+            tracing::warn!("土生金跳过：记忆无标签，无法生成有意义的规则条件");
+            return;
+        }
+        let 条件 = vec![(载荷键::标签.to_string(), 标签.clone())];
+        if let Err(e) = 规则库
+            .lock()
+            .expect("引擎锁中毒")
+            .添加规则(&标签, 条件, &内容, 记忆生成规则优先级)
+        {
+            tracing::warn!("土生金添加规则失败: {e}");
+        }
+    }));
+}
+
+/// 金生水：规则命中 → 发布事件
+fn 桥接金生水(总线: &Arc<dyn 信号总线>, 事件总线: &Arc<Mutex<dyn 事件总线契约<Event>>>) {
+    let 事件总线 = 事件总线.clone();
+    总线.订阅(信号类型::规则命中, Arc::new(move |sig| {
+        let 规则名 = sig.载荷.规则名.clone().unwrap_or_default();
+        let 结论 = sig.载荷.结论.clone().unwrap_or_default();
+        if 结论.is_empty() {
+            tracing::warn!("金生水跳过：规则命中无结论，不发布空事件");
+            return;
+        }
+        事件总线.lock().expect("引擎锁中毒").发布(规则名, vec![(载荷键::结论.to_string(), 结论)]);
+    }));
+}
+
+/// 水生木：事件发布 → 创建任务
+fn 桥接水生木(总线: &Arc<dyn 信号总线>, 任务仓库: &Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>>) {
+    let 任务仓库 = 任务仓库.clone();
+    总线.订阅(信号类型::事件发布, Arc::new(move |sig| {
+        if let Some(类型) = sig.载荷.类型.clone() {
+            let 描述 = sig.载荷.内容.clone().unwrap_or_default();
+            if let Err(e) = 任务仓库
+                .lock()
+                .expect("引擎锁中毒")
+                .创建(format!("{事件驱动前缀}{类型}"), 描述)
+            {
+                tracing::warn!("水生木创建任务失败: {e}");
+            }
+        }
+    }));
+}
+

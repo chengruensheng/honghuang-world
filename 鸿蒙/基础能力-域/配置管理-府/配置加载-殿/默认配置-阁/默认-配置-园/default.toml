@@ -1,0 +1,11 @@
+[app]
+name = "洪荒·世界"
+version = "0.1.0"
+run_self_test = false
+run_dev_agent = false
+dev_workspace = "F:/临时工作区"
+dev_task = ""
+dev_max_rounds = 20
+
+[log]
+level = "info"

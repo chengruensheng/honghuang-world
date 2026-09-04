@@ -1,0 +1,21 @@
+[package]
+name = "hm-linkage"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-signal = { path = "../../基础契约-域/信号契约-府" }
+hm-signal-bus = { path = "../../基础能力-域/信号总线-府" }
+hm-error = { path = "../../基础契约-域/错误定义-府" }
+hm-contract = { path = "../../基础契约-域/核心契约-府" }
+hm-domain-contract = { path = "../../基础契约-域/领域契约-府" }
+hm-container = { path = "../组件容器-府" }
+tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
+lj-iteration = { path = "../../../量劫/迭代管理-域/迭代核心-府" }
+qk-memory = { path = "../../../乾坤/记忆管理-域/记忆核心-府" }
+dy-rule = { path = "../../../道韵/规则管理-域/规则核心-府" }
+hd-event = { path = "../../../混沌/事件管理-域/事件核心-府" }
+tracing = { workspace = true }

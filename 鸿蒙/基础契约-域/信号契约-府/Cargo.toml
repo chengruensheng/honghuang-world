@@ -1,0 +1,11 @@
+[package]
+name = "hm-signal"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-contract = { path = "../核心契约-府" }
+serde = { workspace = true }

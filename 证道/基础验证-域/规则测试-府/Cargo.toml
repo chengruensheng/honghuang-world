@@ -1,0 +1,10 @@
+[package]
+name = "zd-rule-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+dy-rule = { path = "../../../道韵/规则管理-域/规则核心-府" }

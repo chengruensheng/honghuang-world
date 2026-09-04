@@ -1,0 +1,14 @@
+/target/
+/道果/
+.env
+.env.local
+*.key
+
+# AI 工具与索引目录（非项目代码）
+/.codeartsdoer/
+/.codegraph/
+/.workbuddy/
+/.merkle-snapshot.json
+
+# 实验脚本临时物（英文命名，非项目 Rust 代码）
+/_memory_experiment/

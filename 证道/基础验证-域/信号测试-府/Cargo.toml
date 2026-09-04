@@ -1,0 +1,12 @@
+[package]
+name = "zd-signal-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-signal-bus = { path = "../../../鸿蒙/基础能力-域/信号总线-府" }
+hm-signal = { path = "../../../鸿蒙/基础契约-域/信号契约-府" }
+hm-contract = { path = "../../../鸿蒙/基础契约-域/核心契约-府" }

@@ -1,0 +1,10 @@
+[package]
+name = "zd-memory-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+qk-memory = { path = "../../../乾坤/记忆管理-域/记忆核心-府" }

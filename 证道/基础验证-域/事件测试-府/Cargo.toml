@@ -1,0 +1,10 @@
+[package]
+name = "zd-event-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hd-event = { path = "../../../混沌/事件管理-域/事件核心-府" }

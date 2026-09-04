@@ -1,0 +1,11 @@
+[package]
+name = "zd-config-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-config = { path = "../../../鸿蒙/基础能力-域/配置管理-府" }
+toml = { workspace = true }

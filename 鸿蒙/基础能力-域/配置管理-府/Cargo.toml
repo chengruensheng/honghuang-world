@@ -1,0 +1,12 @@
+[package]
+name = "hm-config"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-error = { path = "../../基础契约-域/错误定义-府" }
+serde = { workspace = true }
+toml = { workspace = true }

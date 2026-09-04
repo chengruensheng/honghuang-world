@@ -1,0 +1,12 @@
+[package]
+name = "zd-execute-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-execute = { path = "../../../鸿蒙/基础能力-域/执行工具-府" }
+hm-execute-contract = { path = "../../../鸿蒙/基础契约-域/执行契约-府" }
+hm-contract = { path = "../../../鸿蒙/基础契约-域/核心契约-府" }

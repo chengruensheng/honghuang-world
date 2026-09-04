@@ -1,0 +1,14 @@
+[package]
+name = "hm-log"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-config = { path = "../配置管理-府" }
+hm-contract = { path = "../../基础契约-域/核心契约-府" }
+hm-error = { path = "../../基础契约-域/错误定义-府" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

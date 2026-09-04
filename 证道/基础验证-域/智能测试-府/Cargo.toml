@@ -1,0 +1,15 @@
+[package]
+name = "zd-agent-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-agent = { path = "../../../鸿蒙/系统装配-域/自主开发-府" }
+hm-content-contract = { path = "../../../鸿蒙/基础契约-域/内容契约-府" }
+hm-execute-contract = { path = "../../../鸿蒙/基础契约-域/执行契约-府" }
+hm-contract = { path = "../../../鸿蒙/基础契约-域/核心契约-府" }
+hm-error = { path = "../../../鸿蒙/基础契约-域/错误定义-府" }
+serde_json = { workspace = true }

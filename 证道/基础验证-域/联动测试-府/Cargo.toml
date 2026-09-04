@@ -1,0 +1,15 @@
+[package]
+name = "zd-linkage-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-linkage = { path = "../../../鸿蒙/系统装配-域/联动装配-府" }
+hm-domain-contract = { path = "../../../鸿蒙/基础契约-域/领域契约-府" }
+hm-contract = { path = "../../../鸿蒙/基础契约-域/核心契约-府" }
+hm-error = { path = "../../../鸿蒙/基础契约-域/错误定义-府" }
+tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
+lj-iteration = { path = "../../../量劫/迭代管理-域/迭代核心-府" }

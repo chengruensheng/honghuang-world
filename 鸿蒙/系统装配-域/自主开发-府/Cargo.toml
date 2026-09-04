@@ -1,0 +1,14 @@
+[package]
+name = "hm-agent"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-content-contract = { path = "../../基础契约-域/内容契约-府" }
+hm-execute-contract = { path = "../../基础契约-域/执行契约-府" }
+hm-error = { path = "../../基础契约-域/错误定义-府" }
+serde_json = { workspace = true }
+tracing = { workspace = true }

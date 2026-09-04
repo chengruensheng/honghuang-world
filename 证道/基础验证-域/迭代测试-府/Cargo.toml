@@ -1,0 +1,10 @@
+[package]
+name = "zd-iteration-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+lj-iteration = { path = "../../../量劫/迭代管理-域/迭代核心-府" }

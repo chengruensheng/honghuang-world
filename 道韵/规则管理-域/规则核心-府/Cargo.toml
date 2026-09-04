@@ -1,0 +1,16 @@
+[package]
+name = "dy-rule"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-error = { path = "../../../鸿蒙/基础契约-域/错误定义-府" }
+hm-contract = { path = "../../../鸿蒙/基础契约-域/核心契约-府" }
+hm-signal = { path = "../../../鸿蒙/基础契约-域/信号契约-府" }
+hm-domain-contract = { path = "../../../鸿蒙/基础契约-域/领域契约-府" }
+serde = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }

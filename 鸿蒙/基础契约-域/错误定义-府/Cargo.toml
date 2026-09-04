@@ -1,0 +1,10 @@
+[package]
+name = "hm-error"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+thiserror = { workspace = true }
