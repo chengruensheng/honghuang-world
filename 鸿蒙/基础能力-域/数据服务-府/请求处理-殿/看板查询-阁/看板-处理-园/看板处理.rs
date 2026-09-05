@@ -132,7 +132,11 @@ pub async fn 看板发布(
     }
     board
         .发布任务(task)
-        .map(Json)
+        .map(|id| {
+            // 发布即驱动：看板驱动台就绪且空闲时自动驱动一轮（尽力而为，不影响发布结果）
+            状态.看板驱动台.自动驱动一轮();
+            Json(id)
+        })
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 

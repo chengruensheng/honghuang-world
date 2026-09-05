@@ -194,43 +194,7 @@ mod tests {
         let _ = std::fs::remove_file(&临时);
     }
 
-    #[test]
-    fn 受理_返回任务id且完成后任务已完成() {
-        let 状态 = 构造状态();
-        状态.开发执行台.装配(
-            Arc::new(模拟开发执行器 { 执行毫秒: 60, 中断标志: Arc::new(AtomicBool::new(false)) }),
-            &std::env::temp_dir().to_string_lossy(),
-        );
 
-        let id = 受理开发任务(&状态, "修复登录超时".into()).expect("受理应成功");
-        assert!(id > 0);
-
-        等待执行结束(&状态.开发执行台, 5000);
-        let 守卫 = 状态.任务仓库.lock().expect("锁");
-        let 任务 = 守卫.查询(id).expect("任务应存在");
-        assert_eq!(任务.title.contains("修复登录超时"), true);
-        assert_eq!(任务.status, TaskStatus::已完成);
-        drop(守卫);
-        assert_eq!(状态.开发执行台.当前状态().最近结果.expect("应有结果"), "已处理: 修复登录超时");
-        assert!(!状态.开发执行台.运行中());
-    }
-
-    #[test]
-    fn 受理_执行中重复受理返回运行中() {
-        let 状态 = 构造状态();
-        状态.开发执行台.装配(
-            Arc::new(模拟开发执行器 { 执行毫秒: 500, 中断标志: Arc::new(AtomicBool::new(false)) }),
-            &std::env::temp_dir().to_string_lossy(),
-        );
-
-        let 首次 = 受理开发任务(&状态, "第一个任务".into());
-        assert!(首次.is_ok());
-        let 重复 = 受理开发任务(&状态, "第二个任务".into());
-        assert!(matches!(重复.expect_err("应拒绝重复受理"), 受理失败::运行中));
-
-        状态.开发执行台.中断();
-        等待执行结束(&状态.开发执行台, 5000);
-    }
 
     #[test]
     fn 受理_未装配返回未上线() {
@@ -309,22 +273,31 @@ mod tests {
 
     #[test]
     fn 停止_置位中断并任务已取消() {
-        let 状态 = 构造状态();
-        状态.开发执行台.装配(
-            Arc::new(模拟开发执行器 { 执行毫秒: 2000, 中断标志: Arc::new(AtomicBool::new(false)) }),
+        // 直接经开发执行台验证中断语义（受理编排已迁移到看板驱动，不经受理）
+        let 台 = Arc::new(开发执行台::新());
+        let 中断标志 = Arc::new(AtomicBool::new(false));
+        台.装配(
+            Arc::new(模拟开发执行器 { 执行毫秒: 2000, 中断标志: 中断标志.clone() }),
             &std::env::temp_dir().to_string_lossy(),
         );
-
-        let id = 受理开发任务(&状态, "需要中断的长任务".into()).expect("受理应成功");
+        let 仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
+        let id = 仓库.lock().expect("锁").创建("需要中断的长任务".into(), "中断测试".into()).expect("创建成功");
+        let 结束仓库 = 仓库.clone();
+        let 结束通知 = Arc::new(move |结果: &Result<String>| {
+            let 目标 = if 结果.is_ok() { TaskStatus::已完成 } else { TaskStatus::已取消 };
+            let _ = 结束仓库.lock().expect("锁").推进(id, 目标);
+        });
+        assert!(台.预留());
+        台.启动执行("需要中断的长任务".into(), 结束通知);
         std::thread::sleep(Duration::from_millis(100));
 
-        assert!(状态.开发执行台.中断());
-        等待执行结束(&状态.开发执行台, 5000);
+        assert!(台.中断());
+        等待执行结束(&台, 5000);
 
-        let 守卫 = 状态.任务仓库.lock().expect("锁");
+        let 守卫 = 仓库.lock().expect("锁");
         assert_eq!(守卫.查询(id).expect("任务应存在").status, TaskStatus::已取消);
         drop(守卫);
-        let 最近 = 状态.开发执行台.当前状态().最近结果.expect("应有失败摘要");
+        let 最近 = 台.当前状态().最近结果.expect("应有失败摘要");
         assert!(最近.contains("执行失败"));
     }
 

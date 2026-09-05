@@ -83,6 +83,19 @@ impl 看板驱动台 {
         self.运行中.store(false, Ordering::SeqCst);
     }
 
+    /// 发布后自动驱动（尽力而为）：就绪且空闲才启动；未就绪/运行中静默返回 false。
+    /// 供 看板发布 handler 与 受理编排 联动调用，不阻塞发布结果。
+    pub fn 自动驱动一轮(self: &Arc<Self>) -> bool {
+        if !self.就绪() {
+            return false;
+        }
+        if !self.预留() {
+            return false;
+        }
+        self.启动执行一轮();
+        true
+    }
+
     /// 启动后台驱动一轮；结束（含 panic）后复位运行中并写入摘要。
     /// 开头强制置位运行中：即使调用方未先预留（如测试直调），等待完成/并发互斥依然成立。
     pub fn 启动执行一轮(self: &Arc<Self>) {

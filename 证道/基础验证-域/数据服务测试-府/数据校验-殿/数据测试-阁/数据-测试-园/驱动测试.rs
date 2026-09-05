@@ -7,7 +7,7 @@ mod tests {
     use axum::{Json, extract::State, http::StatusCode};
     use hm_http::{
         数据服务状态, 看板驱动台, 看板驱动接口, 看板驱动状态接口, 受理错误响应,
-        发布任务请求, 看板发布,
+        发布任务请求, 看板发布, 受理开发任务, 受理失败,
     };
     use hm_agent::五层协作驱动器;
     use hm_cognition::{ContextManager, 图谱, 心智地图, 过程上下文};
@@ -17,7 +17,7 @@ mod tests {
     use hm_error::{Error, Result};
     use hm_execute_contract::执行器;
     use hm_log::运行日志记录器;
-    use tc_task::{Task, TaskStatus, TaskStore, TaskBoard};
+    use tc_task::{Task, TaskStatus, TaskStore, TaskBoard, AgentRole};
     use lj_iteration::{Iteration, Version, IterationLog};
     use qk_memory::{Memory, MemoryStore};
     use dy_rule::{Rule, RuleSet};
@@ -142,10 +142,9 @@ mod tests {
             模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
         ]));
         装配驱动器(&状态, &看板, 对话器);
-        发布任务(&状态, "驱动流转任务").await;
+        发布任务(&状态, "驱动流转任务").await; // 发布即驱动
 
-        状态.看板驱动台.启动执行一轮();
-        assert!(状态.看板驱动台.等待完成(5000), "驱动应在超时内完成");
+        assert!(状态.看板驱动台.等待完成(5000), "发布后自动驱动应在超时内完成");
 
         // 任务已流转到 待大罗金仙实现 且设计文档写入
         let 看板守卫 = 看板.lock().expect("看板锁");
@@ -228,5 +227,77 @@ mod tests {
         let 任务 = 看板守卫.查询(1).expect("任务应存在");
         assert_eq!(任务.status, TaskStatus::待圣人设计);
         assert!(任务.设计文档.is_none(), "失败不应写入设计文档");
+    }
+
+    /// 受理开发任务 = 发布看板任务（待圣人设计，发起人道祖）+ 自动驱动一轮
+    #[tokio::test]
+    async fn 受理_发布看板并自动驱动流转() {
+        let (状态, 看板) = 驱动状态();
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+        ]));
+        装配驱动器(&状态, &看板, 对话器);
+
+        let id = 受理开发任务(&状态, "修复登录超时".into()).expect("受理应成功");
+        assert!(id > 0);
+        assert!(状态.看板驱动台.等待完成(5000), "受理后自动驱动应在超时内完成");
+
+        let 看板守卫 = 看板.lock().expect("看板锁");
+        let 任务 = 看板守卫.查询(id).expect("看板任务应存在");
+        assert_eq!(任务.title, "修复登录超时");
+        assert_eq!(任务.status, TaskStatus::待大罗金仙实现);
+        assert_eq!(任务.发起人, AgentRole::道祖);
+        let 设计 = 任务.设计文档.as_ref().expect("设计文档应写入");
+        assert_eq!(设计.契约[0].契约名, "测试契约");
+    }
+
+    /// 受理时已有驱动运行中 → 409，且不发布新任务
+    #[tokio::test]
+    async fn 受理_驱动运行中重复受理返回运行中() {
+        let (状态, 看板) = 驱动状态();
+        let 对话器 = Arc::new(模拟对话器::新_带延迟(vec![
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+        ], 800));
+        装配驱动器(&状态, &看板, 对话器);
+
+        状态.看板驱动台.启动执行一轮();
+        let 重复 = 受理开发任务(&状态, "第二个任务".into());
+        assert!(matches!(重复.expect_err("应拒绝重复受理"), 受理失败::运行中));
+
+        let 看板守卫 = 看板.lock().expect("看板锁");
+        assert_eq!(看板守卫.全部().len(), 0, "受理失败不应发布看板任务");
+        drop(看板守卫);
+        assert!(状态.看板驱动台.等待完成(5000), "首轮驱动应完成");
+    }
+
+    /// 前端发布任务后自动驱动（无需点按钮）
+    #[tokio::test]
+    async fn 看板发布_成功后自动驱动一轮() {
+        let (状态, 看板) = 驱动状态();
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+        ]));
+        装配驱动器(&状态, &看板, 对话器);
+
+        发布任务(&状态, "发布即驱动任务").await;
+        assert!(状态.看板驱动台.等待完成(5000), "发布后应自动驱动完成");
+
+        let 看板守卫 = 看板.lock().expect("看板锁");
+        let 任务 = 看板守卫.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待大罗金仙实现);
+        drop(看板守卫);
+        let 阶段 = 状态.看板驱动台.当前状态().最近阶段.expect("应有最近阶段");
+        assert_eq!(阶段.类型, "阶段完成");
+    }
+
+    /// 驱动台未装配时发布任务：发布成功但停在待承接，不报错
+    #[tokio::test]
+    async fn 看板发布_驱动台未装配不驱动() {
+        let (状态, 看板) = 驱动状态();
+
+        发布任务(&状态, "无驱动任务").await;
+        let 看板守卫 = 看板.lock().expect("看板锁");
+        let 任务 = 看板守卫.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待圣人设计, "未装配驱动台应停在待承接");
     }
 }

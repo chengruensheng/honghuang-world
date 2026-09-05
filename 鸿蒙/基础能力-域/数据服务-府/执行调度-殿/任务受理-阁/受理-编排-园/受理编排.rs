@@ -1,80 +1,60 @@
-use std::sync::Arc;
-use hm_error::Result;
 use crate::数据服务状态;
 
 
 /// 受理失败原因（HTTP 层映射状态码，启动入口映射日志）
 #[derive(Debug)]
 pub enum 受理失败 {
-    /// 智能体未装配上线（如 LLM key 缺失）
+    /// 看板驱动器未装配上线（如 LLM key 缺失）
     未上线,
-    /// 已有任务执行中
+    /// 已有驱动执行中
     运行中,
     /// 任务文本为空
     任务为空,
-    /// 任务创建受阻（如待受理容量超限）
+    /// 看板发布受阻
     创建受阻(String),
 }
 
-/// 受理任务标题前缀
-const 任务标题前缀: &str = "对话任务: ";
-/// 任务标题截断上限（字符数）
+/// 受理任务标题截断上限（字符数）
 const 标题上限: usize = 50;
-/// 任务描述固定文案
-const 任务描述: &str = "由世界入口对话视图下达，经智能体执行";
 
-/// 受理编排：校验 → 预占执行通道 → 创建任务并推进进行中 → 启动后台执行。
+/// 受理编排：校验 → 看板驱动台就绪/预占 → 发布看板任务（待圣人设计，发起人道祖）→ 自动驱动一轮。
 ///
-/// 返回任务 id；失败时已预占的通道回滚释放。结束通知只做任务状态推进，
-/// 最近结果由执行台自身在执行结束时写入。
+/// 需求经此落为看板任务，由五层协作驱动器自主流转（圣人设计→大罗金仙实现→准圣验收→道祖终审）；
+/// 返回看板任务 id；失败时已预占的驱动通道回滚释放。
 pub fn 受理开发任务(状态: &数据服务状态, 任务: String) -> std::result::Result<u64, 受理失败> {
     let 文案 = 任务.trim().to_string();
     if 文案.is_empty() {
         return Err(受理失败::任务为空);
     }
-    if !状态.开发执行台.就绪() {
+    if !状态.看板驱动台.就绪() {
         return Err(受理失败::未上线);
     }
-    if !状态.开发执行台.预留() {
+    if !状态.看板驱动台.预留() {
         return Err(受理失败::运行中);
     }
 
-    let 标题 = format!("{任务标题前缀}{}", 截断(&文案, 标题上限));
-    let id = match 状态.任务仓库.lock().expect("引擎锁中毒").创建(标题, 任务描述.to_string()) {
+    let id = match 发布看板任务(状态, &文案) {
         Ok(id) => id,
         Err(e) => {
-            状态.开发执行台.释放();
-            tracing::warn!("受理建任务失败: {e}");
+            状态.看板驱动台.释放();
+            tracing::warn!("受理发布看板失败: {e}");
             return Err(受理失败::创建受阻(e.to_string()));
         }
     };
-    if let Err(e) = 状态.任务仓库.lock().expect("引擎锁中毒").推进(id, tc_task::TaskStatus::进行中) {
-        tracing::warn!("任务 {id} 推进为进行中失败: {e}");
-    }
 
-    let 结束通知 = {
-        let 仓库 = 状态.任务仓库.clone();
-        Arc::new(move |结果: &Result<String>| {
-            推进结束状态(&仓库, id, 结果);
-        })
-    };
-    状态.开发执行台.启动执行(文案, 结束通知);
+    // 自动驱动一轮：看板自主流转开始（预占已成功，直接启动；自动驱动一轮 会二次预留失败）
+    状态.看板驱动台.启动执行一轮();
     Ok(id)
 }
 
-/// 执行结束的任务状态推进：成功→已完成，失败/中断→已取消
-fn 推进结束状态(
-    仓库: &Arc<std::sync::Mutex<dyn hm_domain_contract::任务仓库契约<tc_task::Task, tc_task::TaskStatus>>>,
-    id: u64,
-    结果: &Result<String>,
-) {
-    let 目标 = match 结果 {
-        Ok(_) => tc_task::TaskStatus::已完成,
-        Err(_) => tc_task::TaskStatus::已取消,
-    };
-    if let Err(e) = 仓库.lock().expect("引擎锁中毒").推进(id, 目标) {
-        tracing::warn!("任务 {id} 结束状态推进失败: {e}");
-    }
+/// 发布看板任务：标题=需求截断（50 字），描述=完整需求，状态=待圣人设计，发起人=道祖。
+fn 发布看板任务(状态: &数据服务状态, 文案: &str) -> std::result::Result<u64, hm_error::Error> {
+    let 标题 = 截断(文案, 标题上限);
+    let mut board = 状态.任务看板.lock().expect("看板锁中毒");
+    let mut task = tc_task::Task::新建(0, 标题, 文案.to_string(), hm_contract::当前时间戳());
+    task.status = tc_task::TaskStatus::待圣人设计;
+    task.发起人 = tc_task::AgentRole::道祖;
+    board.发布任务(task)
 }
 
 /// 按字符数截断文本（任务标题用），超长部分以省略号结尾
