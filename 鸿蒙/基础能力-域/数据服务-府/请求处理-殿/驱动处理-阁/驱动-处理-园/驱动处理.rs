@@ -1,5 +1,5 @@
 use axum::{Json, extract::State, http::StatusCode};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use crate::{数据服务状态, 看板驱动状态, 受理错误响应};
 
 /// 驱动受理响应体
@@ -8,14 +8,15 @@ pub struct 驱动受理响应 {
     pub 受理: bool,
 }
 
-/// POST /api/dev/pilot：驱动看板一轮。
-///
-/// 后台线程执行（LLM 调用耗时秒级），HTTP 立即返回受理；
-/// 未装配 → 503 fail-loud；已有驱动运行中 → 409。
-pub async fn 看板驱动接口(
-    状态: State<数据服务状态>,
-) -> Result<Json<驱动受理响应>, (StatusCode, Json<受理错误响应>)> {
-    let 台 = &状态.看板驱动台;
+/// 驱动到空闲请求体（上限缺省 10 轮）
+#[derive(Debug, Deserialize)]
+pub struct 驱动到空闲请求 {
+    #[serde(default)]
+    pub 上限: Option<usize>,
+}
+
+/// 驱动通道检查与预占（未装配 503 / 运行中 409）
+fn 检查并预占(台: &crate::看板驱动台) -> Result<(), (StatusCode, Json<受理错误响应>)> {
     if !台.就绪() {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -28,7 +29,34 @@ pub async fn 看板驱动接口(
             Json(受理错误响应 { 错误: "已有驱动执行中，请等待完成后再驱动".into() }),
         ));
     }
+    Ok(())
+}
+
+/// POST /api/dev/pilot：驱动看板一轮。
+///
+/// 后台线程执行（LLM 调用耗时秒级），HTTP 立即返回受理；
+/// 未装配 → 503 fail-loud；已有驱动运行中 → 409。
+pub async fn 看板驱动接口(
+    状态: State<数据服务状态>,
+) -> Result<Json<驱动受理响应>, (StatusCode, Json<受理错误响应>)> {
+    let 台 = &状态.看板驱动台;
+    检查并预占(台)?;
     台.启动执行一轮();
+    Ok(Json(驱动受理响应 { 受理: true }))
+}
+
+/// POST /api/dev/pilot/drain：驱动看板到空闲。
+///
+/// 循环执行一轮直到 无可驱动任务 / 达到上限 / 出错；已推进轮次结果保留；
+/// 未装配 → 503；运行中 → 409。
+pub async fn 看板驱动到空闲接口(
+    状态: State<数据服务状态>,
+    Json(请求): Json<驱动到空闲请求>,
+) -> Result<Json<驱动受理响应>, (StatusCode, Json<受理错误响应>)> {
+    let 台 = &状态.看板驱动台;
+    检查并预占(台)?;
+    let 上限 = 请求.上限.unwrap_or(10);
+    台.启动执行到空闲(上限);
     Ok(Json(驱动受理响应 { 受理: true }))
 }
 

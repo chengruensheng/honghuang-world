@@ -1,6 +1,6 @@
 // 看板视图.js —— 任务看板（五层协作卡片视图，按状态分组展示 + 发布/承接/提交交互）
 
-import { 看板存储, 加载看板数据, 发布任务, 承接任务, 提交任务, 选中任务, 驱动一轮, 驱动状态 } from '../../../运行支撑-殿/数据服务-阁/看板-数据-园/看板数据.js';
+import { 看板存储, 加载看板数据, 发布任务, 承接任务, 提交任务, 选中任务, 驱动一轮, 驱动到空闲, 驱动状态 } from '../../../运行支撑-殿/数据服务-阁/看板-数据-园/看板数据.js';
 
 const 图标 = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`;
 
@@ -52,6 +52,7 @@ export const 看板视图 = {
         <div style="display:flex;gap:10px;align-items:center">
           <span id="pilot-status" style="font-size:12px;color:#64748b">驱动：—</span>
           <button class="btn-pub" id="btn-pilot" title="AI 自主流转一轮五层协作（圣人→大罗金仙→准圣→道祖）">⚡ 驱动一轮</button>
+          <button class="btn-pub" id="btn-pilot-drain" title="连续驱动到无可驱动任务（多任务一次自主流转，上限 10 轮）">⚡ 驱动到空闲</button>
           <button class="btn-pub" id="btn-pub">+ 发布任务</button>
         </div>
       </div>
@@ -105,38 +106,47 @@ export const 看板视图 = {
       } catch (e) { alert(e.message); }
     });
 
-    // 一键驱动：AI 自主流转一轮五层协作，轮询状态与看板直到完成
+    // 一键驱动：AI 自主流转（一轮 / 到空闲），轮询状态与看板直到完成
     const 驱动状态框 = 容器.querySelector('#pilot-status');
     const 驱动按钮 = 容器.querySelector('#btn-pilot');
+    const 驱动到空闲按钮 = 容器.querySelector('#btn-pilot-drain');
     async function 刷新驱动状态() {
       try {
         const 状态 = await 驱动状态();
-        if (状态.运行中) { 驱动状态框.textContent = '驱动：运行中…'; 驱动按钮.disabled = true; return false; }
+        if (状态.运行中) { 驱动状态框.textContent = '驱动：运行中…'; 驱动按钮.disabled = true; if (驱动到空闲按钮) 驱动到空闲按钮.disabled = true; return false; }
         驱动按钮.disabled = false;
+        if (驱动到空闲按钮) 驱动到空闲按钮.disabled = false;
+        let 说明 = '';
         if (状态.最近阶段) {
           const 阶段 = 状态.最近阶段;
-          const 说明 = 阶段.类型 === '空闲' ? '空闲' : `${阶段.类型}${阶段.任务id ? ' #' + 阶段.任务id : ''}${阶段.新状态 ? ' → ' + 阶段.新状态 : ''}`;
-          驱动状态框.textContent = '驱动：' + 说明;
+          说明 = 阶段.类型 === '空闲' ? '空闲' : `${阶段.类型}${阶段.任务id ? ' #' + 阶段.任务id : ''}${阶段.新状态 ? ' → ' + 阶段.新状态 : ''}`;
         } else {
-          驱动状态框.textContent = 状态.就绪 ? '驱动：就绪' : '驱动：未就绪';
+          说明 = 状态.就绪 ? '就绪' : '未就绪';
         }
+        if (状态.最近结果 && !状态.运行中) 说明 += ' · ' + 状态.最近结果;
+        驱动状态框.textContent = '驱动：' + 说明;
         return true;
       } catch { return true; }
     }
-    刷新驱动状态();
-    驱动按钮.addEventListener('click', async () => {
-      try {
-        await 驱动一轮();
-        驱动状态框.textContent = '驱动：运行中…';
-        驱动按钮.disabled = true;
-        await 加载看板数据();
-        const 轮询 = setInterval(async () => {
+    function 启动驱动轮询(动作) {
+      return async () => {
+        try {
+          await 动作();
+          驱动状态框.textContent = '驱动：运行中…';
+          驱动按钮.disabled = true;
+          if (驱动到空闲按钮) 驱动到空闲按钮.disabled = true;
           await 加载看板数据();
-          const 完成 = await 刷新驱动状态();
-          if (完成) clearInterval(轮询);
-        }, 2000);
-      } catch (e) { alert(e.message); 刷新驱动状态(); }
-    });
+          const 轮询 = setInterval(async () => {
+            await 加载看板数据();
+            const 完成 = await 刷新驱动状态();
+            if (完成) clearInterval(轮询);
+          }, 2000);
+        } catch (e) { alert(e.message); 刷新驱动状态(); }
+      };
+    }
+    刷新驱动状态();
+    驱动按钮.addEventListener('click', 启动驱动轮询(驱动一轮));
+    if (驱动到空闲按钮) 驱动到空闲按钮.addEventListener('click', 启动驱动轮询(() => 驱动到空闲(10)));
   },
   属性(容器) {
     const 状态 = 看板存储.取值();

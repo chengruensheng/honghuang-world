@@ -67,6 +67,19 @@ export async function 驱动一轮() {
   }
 }
 
+/** 驱动看板到空闲（POST /api/dev/pilot/drain）—— 循环自主流转直到无可驱动任务/上限 */
+export async function 驱动到空闲(上限 = 10) {
+  const 响应 = await fetch('/api/dev/pilot/drain', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 上限 }),
+  });
+  if (!响应.ok) {
+    const 体 = await 响应.json().catch(() => null);
+    throw new Error((体 && 体.错误) || `驱动到空闲失败: ${响应.status}`);
+  }
+}
+
 /** 查询看板驱动台状态（GET /api/dev/pilot/status） */
 export async function 驱动状态() {
   const 状态 = await fetch('/api/dev/pilot/status').then(取json);
