@@ -6,6 +6,9 @@ run_dev_agent = false
 dev_workspace = "F:/临时工作区"
 dev_task = ""
 dev_max_rounds = 20
+executor_timeout_secs = 30
+executor_max_output_bytes = 65536
+executor_ctrlc = true
 
 [log]
 level = "info"

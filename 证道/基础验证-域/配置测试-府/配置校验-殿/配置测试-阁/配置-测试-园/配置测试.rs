@@ -23,4 +23,12 @@ mod tests {
         assert_eq!(cfg.app.name, "洪荒·世界");
         assert_eq!(cfg.log.level, "info");
     }
+
+    #[test]
+    fn 执行器配置字段默认值正确() {
+        let cfg = hm_config::default_config();
+        assert_eq!(cfg.app.executor_timeout_secs, 30);
+        assert_eq!(cfg.app.executor_max_output_bytes, 64 * 1024);
+        assert!(cfg.app.executor_ctrlc);
+    }
 }

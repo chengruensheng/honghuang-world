@@ -39,7 +39,14 @@ pub fn 启动() -> hm_error::Result<()> {
             tracing::warn!("run_dev_agent 已开启但 dev_task 为空，跳过自主开发入口");
         } else {
             tracing::info!("进入自主开发智能体：工作区 {}，任务 {}", config.app.dev_workspace, config.app.dev_task);
-            match 运行自主开发(&config.app.dev_workspace, &config.app.dev_task, config.app.dev_max_rounds) {
+            match 运行自主开发(
+                &config.app.dev_workspace,
+                &config.app.dev_task,
+                config.app.dev_max_rounds,
+                config.app.executor_timeout_secs,
+                config.app.executor_max_output_bytes,
+                config.app.executor_ctrlc,
+            ) {
                 Ok(答复) => tracing::info!("自主开发完成：{答复}"),
                 Err(e) => tracing::warn!("自主开发失败（不影响启动）: {e}"),
             }

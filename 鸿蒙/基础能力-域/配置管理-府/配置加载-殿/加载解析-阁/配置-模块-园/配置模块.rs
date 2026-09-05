@@ -30,6 +30,15 @@ pub struct AppConfig {
     /// 自主开发智能体的最大循环轮数
     #[serde(default = "default_max_rounds")]
     pub dev_max_rounds: usize,
+    /// 自主开发智能体执行器命令超时秒数（默认 30 秒；过短易误杀，过长卡住主循环）
+    #[serde(default = "default_executor_timeout_secs")]
+    pub executor_timeout_secs: u64,
+    /// 自主开发智能体执行器单次命令最大输出字节数（默认 64 KiB；防止输出撑爆内存）
+    #[serde(default = "default_executor_max_output_bytes")]
+    pub executor_max_output_bytes: u64,
+    /// 自主开发时是否接入 Ctrl+C 中断（默认开启；非交互环境注册失败仅告警）
+    #[serde(default = "default_executor_ctrlc")]
+    pub executor_ctrlc: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -43,6 +52,9 @@ fn default_version() -> String { "0.1.0".into() }
 fn default_level() -> String { "info".into() }
 fn default_workspace() -> String { "F:/临时工作区".into() }
 fn default_max_rounds() -> usize { 20 }
+fn default_executor_timeout_secs() -> u64 { 30 }
+fn default_executor_max_output_bytes() -> u64 { 64 * 1024 }
+fn default_executor_ctrlc() -> bool { true }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -54,6 +66,9 @@ impl Default for AppConfig {
             dev_workspace: default_workspace(),
             dev_task: String::new(),
             dev_max_rounds: default_max_rounds(),
+            executor_timeout_secs: default_executor_timeout_secs(),
+            executor_max_output_bytes: default_executor_max_output_bytes(),
+            executor_ctrlc: default_executor_ctrlc(),
         }
     }
 }
