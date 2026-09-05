@@ -37,7 +37,7 @@ const 持久化文件_事件: &str = "事件.toml";
 /// 府可插拔：各引擎字段均为 `Arc<Mutex<dyn 领域契约>>`，
 /// 生产路径装配真实实现，测试路径注入 mock，核心无特权。
 pub struct 五行装配 {
-    pub 容器: 组件容器,
+    pub 容器: Arc<组件容器>,
     pub 信号总线: Arc<dyn 信号总线>,
     pub 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>>,
     pub 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>>,
@@ -69,7 +69,7 @@ impl 五行装配 {
     /// 装配五行并指定容量上限与持久化目录：历史文件存在则加载，否则新建；
     /// 同时实例化认知三态（空结构）与运行日志记录器。
     pub fn 装配带持久化(容量上限: usize, 持久化目录: Option<String>) -> Self {
-        let 容器 = 组件容器::new();
+        let 容器 = Arc::new(组件容器::new());
 
         let 信号总线 = Arc::new(内存信号总线::new());
         容器.注册(信号总线.clone());

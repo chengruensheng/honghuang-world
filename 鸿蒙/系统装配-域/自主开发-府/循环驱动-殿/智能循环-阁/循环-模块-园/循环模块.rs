@@ -1,9 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use hm_contract::Component;
 use hm_content_contract::{工具对话器, 对话消息, 工具调用};
 use hm_error::{Error, Result};
 use hm_execute_contract::{开发事件, 开发事件类型, 开发执行契约, 执行器};
+use super::super::任务_清单_园::{任务项, 格式化清单, 解析任务清单, 清单项键_内容, 清单项键_状态, 状态_待办, 状态_进行中, 状态_已完成};
 
 /// 事件内容截断上限（读文件/命令输出可能很长，事件流只保留摘要）
 const 事件内容上限: usize = 200;
@@ -12,19 +13,34 @@ const 事件内容上限: usize = 200;
 const 读文件: &str = "读文件";
 const 写文件: &str = "写文件";
 const 运行命令: &str = "运行命令";
+const 列目录: &str = "列目录";
+const 按名找文件: &str = "按名找文件";
+const 搜索内容: &str = "搜索内容";
+const 精确编辑: &str = "精确编辑";
+const 任务清单: &str = "任务清单";
 
 /// 工具参数载荷键常量（与函数定义 schema 的 property 名一致，中文为规范键）
 const 参数键_路径: &str = "路径";
 const 参数键_内容: &str = "内容";
 const 参数键_命令: &str = "命令";
+const 参数键_模式: &str = "模式";
+const 参数键_关键词: &str = "关键词";
+const 参数键_旧: &str = "旧";
+const 参数键_新: &str = "新";
+const 参数键_清单: &str = "清单";
 
 /// 兼容性别名：部分模型会用英文键，回退识别以提升鲁棒性（规范键仍为中文，不在 schema 中暴露）
 const 参数键_路径_英: &str = "path";
 const 参数键_内容_英: &str = "content";
 const 参数键_命令_英: &str = "command";
+const 参数键_模式_英: &str = "pattern";
+const 参数键_关键词_英: &str = "keyword";
+const 参数键_旧_英: &str = "old";
+const 参数键_新_英: &str = "new";
+const 参数键_清单_英: &str = "todos";
 
 /// 系统提示：约束 LLM 的角色与工具使用方式
-const 系统提示: &str = "你是一个自主开发智能体，在指定工作区内完成开发任务。可调用「读文件」「写文件」「运行命令」三个工具。运行环境是 Windows，命令须用 cmd 语法（列目录用 dir、查看文件用 type、构建测试用 cargo）。每步先思考再行动；工具失败要读取错误信息并修正；任务完成后停止调用工具并给出简短说明。每次修改代码或配置后必须运行 cargo build 与 cargo test 验证通过，验证失败须读取错误并修复，不得跳过验证。跨文件或跨 crate 改动时：新增依赖加到实际使用它的 crate 的 Cargo.toml；修改函数签名后须同步更新所有调用点。";
+const 系统提示: &str = "你是一个自主开发智能体，在指定工作区内完成开发任务。可调用「读文件」「写文件」「运行命令」「列目录」「按名找文件」「搜索内容」「精确编辑」「任务清单」八个工具：列目录看一层条目，按名找文件用 glob 模式（*、**、?）找文件，搜索内容按关键词递归检索文本（返回 路径:行号:内容），精确编辑把文件中唯一匹配的旧串替换为新串（多处匹配会报错，需提供更精确上下文），任务清单用数组维护待办/进行中/已完成的多步计划。运行环境是 Windows，命令须用 cmd 语法（列目录用 dir、查看文件用 type、构建测试用 cargo）。每步先思考再行动；工具失败要读取错误信息并修正；任务完成后停止调用工具并给出简短说明。每次修改代码或配置后必须运行 cargo build 与 cargo test 验证通过，验证失败须读取错误并修复，不得跳过验证。跨文件或跨 crate 改动时：新增依赖加到实际使用它的 crate 的 Cargo.toml；修改函数签名后须同步更新所有调用点。";
 
 /// 自主开发智能体：LLM 大脑 + 执行器手脚的循环
 pub struct 智能体 {
@@ -33,11 +49,12 @@ pub struct 智能体 {
     最大轮数: usize,
     中断标志: Arc<AtomicBool>,
     事件回调: Option<Arc<dyn Fn(&开发事件) + Send + Sync>>,
+    任务清单: Arc<Mutex<Vec<任务项>>>,
 }
 
 impl 智能体 {
     pub fn new(对话器: Arc<dyn 工具对话器>, 执行器: Arc<dyn 执行器>, 最大轮数: usize) -> Self {
-        智能体 { 对话器, 执行器, 最大轮数, 中断标志: Arc::new(AtomicBool::new(false)), 事件回调: None }
+        智能体 { 对话器, 执行器, 最大轮数, 中断标志: Arc::new(AtomicBool::new(false)), 事件回调: None, 任务清单: Arc::new(Mutex::new(Vec::new())) }
     }
 
     /// 链式注入事件回调：循环各步（思考/工具调用/工具结果/答复）回调通知外部
@@ -49,6 +66,12 @@ impl 智能体 {
     /// 返回中断句柄：外部设置 true 可请求停止循环（如 Ctrl+C 回调）
     pub fn 中断句柄(&self) -> Arc<AtomicBool> {
         self.中断标志.clone()
+    }
+
+    /// 返回当前任务清单的可读文本（只读，供外部面板展示或测试验证）
+    pub fn 当前任务清单(&self) -> String {
+        let 清单 = self.任务清单.lock().expect("任务清单锁中毒");
+        格式化清单(&清单)
     }
 
     /// 发出一个开发事件（未注入回调时静默跳过；内容超长截断）
@@ -128,6 +151,34 @@ impl 智能体 {
                 let 命令 = 取参数字符串(&参数, &[参数键_命令, 参数键_命令_英])?;
                 self.执行器.运行命令(&命令)
             }
+            列目录 => {
+                let 路径 = 取参数字符串(&参数, &[参数键_路径, 参数键_路径_英])?;
+                self.执行器.列目录(&路径)
+            }
+            按名找文件 => {
+                let 模式 = 取参数字符串(&参数, &[参数键_模式, 参数键_模式_英])?;
+                self.执行器.按名找文件(&模式)
+            }
+            搜索内容 => {
+                let 关键词 = 取参数字符串(&参数, &[参数键_关键词, 参数键_关键词_英])?;
+                self.执行器.搜索内容(&关键词)
+            }
+            精确编辑 => {
+                let 路径 = 取参数字符串(&参数, &[参数键_路径, 参数键_路径_英])?;
+                let 旧 = 取参数字符串(&参数, &[参数键_旧, 参数键_旧_英])?;
+                let 新 = 取参数字符串(&参数, &[参数键_新, 参数键_新_英])?;
+                self.执行器.精确编辑(&路径, &旧, &新)
+            }
+            任务清单 => {
+                let 清单值 = 参数
+                    .get(参数键_清单)
+                    .or_else(|| 参数.get(参数键_清单_英))
+                    .ok_or_else(|| Error::缺少参数(参数键_清单.into()))?;
+                let 新清单 = 解析任务清单(清单值)?;
+                let mut 清单 = self.任务清单.lock().expect("任务清单锁中毒");
+                *清单 = 新清单;
+                Ok(格式化清单(&清单))
+            }
             _ => Err(Error::未知工具(调用.名称.clone())),
         }
     }
@@ -178,6 +229,11 @@ fn 工具定义() -> Vec<serde_json::Value> {
         单参函数(读文件, "读取工作区内文件的完整文本", 参数键_路径, "相对工作区的文件路径"),
         双参函数(写文件, "把内容写入工作区文件（覆盖）", 参数键_路径, "相对工作区的文件路径", 参数键_内容, "要写入的完整文本"),
         单参函数(运行命令, "在工作区目录下运行命令，返回标准输出", 参数键_命令, "要执行的命令"),
+        单参函数(列目录, "列出工作区内目录下条目（一层，区分目录/文件）", 参数键_路径, "相对工作区的目录路径"),
+        单参函数(按名找文件, "按 glob 模式（*、**、?）递归匹配工作区内文件", 参数键_模式, "glob 模式，如 **/*.rs"),
+        单参函数(搜索内容, "递归搜索工作区内文本文件内容，返回匹配行", 参数键_关键词, "要搜索的关键词"),
+        三参函数(精确编辑, "把文件中唯一匹配的旧串替换为新串（多处匹配会报错）", 参数键_路径, "相对工作区的文件路径", 参数键_旧, "要被替换的旧文本（须唯一）", 参数键_新, "替换后的新文本"),
+        任务清单函数(),
     ]
 }
 
@@ -213,6 +269,58 @@ fn 双参函数(名: &str, 描述: &str, 键一: &str, 键一说明: &str, 键�
                 "type": "object",
                 "properties": 属性,
                 "required": [键一, 键二]
+            }
+        }
+    })
+}
+
+/// 构造三字符串参数的函数定义
+fn 三参函数(名: &str, 描述: &str, 键一: &str, 键一说明: &str, 键二: &str, 键二说明: &str, 键三: &str, 键三说明: &str) -> serde_json::Value {
+    let mut 属性 = serde_json::Map::new();
+    属性.insert(键一.to_string(), serde_json::json!({"type": "string", "description": 键一说明}));
+    属性.insert(键二.to_string(), serde_json::json!({"type": "string", "description": 键二说明}));
+    属性.insert(键三.to_string(), serde_json::json!({"type": "string", "description": 键三说明}));
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": 名,
+            "description": 描述,
+            "parameters": {
+                "type": "object",
+                "properties": 属性,
+                "required": [键一, 键二, 键三]
+            }
+        }
+    })
+}
+
+/// 构造任务清单工具的函数定义（参数为「清单」数组，每项含「内容」「状态」）
+fn 任务清单函数() -> serde_json::Value {
+    let mut 清单属性 = serde_json::Map::new();
+    清单属性.insert(
+        参数键_清单.to_string(),
+        serde_json::json!({
+            "type": "array",
+            "description": "任务条目数组",
+            "items": {
+                "type": "object",
+                "properties": {
+                    (清单项键_内容): {"type": "string", "description": "任务内容"},
+                    (清单项键_状态): {"type": "string", "enum": [状态_待办, 状态_进行中, 状态_已完成]}
+                },
+                "required": [清单项键_内容]
+            }
+        }),
+    );
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": 任务清单,
+            "description": "覆盖式更新多步任务清单（待办/进行中/已完成）",
+            "parameters": {
+                "type": "object",
+                "properties": 清单属性,
+                "required": [参数键_清单]
             }
         }
     })

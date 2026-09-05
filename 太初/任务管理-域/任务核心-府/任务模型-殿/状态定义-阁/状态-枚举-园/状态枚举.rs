@@ -1,12 +1,26 @@
 use serde::{Deserialize, Serialize};
 
-/// 任务状态：待受理 → 进行中 → 已完成（木之生长）
+/// 任务状态：待受理 → 进行中 → 已完成（木之生长），
+/// 扩展洪荒五层流转：待受理 → 待圣人设计 → 圣人设计中 → 待大罗金仙实现
+/// → 大罗金仙实现中 → 待准圣验收 → 准圣验收中 →（不通过）待修复 → 大罗金仙实现中
+/// 或（通过）→ 待道祖终审 → 道祖终审中 →（通过）已完成 /（不通过）待修复
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskStatus {
+    // 原有状态（兼容）
     待受理,
     进行中,
     已完成,
     已取消,
+    // 新增：洪荒五层流转状态
+    待圣人设计,
+    圣人设计中,
+    待大罗金仙实现,
+    大罗金仙实现中,
+    待准圣验收,
+    准圣验收中,
+    待修复,
+    待道祖终审,
+    道祖终审中,
 }
 
 impl TaskStatus {
@@ -14,10 +28,24 @@ impl TaskStatus {
     pub fn 可流转到(&self, next: &TaskStatus) -> bool {
         matches!(
             (self, next),
+            // 原有流转（兼容）
             (TaskStatus::待受理, TaskStatus::进行中)
                 | (TaskStatus::待受理, TaskStatus::已取消)
                 | (TaskStatus::进行中, TaskStatus::已完成)
                 | (TaskStatus::进行中, TaskStatus::已取消)
+                // 五层流转
+                | (TaskStatus::待受理, TaskStatus::待圣人设计)
+                | (TaskStatus::待圣人设计, TaskStatus::圣人设计中)
+                | (TaskStatus::圣人设计中, TaskStatus::待大罗金仙实现)
+                | (TaskStatus::待大罗金仙实现, TaskStatus::大罗金仙实现中)
+                | (TaskStatus::大罗金仙实现中, TaskStatus::待准圣验收)
+                | (TaskStatus::待准圣验收, TaskStatus::准圣验收中)
+                | (TaskStatus::准圣验收中, TaskStatus::待修复)
+                | (TaskStatus::准圣验收中, TaskStatus::待道祖终审)
+                | (TaskStatus::待修复, TaskStatus::大罗金仙实现中)
+                | (TaskStatus::待道祖终审, TaskStatus::道祖终审中)
+                | (TaskStatus::道祖终审中, TaskStatus::已完成)
+                | (TaskStatus::道祖终审中, TaskStatus::待修复)
         )
     }
 }

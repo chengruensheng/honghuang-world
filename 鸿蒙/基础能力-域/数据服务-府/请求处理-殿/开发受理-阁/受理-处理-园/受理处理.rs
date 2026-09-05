@@ -80,6 +80,36 @@ pub async fn 停止执行(状态: State<数据服务状态>) -> Json<停止响�
     Json(停止响应 { 中断 })
 }
 
+/// 工作区更新请求体
+#[derive(Debug, Deserialize)]
+pub struct 工作区请求 {
+    pub 工作区: String,
+}
+
+/// POST /api/dev/workspace：更新智能体工作区（重新装配执行器）
+pub async fn 更新工作区(
+    状态: State<数据服务状态>,
+    Json(请求): Json<工作区请求>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let 工作区 = 请求.工作区.trim();
+    if 工作区.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "工作区路径不能为空".into()));
+    }
+    if 状态.开发执行台.运行中() {
+        return Err((StatusCode::CONFLICT, "任务执行中，无法切换工作区".into()));
+    }
+    match &状态.重装配工作区 {
+        Some(回调) => match 回调(工作区) {
+            Ok(()) => {
+                tracing::info!("工作区已切换: {工作区}");
+                Ok(StatusCode::OK)
+            }
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, format!("重装配失败: {e}"))),
+        },
+        None => Err((StatusCode::SERVICE_UNAVAILABLE, "智能体未上线，无法切换工作区".into())),
+    }
+}
+
 /// 受理失败 → HTTP 状态码
 fn 失败状态码(失败: &受理失败) -> StatusCode {
     match 失败 {

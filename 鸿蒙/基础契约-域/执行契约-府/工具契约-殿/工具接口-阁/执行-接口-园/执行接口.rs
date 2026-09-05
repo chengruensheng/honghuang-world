@@ -12,4 +12,12 @@ pub trait 执行器: Component {
     fn 写文件(&self, 路径: &str, 内容: &str) -> Result<()>;
     /// 在工作区内运行命令，返回标准输出
     fn 运行命令(&self, 命令: &str) -> Result<String>;
+    /// 列出工作区内目录下的条目（一层，非递归），区分目录/文件，按名排序
+    fn 列目录(&self, 路径: &str) -> Result<String>;
+    /// 按 glob 模式（`*`/`**`/`?`）递归匹配工作区内文件，返回相对路径列表
+    fn 按名找文件(&self, 模式: &str) -> Result<String>;
+    /// 递归搜索工作区内文本文件内容，返回匹配行（路径:行号:内容）
+    fn 搜索内容(&self, 关键词: &str) -> Result<String>;
+    /// 将文件中唯一匹配的「旧」字符串替换为「新」（多处匹配报错要求更精确）
+    fn 精确编辑(&self, 路径: &str, 旧: &str, 新: &str) -> Result<String>;
 }

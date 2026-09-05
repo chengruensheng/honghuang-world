@@ -15,10 +15,13 @@ fn main() {
     // 把工作目录切到能解析前端静态目录的根目录，避免相对路径依赖启动方式（tauri dev 的 cwd 是 src-tauri）
     切换工作目录到静态目录根(&静态目录);
 
-    if let Err(e) = hm_bootstrap::启动() {
-        tracing::error!("数据服务启动失败: {e}");
-        std::process::exit(1);
-    }
+    let _容器 = match hm_bootstrap::启动() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("数据服务启动失败: {e}");
+            std::process::exit(1);
+        }
+    };
     if !等待端口就绪(端口) {
         tracing::error!("数据服务端口 {端口} 未在超时内就绪，无法加载前端");
         std::process::exit(1);

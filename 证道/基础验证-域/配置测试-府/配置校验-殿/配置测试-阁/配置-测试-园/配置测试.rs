@@ -29,6 +29,28 @@ mod tests {
         let cfg = hm_config::default_config();
         assert_eq!(cfg.app.executor_timeout_secs, 30);
         assert_eq!(cfg.app.executor_max_output_bytes, 64 * 1024);
-        assert!(cfg.app.executor_ctrlc);
+    }
+
+    #[test]
+    fn 工作区默认值为相对路径() {
+        let cfg = hm_config::default_config();
+        assert_eq!(cfg.app.dev_workspace, "./工作区");
+    }
+
+    #[test]
+    fn http配置字段默认值正确() {
+        let cfg = hm_config::default_config();
+        assert_eq!(cfg.http.bind, "127.0.0.1");
+        assert_eq!(cfg.http.port, 8321);
+        assert_eq!(cfg.http.auth_token, "");
+    }
+
+    #[test]
+    fn http配置可解析bind和auth_token() {
+        let s = "[http]\nbind = \"0.0.0.0\"\nport = 9000\nauth_token = \"secret\"\n";
+        let cfg: Config = toml::from_str(s).unwrap();
+        assert_eq!(cfg.http.bind, "0.0.0.0");
+        assert_eq!(cfg.http.port, 9000);
+        assert_eq!(cfg.http.auth_token, "secret");
     }
 }

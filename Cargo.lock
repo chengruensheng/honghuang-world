@@ -1388,6 +1388,7 @@ dependencies = [
  "hm-http",
  "hm-linkage",
  "hm-log",
+ "tc-task",
  "tracing",
 ]
 
@@ -1395,8 +1396,10 @@ dependencies = [
 name = "hm-cognition"
 version = "0.1.0"
 dependencies = [
+ "hm-contract",
  "hm-error",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1478,9 +1481,11 @@ dependencies = [
 name = "hm-execute"
 version = "0.1.0"
 dependencies = [
+ "glob",
  "hm-contract",
  "hm-error",
  "hm-execute-contract",
+ "tracing",
 ]
 
 [[package]]
@@ -1499,6 +1504,7 @@ dependencies = [
  "dy-rule",
  "hd-event",
  "hm-cognition",
+ "hm-contract",
  "hm-domain-contract",
  "hm-error",
  "hm-execute-contract",
@@ -3864,11 +3870,13 @@ dependencies = [
 name = "tc-task"
 version = "0.1.0"
 dependencies = [
+ "hm-cognition",
  "hm-contract",
  "hm-domain-contract",
  "hm-error",
  "hm-signal",
  "serde",
+ "serde_json",
  "toml 0.8.23",
  "tracing",
 ]
@@ -5285,6 +5293,7 @@ name = "zd-cognition-test"
 version = "0.1.0"
 dependencies = [
  "hm-cognition",
+ "serde_json",
  "toml 0.8.23",
 ]
 
@@ -5335,6 +5344,7 @@ dependencies = [
  "hm-error",
  "hm-execute-contract",
  "hm-http",
+ "hm-linkage",
  "hm-log",
  "lj-iteration",
  "qk-memory",

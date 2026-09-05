@@ -48,6 +48,8 @@ pub enum Error {
     格位已存在(String),
     #[error("格位不存在: {0}")]
     格位不存在(String),
+    #[error("上下文不存在: {0}")]
+    上下文不存在(String),
     #[error("未知错误: {0}")]
     Other(String),
 }

@@ -204,23 +204,57 @@ function 设置过程(文本) {
   if (流) 流.innerHTML = `<div class="kv"><b>当前动作</b>${转义(文本)}</div>`;
 }
 
-/** 渲染属性面板：真实状态 + 中断按钮 */
+/** 渲染属性面板：真实状态 + 中断按钮 + 工作区切换 */
 function 渲染面板(状态) {
   if (!面板容器) return;
   const 状态块 = 状态 || { 就绪: null, 运行中, 工作区: '—', 最近结果: null };
   const 就绪文案 = 状态块.就绪 === null ? '待查询' : (状态块.就绪 ? '已上线' : '未上线（需 LLM_API_KEY）');
   const 运行文案 = 状态块.运行中 ? '执行中' : '待命';
   const 结果文案 = 状态块.最近结果 ? 转义(状态块.最近结果) : '—';
+  const 工作区只读 = 状态块.运行中 ? 'readonly' : '';
   面板容器.innerHTML = `<h3>智能体状态</h3><div class="prop-group">
     <div class="prop-item"><span class="k">就绪</span><span class="v">${转义(就绪文案)}</span></div>
     <div class="prop-item"><span class="k">状态</span><span class="v">${转义(运行文案)}</span></div>
     <div class="prop-item"><span class="k">工具</span><span class="v">读文件 / 写文件 / 运行命令</span></div>
     <div class="prop-item"><span class="k">工作区</span><span class="v">${转义(状态块.工作区)}</span></div>
+    <div class="prop-item" style="flex-direction:column;align-items:stretch;">
+      <span class="k" style="margin-bottom:4px;">切换工作区</span>
+      <div style="display:flex;gap:4px;">
+        <input id="ws-input" value="${转义(状态块.工作区 === '—' ? '' : 状态块.工作区)}" placeholder="输入工作区路径…" style="flex:1;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;" ${工作区只读} />
+        <button class="btn" id="ws-btn" style="padding:4px 8px;font-size:12px;" ${工作区只读}>切换</button>
+      </div>
+    </div>
     <div class="prop-item"><span class="k">最近结果</span><span class="v">${结果文案}</span></div>
   </div><h3>执行过程</h3><div id="p-flow"><div class="kv"><b>当前动作</b>${状态块.运行中 ? '执行中' : '待命'}</div></div>
   ${状态块.运行中 ? '<button class="btn" id="stop" style="margin-top:8px;width:100%;">中断执行</button>' : ''}`;
   const 停止按钮 = 面板容器.querySelector('#stop');
   if (停止按钮) 停止按钮.addEventListener('click', 中断执行);
+  const 切换按钮 = 面板容器.querySelector('#ws-btn');
+  if (切换按钮) 切换按钮.addEventListener('click', 切换工作区);
+}
+
+/** 切换工作区：POST /api/dev/workspace */
+async function 切换工作区() {
+  const 输入框 = 面板容器.querySelector('#ws-input');
+  if (!输入框) return;
+  const 新工作区 = 输入框.value.trim();
+  if (!新工作区) return;
+  try {
+    const 响应 = await fetch('/api/dev/workspace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 工作区: 新工作区 }),
+    });
+    if (响应.ok) {
+      气泡('ai', `工作区已切换到：${新工作区}`);
+      记日志('【切换】', 'act', `工作区 → ${新工作区}`);
+    } else {
+      const 错误 = await 响应.json().catch(() => ({ 错误: `HTTP ${响应.status}` }));
+      气泡('ai', `切换失败：${错误.错误 || 响应.status}`);
+    }
+  } catch (错误) {
+    气泡('ai', '无法连接数据服务，请确认后端已启动。');
+  }
 }
 
 /** 中断：置位后端中断句柄，智能体下一轮停止 */

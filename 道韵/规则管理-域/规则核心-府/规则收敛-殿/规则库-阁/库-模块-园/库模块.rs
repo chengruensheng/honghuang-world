@@ -103,7 +103,7 @@ impl RuleSet {
     pub fn 保存(&self, path: &str) -> Result<()> {
         let content = toml::to_string(self)
             .map_err(|e| Error::序列化(format!("序列化规则失败: {e}")))?;
-        std::fs::write(path, content).map_err(Error::Io)?;
+        hm_contract::原子写入文件(path, &content)?;
         Ok(())
     }
 

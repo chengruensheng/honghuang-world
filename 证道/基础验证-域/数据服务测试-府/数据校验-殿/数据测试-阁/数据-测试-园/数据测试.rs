@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use axum::{extract::{Path, State}, http::StatusCode, Json};
     use hm_http::{
         数据服务状态, 任务列表, 查询任务, 创建任务, 创建任务请求, 图谱查询, 日志列表, 记日志, 记日志请求,
+        看板列表, 看板查询, 看板发布, 看板承接, 看板提交, 发布任务请求, 承接任务请求, 提交任务请求,
         开发执行台, 受理开发任务, 受理失败, 事件记录,
     };
     use hm_contract::Component;
@@ -20,6 +21,8 @@ mod tests {
     use dy_rule::{Rule, RuleSet};
     use hd_event::{Event, EventBus};
 
+    static 看板序号: AtomicU64 = AtomicU64::new(0);
+
     fn 构造状态() -> 数据服务状态 {
         let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
         let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = Arc::new(Mutex::new(IterationLog::new()));
@@ -30,8 +33,12 @@ mod tests {
         let 心智地图 = Arc::new(Mutex::new(心智地图::新()));
         let 语境 = Arc::new(Mutex::new(过程上下文::新()));
         let 日志记录器 = Arc::new(Mutex::new(运行日志记录器::new()));
+        let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
+        let 任务看板 = Arc::new(Mutex::new(tc_task::TaskBoard::新建(
+            std::env::temp_dir().join(format!("洪荒测试看板_{序号}.jsonl")).to_string_lossy().to_string(),
+        )));
         let 开发执行台 = Arc::new(开发执行台::新());
-        数据服务状态::新(任务仓库, 迭代日志, 记忆库, 规则库, 事件总线, 图谱, 心智地图, 语境, 日志记录器, 开发执行台)
+        数据服务状态::新(任务仓库, 迭代日志, 记忆库, 规则库, 事件总线, 图谱, 心智地图, 语境, 任务看板, 日志记录器, 开发执行台, None)
     }
 
     /// 模拟开发执行器：按步进轮询中断标志，模拟智能体的同步阻塞执行
@@ -191,7 +198,7 @@ mod tests {
         let 状态 = 构造状态();
         状态.开发执行台.装配(
             Arc::new(模拟开发执行器 { 执行毫秒: 60, 中断标志: Arc::new(AtomicBool::new(false)) }),
-            "F:/临时工作区",
+            &std::env::temp_dir().to_string_lossy(),
         );
 
         let id = 受理开发任务(&状态, "修复登录超时".into()).expect("受理应成功");
@@ -212,7 +219,7 @@ mod tests {
         let 状态 = 构造状态();
         状态.开发执行台.装配(
             Arc::new(模拟开发执行器 { 执行毫秒: 500, 中断标志: Arc::new(AtomicBool::new(false)) }),
-            "F:/临时工作区",
+            &std::env::temp_dir().to_string_lossy(),
         );
 
         let 首次 = 受理开发任务(&状态, "第一个任务".into());
@@ -237,7 +244,7 @@ mod tests {
         let 状态 = 构造状态();
         状态.开发执行台.装配(
             Arc::new(模拟开发执行器 { 执行毫秒: 0, 中断标志: Arc::new(AtomicBool::new(false)) }),
-            "F:/临时工作区",
+            &std::env::temp_dir().to_string_lossy(),
         );
 
         let 结果 = 受理开发任务(&状态, "   ".into());
@@ -304,7 +311,7 @@ mod tests {
         let 状态 = 构造状态();
         状态.开发执行台.装配(
             Arc::new(模拟开发执行器 { 执行毫秒: 2000, 中断标志: Arc::new(AtomicBool::new(false)) }),
-            "F:/临时工作区",
+            &std::env::temp_dir().to_string_lossy(),
         );
 
         let id = 受理开发任务(&状态, "需要中断的长任务".into()).expect("受理应成功");
@@ -318,5 +325,242 @@ mod tests {
         drop(守卫);
         let 最近 = 状态.开发执行台.当前状态().最近结果.expect("应有失败摘要");
         assert!(最近.contains("执行失败"));
+    }
+
+    #[tokio::test]
+    async fn 看板_发布任务后列表包含该任务() {
+        let 状态 = 构造状态();
+        let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "看板测试任务".into(),
+            description: "验证发布".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布应成功");
+        assert_eq!(id, 1);
+
+        let Json(任务) = 看板列表(State(状态), Query(Default::default())).await;
+        assert_eq!(任务.len(), 1);
+        assert_eq!(任务[0].title, "看板测试任务");
+        assert_eq!(任务[0].status, TaskStatus::待圣人设计);
+    }
+
+    #[tokio::test]
+    async fn 看板_查询不存在id返回404() {
+        let 状态 = 构造状态();
+        let 结果 = 看板查询(State(状态), Path(999)).await;
+        assert_eq!(结果.expect_err("应返回404"), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn 看板_查询存在id返回任务详情() {
+        let 状态 = 构造状态();
+        let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "详情测试".into(),
+            description: "验证查询".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布应成功");
+
+        let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
+            panic!("查询应成功");
+        };
+        assert_eq!(任务.title, "详情测试");
+        assert_eq!(任务.status, TaskStatus::待圣人设计);
+    }
+
+    #[tokio::test]
+    async fn 看板_圣人承接待圣人设计任务() {
+        let 状态 = 构造状态();
+        let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "承接测试".into(),
+            description: "验证承接".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布应成功");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "圣人".into(),
+        })).await.expect("承接应成功");
+
+        let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
+            panic!("查询应成功");
+        };
+        assert_eq!(任务.status, TaskStatus::圣人设计中);
+        assert_eq!(任务.当前承接人, tc_task::AgentRole::圣人);
+    }
+
+    #[tokio::test]
+    async fn 看板_角色不符承接返回错误() {
+        let 状态 = 构造状态();
+        let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "角色不符".into(),
+            description: "验证拒绝".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布应成功");
+
+        let 结果 = 看板承接(State(状态), Path(id), Json(承接任务请求 {
+            role: "大罗金仙".into(),
+        })).await;
+        assert!(结果.is_err());
+    }
+
+    #[tokio::test]
+    async fn 看板_圣人提交任务流转到待大罗金仙实现() {
+        let 状态 = 构造状态();
+        let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "提交测试".into(),
+            description: "验证提交".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布应成功");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "圣人".into(),
+        })).await.expect("承接应成功");
+
+        看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
+            role: "圣人".into(),
+            next_status: "待大罗金仙实现".into(),
+        })).await.expect("提交应成功");
+
+        let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
+            panic!("查询应成功");
+        };
+        assert_eq!(任务.status, TaskStatus::待大罗金仙实现);
+    }
+
+    #[tokio::test]
+    async fn 看板_筛选按状态返回对应任务() {
+        let 状态 = 构造状态();
+        let _ = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "任务一".into(),
+            description: "".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布1");
+        let _ = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "任务二".into(),
+            description: "".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布2");
+
+        看板承接(State(状态.clone()), Path(1), Json(承接任务请求 {
+            role: "圣人".into(),
+        })).await.expect("圣人承接任务一");
+
+        let Json(圣人设计中) = 看板列表(State(状态.clone()), Query(看板筛选参数 {
+            status: Some("圣人设计中".into()),
+            role: None,
+        })).await;
+        assert_eq!(圣人设计中.len(), 1);
+        assert_eq!(圣人设计中[0].title, "任务一");
+
+        let Json(待圣人设计) = 看板列表(State(状态), Query(看板筛选参数 {
+            status: Some("待圣人设计".into()),
+            role: None,
+        })).await;
+        assert_eq!(待圣人设计.len(), 1);
+        assert_eq!(待圣人设计[0].title, "任务二");
+    }
+
+    use axum::extract::Query;
+    use hm_http::看板筛选参数;
+
+    /// 构造完整装配状态（五行相生桥接已串联），用于看板驱动五行闭环测试
+    fn 构造装配状态() -> 数据服务状态 {
+        let 装配 = hm_linkage::五行装配::装配();
+        let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
+        let 任务看板 = Arc::new(Mutex::new(tc_task::TaskBoard::新建(
+            std::env::temp_dir().join(format!("洪荒测试看板_装配_{序号}.jsonl")).to_string_lossy().to_string(),
+        )));
+        {
+            let mut 看板 = 任务看板.lock().expect("看板锁中毒");
+            看板.设置信号总线(装配.信号总线.clone());
+        }
+        数据服务状态::新(
+            装配.任务仓库.clone(),
+            装配.迭代日志.clone(),
+            装配.记忆库.clone(),
+            装配.规则库.clone(),
+            装配.事件总线.clone(),
+            装配.图谱.clone(),
+            装配.心智地图.clone(),
+            装配.语境.clone(),
+            任务看板,
+            装配.日志记录器.clone(),
+            Arc::new(开发执行台::新()),
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn 看板_发布任务触发任务推进信号() {
+        let 状态 = 构造装配状态();
+        let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "信号测试".into(),
+            description: "验证发布信号".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布应成功");
+
+        let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
+            panic!("查询应成功");
+        };
+        assert_eq!(任务.title, "信号测试");
+    }
+
+    #[tokio::test]
+    async fn 看板_任务完成触发木生火开启迭代() {
+        let 状态 = 构造装配状态();
+        let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
+            title: "闭环测试".into(),
+            description: "验证木生火".into(),
+            scene: None,
+            priority: None,
+        })).await.expect("发布应成功");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "圣人".into(),
+        })).await.expect("承接应成功");
+
+        看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
+            role: "圣人".into(),
+            next_status: "待大罗金仙实现".into(),
+        })).await.expect("提交应成功");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "大罗金仙".into(),
+        })).await.expect("大罗金仙承接应成功");
+
+        看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
+            role: "大罗金仙".into(),
+            next_status: "待准圣验收".into(),
+        })).await.expect("提交应成功");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "准圣".into(),
+        })).await.expect("准圣承接应成功");
+
+        看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
+            role: "准圣".into(),
+            next_status: "待道祖终审".into(),
+        })).await.expect("提交应成功");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "道祖".into(),
+        })).await.expect("道祖承接应成功");
+
+        看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
+            role: "道祖".into(),
+            next_status: "已完成".into(),
+        })).await.expect("提交应成功");
+
+        let 迭代日志 = 状态.迭代日志.lock().expect("迭代日志锁中毒");
+        let 迭代列表 = 迭代日志.全部();
+        assert!(!迭代列表.is_empty(), "木生火应已开启迭代");
+        assert!(迭代列表.iter().any(|it| it.变更说明.contains("闭环测试")),
+            "迭代变更说明应包含任务标题");
     }
 }

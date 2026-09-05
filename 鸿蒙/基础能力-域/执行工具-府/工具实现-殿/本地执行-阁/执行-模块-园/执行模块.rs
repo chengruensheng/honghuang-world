@@ -10,12 +10,18 @@ use hm_execute_contract::执行器;
 pub const 默认命令超时秒: u64 = 30;
 /// 默认单次命令最大输出字节（64 KiB，防止输出过大撑爆内存）：仅在未显式设置时生效
 pub const 默认最大输出字节: u64 = 64 * 1024;
-/// 危险命令关键字：命中即拒绝执行（防自主智能体误删、移动、杀进程、外泄或逃逸）
-const 危险命令关键字: &[&str] = &[
-    "del", "erase", "rd", "rmdir", "move", "ren", "rename",
-    "format", "diskpart", "shutdown", "taskkill",
-    "curl", "wget", "bitsadmin", "certutil", "powershell", "pwsh",
+/// 感知工具（Glob/Grep）单次返回结果条数上限，防止结果过多撑爆上下文
+pub const 条目上限: usize = 200;
+/// 搜索内容时单个文件的最大字节（1 MiB）：超大文件跳过，避免读入内存
+const 单文件最大字节: u64 = 1024 * 1024;
+/// 允许执行的命令白名单（自主开发场景所需的安全命令集；白名单外命令一律拒绝）
+const 允许命令白名单: &[&str] = &[
+    "cargo", "rustc", "rustup", "dir", "type", "echo", "cd",
+    "where", "findstr", "set", "cls", "chcp", "ping",
 ];
+
+/// 脚本扩展名黑名单（拒绝执行脚本文件，防止白名单外命令通过脚本间接执行）
+const 脚本扩展名: &[&str] = &[".bat", ".cmd", ".ps1", ".vbs", ".js", ".wsf", ".msi"];
 
 /// 本地执行器：在工作区沙箱内读写文件、运行命令。
 ///
@@ -83,6 +89,63 @@ impl 本地执行器 {
             }
         }
     }
+
+    /// 递归遍历目录，逐文件按行匹配关键词，命中写入「相对路径:行号:内容」
+    fn 递归搜索(&self, 目录: &Path, 关键词: &str, 结果: &mut Vec<String>) -> Result<()> {
+        let 条目 = std::fs::read_dir(目录).map_err(Error::Io)?;
+        let mut 项集: Vec<PathBuf> = Vec::new();
+        for 项 in 条目 {
+            项集.push(项.map_err(Error::Io)?.path());
+        }
+        项集.sort();
+        for 路径 in 项集 {
+            if 结果.len() >= 条目上限 {
+                break;
+            }
+            if 路径.is_dir() {
+                if !应跳过目录(&路径) {
+                    self.递归搜索(&路径, 关键词, 结果)?;
+                }
+            } else if 路径.is_file() {
+                self.搜索单文件(&路径, 关键词, 结果);
+            }
+        }
+        Ok(())
+    }
+
+    /// 读单个文本文件并按行匹配关键词；跳过超大文件与二进制（含 NUL 字节）
+    fn 搜索单文件(&self, 路径: &Path, 关键词: &str, 结果: &mut Vec<String>) {
+        let 元数据 = match std::fs::metadata(路径) {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+        if 元数据.len() > 单文件最大字节 {
+            return;
+        }
+        let 字节 = match std::fs::read(路径) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        if 字节.contains(&0) {
+            return;
+        }
+        let 文本 = String::from_utf8_lossy(&字节);
+        for (序号, 行) in 文本.lines().enumerate() {
+            if 行.contains(关键词) {
+                if let Ok(相对) = 路径.strip_prefix(&self.工作区) {
+                    结果.push(format!("{}:{}:{}", 相对.to_string_lossy(), 序号 + 1, 行));
+                }
+            }
+        }
+    }
+}
+
+/// 判断目录是否应跳过（构建产物、仓库元数据、依赖目录，避免误搜噪声）
+fn 应跳过目录(路径: &Path) -> bool {
+    matches!(
+        路径.file_name().and_then(|n| n.to_str()),
+        Some("target") | Some(".git") | Some("node_modules")
+    )
 }
 
 impl Component for 本地执行器 {
@@ -108,8 +171,8 @@ impl 执行器 for 本地执行器 {
     }
 
     fn 运行命令(&self, 命令: &str) -> Result<String> {
-        if 命中危险命令(命令) {
-            return Err(Error::危险命令(命令.to_string()));
+        if 命令不在白名单(命令) {
+            return Err(Error::危险命令(format!("命令不在白名单: {命令}")));
         }
         let mut 子进程 = Command::new("cmd")
             .args(["/C", 命令])
@@ -138,6 +201,82 @@ impl 执行器 for 本地执行器 {
         Ok(标准输出)
     }
 
+    fn 列目录(&self, 路径: &str) -> Result<String> {
+        let 目标 = self.解析路径(路径)?;
+        let 条目 = std::fs::read_dir(&目标).map_err(Error::Io)?;
+        let mut 结果: Vec<String> = Vec::new();
+        for 项 in 条目 {
+            let 项 = 项.map_err(Error::Io)?;
+            let 名 = 项.file_name().to_string_lossy().into_owned();
+            let 类型 = if 项.path().is_dir() { "[目录]" } else { "[文件]" };
+            结果.push(format!("{类型} {名}"));
+        }
+        结果.sort();
+        if 结果.is_empty() {
+            Ok("（空目录）".to_string())
+        } else {
+            Ok(结果.join("\n"))
+        }
+    }
+
+    fn 按名找文件(&self, 模式: &str) -> Result<String> {
+        let 绝对模式 = self.工作区.join(模式);
+        let 模式字符串 = 绝对模式.to_string_lossy().into_owned();
+        let 匹配 = glob::glob(&模式字符串)
+            .map_err(|e| Error::Config(format!("无效 glob 模式 {模式}: {e}")))?;
+        let mut 结果: Vec<String> = Vec::new();
+        for 项 in 匹配 {
+            match 项 {
+                Ok(路径) if 路径.is_file() => {
+                    if let Ok(相对) = 路径.strip_prefix(&self.工作区) {
+                        结果.push(相对.to_string_lossy().into_owned());
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!("glob 匹配错误: {e}"),
+            }
+        }
+        if 结果.len() > 条目上限 {
+            结果.truncate(条目上限);
+        }
+        if 结果.is_empty() {
+            Ok("（无匹配）".to_string())
+        } else {
+            Ok(结果.join("\n"))
+        }
+    }
+
+    fn 搜索内容(&self, 关键词: &str) -> Result<String> {
+        let mut 结果: Vec<String> = Vec::new();
+        self.递归搜索(&self.工作区.clone(), 关键词, &mut 结果)?;
+        if 结果.is_empty() {
+            Ok("（无匹配）".to_string())
+        } else {
+            Ok(结果.join("\n"))
+        }
+    }
+
+    fn 精确编辑(&self, 路径: &str, 旧: &str, 新: &str) -> Result<String> {
+        if 旧.is_empty() {
+            return Err(Error::Config("要替换的文本不能为空".into()));
+        }
+        let 目标 = self.解析路径(路径)?;
+        let 原文 = std::fs::read_to_string(&目标).map_err(Error::Io)?;
+        let 匹配次数 = 原文.matches(旧).count();
+        if 匹配次数 == 0 {
+            return Err(Error::Config(format!("未找到要替换的文本: {旧}")));
+        }
+        if 匹配次数 > 1 {
+            return Err(Error::Config(format!(
+                "要替换的文本出现 {匹配次数} 处，请提供更精确的上下文"
+            )));
+        }
+        std::fs::copy(&目标, 备份路径(&目标)).map_err(Error::Io)?;
+        let 新内容 = 原文.replacen(旧, 新, 1);
+        std::fs::write(&目标, 新内容).map_err(Error::Io)?;
+        Ok("替换成功（1 处）".to_string())
+    }
+
 }
 
 /// 生成备份路径：原文件名追加 ".bak" 后缀
@@ -147,12 +286,38 @@ fn 备份路径(目标: &Path) -> PathBuf {
     目标.with_file_name(名)
 }
 
-/// 判断命令是否命中危险命令黑名单（按词边界匹配，避免 "model" 误伤 "del"）
-fn 命中危险命令(命令: &str) -> bool {
-    let 小写 = 命令.to_lowercase();
-    危险命令关键字.iter().any(|词| {
-        小写.split(|c: char| !c.is_alphanumeric()).any(|token| token == *词)
-    })
+/// 判断命令是否不在白名单（含转义符、脚本扩展名、白名单外命令名）
+fn 命令不在白名单(命令: &str) -> bool {
+    if 命令.contains('^') {
+        return true;
+    }
+    for 子命令 in 命令.split(['&', '|']).filter(|s| !s.trim().is_empty()) {
+        let 命令名 = match 子命令.trim().split_whitespace().next() {
+            Some(s) => s.trim_matches('"'),
+            None => continue,
+        };
+        if 脚本扩展名.iter().any(|ext| 命令名.to_lowercase().ends_with(ext)) {
+            return true;
+        }
+        let 基名 = 去路径去扩展名(命令名);
+        if !允许命令白名单.contains(&基名.as_str()) {
+            return true;
+        }
+    }
+    false
+}
+
+/// 从命令名中提取文件名部分并去掉 .exe 扩展名（如 `C:\path\cargo.exe` → `cargo`）
+fn 去路径去扩展名(命令名: &str) -> String {
+    let 文件名 = match Path::new(命令名).file_name() {
+        Some(n) => n.to_string_lossy().to_string(),
+        None => 命令名.to_string(),
+    };
+    if 文件名.to_lowercase().ends_with(".exe") {
+        文件名[..文件名.len() - 4].to_string()
+    } else {
+        文件名
+    }
 }
 
 /// 后台收集标准输出与标准错误（各自限长，避免 pipe 满阻塞子进程）

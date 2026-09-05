@@ -3,20 +3,21 @@ name = "洪荒·世界"
 version = "0.1.0"
 run_self_test = false
 run_dev_agent = false
-dev_workspace = "F:/临时工作区"
+dev_workspace = "./工作区"
 dev_task = ""
 dev_max_rounds = 20
 executor_timeout_secs = 30
 executor_max_output_bytes = 65536
-executor_ctrlc = true
 
 [log]
 level = "info"
 
 [http]
+bind = "127.0.0.1"
 port = 8321
 static_dir = "乾坤/界面呈现-域/世界入口-府"
 hot_reload = false
+auth_token = ""
 
 [persistence]
 dir = ""

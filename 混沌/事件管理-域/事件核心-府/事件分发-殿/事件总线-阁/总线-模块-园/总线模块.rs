@@ -90,7 +90,7 @@ impl EventBus {
         };
         let content = toml::to_string(&log)
             .map_err(|e| Error::序列化(format!("序列化事件失败: {e}")))?;
-        std::fs::write(path, content).map_err(Error::Io)?;
+        hm_contract::原子写入文件(path, &content)?;
         Ok(())
     }
 

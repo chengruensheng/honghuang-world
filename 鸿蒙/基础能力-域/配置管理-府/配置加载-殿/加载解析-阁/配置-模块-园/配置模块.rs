@@ -40,9 +40,7 @@ pub struct AppConfig {
     /// 自主开发智能体执行器单次命令最大输出字节数（默认 64 KiB；防止输出撑爆内存）
     #[serde(default = "default_executor_max_output_bytes")]
     pub executor_max_output_bytes: u64,
-    /// 自主开发时是否接入 Ctrl+C 中断（默认开启；非交互环境注册失败仅告警）
-    #[serde(default = "default_executor_ctrlc")]
-    pub executor_ctrlc: bool,
+
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -53,6 +51,9 @@ pub struct LogConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HttpConfig {
+    /// HTTP 服务监听地址（默认回环 127.0.0.1；设为 0.0.0.0 需同时配置 auth_token）
+    #[serde(default = "default_bind")]
+    pub bind: String,
     /// HTTP 服务监听端口
     #[serde(default = "default_http_port")]
     pub port: u16,
@@ -62,6 +63,10 @@ pub struct HttpConfig {
     /// 前端热更新开关（默认关闭，仅开发期开启：监视前端目录，文件变化自动刷新窗口）
     #[serde(default)]
     pub hot_reload: bool,
+    /// 写接口鉴权令牌（非空时 POST/PUT/DELETE 需携带 Authorization: Bearer <令牌>；
+    /// bind 非 127.0.0.1 时必须设置，否则启动失败）
+    #[serde(default)]
+    pub auth_token: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -74,11 +79,12 @@ pub struct PersistenceConfig {
 fn default_name() -> String { "洪荒·世界".into() }
 fn default_version() -> String { "0.1.0".into() }
 fn default_level() -> String { "info".into() }
-fn default_workspace() -> String { "F:/临时工作区".into() }
+fn default_workspace() -> String { "./工作区".into() }
 fn default_max_rounds() -> usize { 20 }
 fn default_executor_timeout_secs() -> u64 { 30 }
 fn default_executor_max_output_bytes() -> u64 { 64 * 1024 }
-fn default_executor_ctrlc() -> bool { true }
+
+fn default_bind() -> String { "127.0.0.1".into() }
 fn default_http_port() -> u16 { 8321 }
 fn default_static_dir() -> String { "乾坤/界面呈现-域/世界入口-府".into() }
 
@@ -94,7 +100,7 @@ impl Default for AppConfig {
             dev_max_rounds: default_max_rounds(),
             executor_timeout_secs: default_executor_timeout_secs(),
             executor_max_output_bytes: default_executor_max_output_bytes(),
-            executor_ctrlc: default_executor_ctrlc(),
+
         }
     }
 }
@@ -108,9 +114,11 @@ impl Default for LogConfig {
 impl Default for HttpConfig {
     fn default() -> Self {
         HttpConfig {
+            bind: default_bind(),
             port: default_http_port(),
             static_dir: default_static_dir(),
             hot_reload: false,
+            auth_token: String::new(),
         }
     }
 }

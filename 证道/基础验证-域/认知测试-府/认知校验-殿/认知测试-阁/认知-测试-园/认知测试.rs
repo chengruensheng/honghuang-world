@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use hm_cognition::{
+        AgentRole, ContextManager, ToolCallRecord,
         依赖边, 图谱, 符号, 符号种类, 模块, 维度, 目标内容, 格位, 心智地图, 消息角色, 语境消息,
         过程上下文,
     };
@@ -15,6 +16,13 @@ mod tests {
             最后校验时间: 0,
             目标内容: None,
         }
+    }
+
+    fn 临时路径(名: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("hm_cognition_test_{名}.json"))
+            .to_string_lossy()
+            .into_owned()
     }
 
     #[test]
@@ -76,7 +84,6 @@ mod tests {
         assert!(结果.is_err());
         assert!(结果.expect_err("应报错").to_string().contains("格位已存在"));
 
-        // 不同维度同名格位允许（维度参与唯一性）
         assert!(地图.添加格位(造格位(维度::执行, "门禁", "三")).is_ok());
     }
 
@@ -181,5 +188,214 @@ mod tests {
         assert_eq!(还原.消息数(), 1);
         assert_eq!(还原.全部()[0].角色, 消息角色::系统);
         assert_eq!(还原.全部()[0].内容, "系统提示");
+    }
+
+    #[test]
+    fn 角色_默认为道祖() {
+        let role = AgentRole::default();
+        assert_eq!(role, AgentRole::道祖);
+    }
+
+    #[test]
+    fn 角色_名称返回正确中文() {
+        assert_eq!(AgentRole::道祖.名称(), "道祖");
+        assert_eq!(AgentRole::圣人.名称(), "圣人");
+        assert_eq!(AgentRole::大罗金仙.名称(), "大罗金仙");
+        assert_eq!(AgentRole::准圣.名称(), "准圣");
+    }
+
+    #[test]
+    fn 上下文管理器_创建后可查询() {
+        let path = 临时路径("创建查询");
+        let mut mgr = ContextManager::新(&path);
+        let id = mgr.创建上下文(AgentRole::圣人, Some(42));
+
+        let ctx = mgr.查询(&id).expect("上下文应存在");
+        assert_eq!(ctx.层级角色, AgentRole::圣人);
+        assert_eq!(ctx.task_id, Some(42));
+        assert!(ctx.消息.is_empty());
+        assert!(ctx.工具调用.is_empty());
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_添加消息后内容正确() {
+        let path = 临时路径("添加消息");
+        let mut mgr = ContextManager::新(&path);
+        let id = mgr.创建上下文(AgentRole::道祖, None);
+
+        mgr.添加消息(&id, 语境消息 { 角色: 消息角色::用户, 内容: "设计需求".into() })
+            .expect("添加消息应成功");
+        mgr.添加消息(&id, 语境消息 { 角色: 消息角色::助手, 内容: "已理解".into() })
+            .expect("添加消息应成功");
+
+        let ctx = mgr.查询(&id).expect("上下文应存在");
+        assert_eq!(ctx.消息.len(), 2);
+        assert_eq!(ctx.消息[0].内容, "设计需求");
+        assert_eq!(ctx.消息[1].角色, 消息角色::助手);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_记录工具调用后内容正确() {
+        let path = 临时路径("工具调用");
+        let mut mgr = ContextManager::新(&path);
+        let id = mgr.创建上下文(AgentRole::大罗金仙, Some(7));
+
+        mgr.记录工具调用(&id, ToolCallRecord {
+            工具名: "read_file".into(),
+            参数: "src/main.rs".into(),
+            结果摘要: "读取成功".into(),
+            时间戳: 100,
+        }).expect("记录工具调用应成功");
+
+        let ctx = mgr.查询(&id).expect("上下文应存在");
+        assert_eq!(ctx.工具调用.len(), 1);
+        assert_eq!(ctx.工具调用[0].工具名, "read_file");
+        assert_eq!(ctx.工具调用[0].参数, "src/main.rs");
+        assert_eq!(ctx.工具调用[0].结果摘要, "读取成功");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_清理后不可查询() {
+        let path = 临时路径("清理");
+        let mut mgr = ContextManager::新(&path);
+        let id = mgr.创建上下文(AgentRole::准圣, None);
+
+        mgr.清理上下文(&id).expect("清理应成功");
+        assert!(mgr.查询(&id).is_none(), "清理后查询应返回 None");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_不存在上下文添加消息返回错误() {
+        let path = 临时路径("不存在");
+        let mut mgr = ContextManager::新(&path);
+        let result = mgr.添加消息("ctx-nonexistent", 语境消息 {
+            角色: 消息角色::用户,
+            内容: "测试".into(),
+        });
+        assert!(result.is_err());
+        let err = result.expect_err("应报错");
+        assert!(err.to_string().contains("上下文不存在"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_不存在上下文记录工具调用返回错误() {
+        let path = 临时路径("不存在工具");
+        let mut mgr = ContextManager::新(&path);
+        let result = mgr.记录工具调用("ctx-nonexistent", ToolCallRecord {
+            工具名: "test".into(),
+            参数: "".into(),
+            结果摘要: "".into(),
+            时间戳: 0,
+        });
+        assert!(result.is_err());
+        assert!(result.expect_err("应报错").to_string().contains("上下文不存在"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_不存在上下文清理返回错误() {
+        let path = 临时路径("不存在清理");
+        let mut mgr = ContextManager::新(&path);
+        let result = mgr.清理上下文("ctx-nonexistent");
+        assert!(result.is_err());
+        assert!(result.expect_err("应报错").to_string().contains("上下文不存在"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_不同角色上下文相互隔离() {
+        let path = 临时路径("隔离");
+        let mut mgr = ContextManager::新(&path);
+        let id_sage = mgr.创建上下文(AgentRole::圣人, Some(1));
+        let id_dev = mgr.创建上下文(AgentRole::大罗金仙, Some(1));
+
+        mgr.添加消息(&id_sage, 语境消息 { 角色: 消息角色::助手, 内容: "圣人思考".into() })
+            .expect("圣人添加消息");
+        mgr.添加消息(&id_dev, 语境消息 { 角色: 消息角色::助手, 内容: "金仙实现".into() })
+            .expect("金仙添加消息");
+
+        let ctx_sage = mgr.查询(&id_sage).expect("圣人上下文应存在");
+        let ctx_dev = mgr.查询(&id_dev).expect("金仙上下文应存在");
+
+        assert_eq!(ctx_sage.层级角色, AgentRole::圣人);
+        assert_eq!(ctx_sage.消息[0].内容, "圣人思考");
+        assert_eq!(ctx_dev.层级角色, AgentRole::大罗金仙);
+        assert_eq!(ctx_dev.消息[0].内容, "金仙实现");
+
+        assert_eq!(ctx_sage.消息.len(), 1, "圣人上下文不应包含金仙消息");
+        assert_eq!(ctx_dev.消息.len(), 1, "金仙上下文不应包含圣人消息");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_json持久化往返() {
+        let path = 临时路径("持久化");
+        let mut mgr = ContextManager::新(&path);
+        let id = mgr.创建上下文(AgentRole::圣人, Some(10));
+        mgr.添加消息(&id, 语境消息 { 角色: 消息角色::用户, 内容: "持久化测试".into() })
+            .expect("添加消息");
+        mgr.记录工具调用(&id, ToolCallRecord {
+            工具名: "write_file".into(),
+            参数: "output.rs".into(),
+            结果摘要: "写入成功".into(),
+            时间戳: 200,
+        }).expect("记录工具调用");
+        mgr.保存().expect("保存应成功");
+
+        let loaded = ContextManager::加载(&path).expect("加载应成功");
+        let ctx = loaded.查询(&id).expect("上下文应存在");
+        assert_eq!(ctx.层级角色, AgentRole::圣人);
+        assert_eq!(ctx.task_id, Some(10));
+        assert_eq!(ctx.消息.len(), 1);
+        assert_eq!(ctx.消息[0].内容, "持久化测试");
+        assert_eq!(ctx.工具调用.len(), 1);
+        assert_eq!(ctx.工具调用[0].工具名, "write_file");
+        assert_eq!(ctx.工具调用[0].结果摘要, "写入成功");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 上下文管理器_加载不存在的文件返回空管理器() {
+        let path = 临时路径("不存在加载");
+        let mgr = ContextManager::加载(&path).expect("加载应成功");
+        assert_eq!(mgr.全部().len(), 0);
+    }
+
+    #[test]
+    fn 上下文管理器_全部列出所有上下文() {
+        let path = 临时路径("全部");
+        let mut mgr = ContextManager::新(&path);
+        mgr.创建上下文(AgentRole::道祖, None);
+        mgr.创建上下文(AgentRole::圣人, None);
+        mgr.创建上下文(AgentRole::大罗金仙, None);
+
+        let 全部 = mgr.全部();
+        assert_eq!(全部.len(), 3);
+        let 角色 = 全部.iter().map(|c| c.层级角色).collect::<Vec<_>>();
+        assert!(角色.contains(&AgentRole::道祖));
+        assert!(角色.contains(&AgentRole::圣人));
+        assert!(角色.contains(&AgentRole::大罗金仙));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn 工具调用记录_序列化往返保持一致() {
+        let record = ToolCallRecord {
+            工具名: "edit_file".into(),
+            参数: "src/lib.rs".into(),
+            结果摘要: "修改了3行".into(),
+            时间戳: 999,
+        };
+        let json = serde_json::to_string(&record).expect("序列化应成功");
+        let 还原: ToolCallRecord = serde_json::from_str(&json).expect("反序列化应成功");
+        assert_eq!(还原.工具名, "edit_file");
+        assert_eq!(还原.参数, "src/lib.rs");
+        assert_eq!(还原.结果摘要, "修改了3行");
+        assert_eq!(还原.时间戳, 999);
     }
 }

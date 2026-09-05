@@ -66,7 +66,7 @@ mod tests {
                         _ => "500 Internal Server Error",
                     };
                     let 响应 = format!(
-                        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        "HTTP/1.0 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
                         状态文本,
                         响应体.len(),
                         响应体,
@@ -84,8 +84,8 @@ mod tests {
         let 主地址 = 起模拟模型服务器(429, "{\"error\":\"rate limited\"}");
         let 备地址 = 起模拟模型服务器(200, "{\"choices\":[{\"message\":{\"content\":\"备选答复\"}}]}");
         let 生成器 = 对话生成器::新带备选(
-            "主密钥".into(), format!("http://{主地址}"), "主模型".into(),
-            "备密钥".into(), format!("http://{备地址}"), "备模型".into(),
+            "main-key".into(), format!("http://{主地址}"), "主模型".into(),
+            "fallback-key".into(), format!("http://{备地址}"), "备模型".into(),
         );
         let 结果 = 生成器.生成("你好".into()).unwrap();
         assert_eq!(结果, "备选答复");
@@ -96,8 +96,8 @@ mod tests {
         let 主地址 = 起模拟模型服务器(200, "{\"choices\":[{\"message\":{\"content\":\"主答复\"}}]}");
         let 备地址 = 起模拟模型服务器(200, "{\"choices\":[{\"message\":{\"content\":\"备答复\"}}]}");
         let 生成器 = 对话生成器::新带备选(
-            "主密钥".into(), format!("http://{主地址}"), "主模型".into(),
-            "备密钥".into(), format!("http://{备地址}"), "备模型".into(),
+            "main-key".into(), format!("http://{主地址}"), "主模型".into(),
+            "fallback-key".into(), format!("http://{备地址}"), "备模型".into(),
         );
         let 结果 = 生成器.生成("你好".into()).unwrap();
         assert_eq!(结果, "主答复");

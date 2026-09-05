@@ -22,5 +22,6 @@ hm-agent = { path = "../自主开发-府" }
 hm-content = { path = "../../基础能力-域/内容生成-府" }
 hm-execute = { path = "../../基础能力-域/执行工具-府" }
 hm-execute-contract = { path = "../../基础契约-域/执行契约-府" }
+tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
 tracing = { workspace = true }
 ctrlc = "3"

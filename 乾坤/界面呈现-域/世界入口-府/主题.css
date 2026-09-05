@@ -206,3 +206,27 @@ body::before {
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 @media (max-width: 1150px) { .prop { display: none; } }
+
+/* 任务看板 */
+.board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.board-col { min-width: 180px; max-width: 220px; flex-shrink: 0; border-radius: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 10px; }
+.board-col-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.board-col-title { font-size: 11px; font-weight: 600; color: var(--text); }
+.board-col-count { font-size: 10px; color: var(--text-faint); background: rgba(255,255,255,0.05); border-radius: 4px; padding: 2px 6px; }
+.board-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; cursor: pointer; background: rgba(255,255,255,0.03); transition: border-color 0.15s; }
+.board-card:hover { border-color: var(--border-strong); }
+.board-card-title { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 6px; line-height: 1.4; }
+.board-card-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.tag { font-size: 9px; padding: 2px 5px; border-radius: 4px; color: #fff; font-weight: 600; }
+.btn-accept, .btn-submit { font-size: 10px; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--border-strong); background: rgba(255,255,255,0.05); color: var(--text-dim); cursor: pointer; margin-right: 4px; margin-bottom: 4px; transition: all 0.15s; }
+.btn-accept:hover, .btn-submit:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+.btn-pub { font-size: 12px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--wood); background: rgba(74,222,128,0.12); color: var(--wood); cursor: pointer; font-weight: 600; }
+.btn-pub:hover { background: rgba(74,222,128,0.2); }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal-box { background: var(--surface-solid); border: 1px solid var(--border-strong); border-radius: 14px; padding: 24px; width: 360px; }
+.modal-box h3 { font-size: 14px; color: var(--text); margin: 0 0 16px; }
+.modal-input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text); font-size: 12px; margin-bottom: 10px; }
+.modal-input:focus { outline: none; border-color: var(--border-strong); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.btn-cancel { font-size: 12px; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; }
+.btn-ok { font-size: 12px; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--wood); background: rgba(74,222,128,0.15); color: var(--wood); cursor: pointer; font-weight: 600; }
