@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "洪荒世界",
+  "version": "0.1.0",
+  "identifier": "com.honghuang.world",
+  "build": {
+    "frontendDist": "../../../../乾坤/界面呈现-域/世界入口-府"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "洪荒世界",
+        "width": 1280,
+        "height": 800,
+        "url": "http://localhost:8321"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.ico", "icons/icon.png"]
+  }
+}

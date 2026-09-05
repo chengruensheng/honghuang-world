@@ -11,51 +11,25 @@ const 请求重试次数: u32 = 2;
 /// 重试间隔（秒）
 const 请求重试间隔秒: u64 = 2;
 
-/// 对话生成器：通过 OpenAI 兼容的 chat/completions 接口调用外部大模型（默认 MiniMax）。
-/// 凭据与端点经环境变量注入，密钥不入库。
-pub struct 对话生成器 {
+/// 主模型环境变量名
+const 主密钥环境变量: &str = "LLM_API_KEY";
+const 主地址环境变量: &str = "LLM_BASE_URL";
+const 主模型环境变量: &str = "LLM_MODEL";
+/// 备选模型环境变量名（主模型失败时自动降级）
+const 备选密钥环境变量: &str = "LLM_FALLBACK_API_KEY";
+const 备选地址环境变量: &str = "LLM_FALLBACK_BASE_URL";
+const 备选模型环境变量: &str = "LLM_FALLBACK_MODEL";
+
+/// 模型提供商：一组 OpenAI 兼容端点的凭据（密钥 / 地址 / 模型名）
+struct 模型提供商 {
     api_key: String,
     base_url: String,
     model: String,
 }
 
-impl 对话生成器 {
-    /// 显式构造（密钥不入库，由调用方注入）
-    pub fn 新(api_key: String, base_url: String, model: String) -> Self {
-        对话生成器 { api_key, base_url, model }
-    }
-
-    /// 从环境变量构建：LLM_API_KEY / LLM_BASE_URL / LLM_MODEL。
-    /// 任一关键配置缺失时 fail-loud（返回错误），绝不静默降级。
-    pub fn 从环境() -> Result<Self> {
-        // 尽力加载根目录 .env（不存在时忽略）
-        let _ = dotenvy::dotenv();
-        let api_key = std::env::var("LLM_API_KEY")
-            .map_err(|_| Error::Config("缺少 LLM_API_KEY，请在 .env 中配置".into()))?;
-        let base_url = std::env::var("LLM_BASE_URL")
-            .map_err(|_| Error::Config("缺少 LLM_BASE_URL，请配置环境变量".into()))?;
-        let model = std::env::var("LLM_MODEL")
-            .map_err(|_| Error::Config("缺少 LLM_MODEL，请配置环境变量".into()))?;
-        Ok(对话生成器::新(api_key, base_url, model))
-    }
-
-    /// 发送请求并解析响应，网络/读取失败时按配置重试。
-    fn 请求模型(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
-        let mut 最后一次错误: Option<Error> = None;
-        for 尝试 in 0..=请求重试次数 {
-            if 尝试 > 0 {
-                std::thread::sleep(Duration::from_secs(请求重试间隔秒));
-            }
-            match self.发送请求(body) {
-                Ok(值) => return Ok(值),
-                Err(错误) => 最后一次错误 = Some(错误),
-            }
-        }
-        Err(最后一次错误.unwrap_or_else(|| Error::模型("请求模型失败".into())))
-    }
-
-    /// 单次 HTTP 请求：发送 body 并解析 JSON 响应体。
-    fn 发送请求(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
+impl 模型提供商 {
+    /// 单次 HTTP 请求：发送 body 并解析 JSON 响应体（不重试）
+    fn 请求(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
         let resp = ureq::post(&self.base_url)
             .set("Authorization", &format!("Bearer {}", self.api_key))
             .set("Content-Type", "application/json")
@@ -70,37 +44,137 @@ impl 对话生成器 {
     }
 }
 
+/// 对话生成器：通过 OpenAI 兼容的 chat/completions 接口调用外部大模型（默认 MiniMax）。
+/// 凭据与端点经环境变量注入，密钥不入库；主模型失败（限流/超时/解析）自动降级备选。
+pub struct 对话生成器 {
+    主: 模型提供商,
+    备选: Option<模型提供商>,
+}
+
+impl 对话生成器 {
+    /// 显式构造（密钥不入库，由调用方注入；仅主模型，无降级）
+    pub fn 新(api_key: String, base_url: String, model: String) -> Self {
+        对话生成器 {
+            主: 模型提供商 { api_key, base_url, model },
+            备选: None,
+        }
+    }
+
+    /// 显式构造主 + 备选提供商（密钥不入库，由调用方注入；主失败自动降级备选）
+    pub fn 新带备选(
+        主密钥: String, 主地址: String, 主模型: String,
+        备密钥: String, 备地址: String, 备模型: String,
+    ) -> Self {
+        对话生成器 {
+            主: 模型提供商 { api_key: 主密钥, base_url: 主地址, model: 主模型 },
+            备选: Some(模型提供商 { api_key: 备密钥, base_url: 备地址, model: 备模型 }),
+        }
+    }
+
+    /// 从环境变量构建：主 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL，
+    /// 备选 LLM_FALLBACK_API_KEY / LLM_FALLBACK_BASE_URL / LLM_FALLBACK_MODEL（可选）。
+    /// 主 key 缺失 fail-loud（返回错误），绝不静默降级。
+    pub fn 从环境() -> Result<Self> {
+        // 尽力加载环境密钥文件（不存在时忽略）
+        let _ = dotenvy::dotenv();
+        let api_key = std::env::var(主密钥环境变量)
+            .map_err(|_| Error::Config("缺少 LLM_API_KEY，请在环境密钥文件中配置".into()))?;
+        let base_url = std::env::var(主地址环境变量)
+            .map_err(|_| Error::Config("缺少 LLM_BASE_URL，请配置环境变量".into()))?;
+        let model = std::env::var(主模型环境变量)
+            .map_err(|_| Error::Config("缺少 LLM_MODEL，请配置环境变量".into()))?;
+        let mut 生成器 = 对话生成器::新(api_key, base_url, model);
+        // 备选提供商（三项齐全才启用降级，缺任一则仅用主模型）
+        if let (Ok(备密钥), Ok(备地址), Ok(备模型)) = (
+            std::env::var(备选密钥环境变量),
+            std::env::var(备选地址环境变量),
+            std::env::var(备选模型环境变量),
+        ) {
+            生成器.备选 = Some(模型提供商 { api_key: 备密钥, base_url: 备地址, model: 备模型 });
+        }
+        Ok(生成器)
+    }
+
+    /// 依次尝试主、备选提供商：构造请求体 → 请求（含重试）→ 解析，任一成功即返回。
+    /// 主失败（请求或解析）记录警告并降级备选；备选也失败则返回最后的错误。
+    fn 逐个生成<T, 造, 析>(&self, 造体: &造, 解析: &析) -> Result<T>
+    where
+        造: Fn(&模型提供商) -> serde_json::Value,
+        析: Fn(&serde_json::Value) -> Result<T>,
+    {
+        match self.请求解析(&self.主, &造体(&self.主), 解析) {
+            Ok(值) => Ok(值),
+            Err(主错误) => {
+                tracing::warn!("主模型请求失败，尝试降级备选: {主错误}");
+                match &self.备选 {
+                    Some(备) => match self.请求解析(备, &造体(备), 解析) {
+                        Ok(值) => Ok(值),
+                        Err(备错误) => {
+                            tracing::warn!("备选模型请求失败: {备错误}");
+                            Err(备错误)
+                        }
+                    },
+                    None => Err(主错误),
+                }
+            }
+        }
+    }
+
+    /// 单提供商：请求 + 按配置重试 + 解析
+    fn 请求解析<T, 析>(&self, 提供商: &模型提供商, body: &serde_json::Value, 解析: &析) -> Result<T>
+    where
+        析: Fn(&serde_json::Value) -> Result<T>,
+    {
+        let mut 最后一次错误: Option<Error> = None;
+        for 尝试 in 0..=请求重试次数 {
+            if 尝试 > 0 {
+                std::thread::sleep(Duration::from_secs(请求重试间隔秒));
+            }
+            match 提供商.请求(body) {
+                Ok(值) => return 解析(&值),
+                Err(错误) => 最后一次错误 = Some(错误),
+            }
+        }
+        Err(最后一次错误.unwrap_or_else(|| Error::模型("请求模型失败".into())))
+    }
+}
+
 impl Component for 对话生成器 {
     fn name(&self) -> &'static str { "对话生成器" }
 }
 
 impl 内容生成器 for 对话生成器 {
     fn 生成(&self, 提示词: String) -> Result<String> {
-        let body = json!({
-            "model": self.model,
-            "messages": [{ "role": "user", "content": 提示词 }],
+        let 造体 = |提供商: &模型提供商| json!({
+            "model": &提供商.model,
+            "messages": [{ "role": "user", "content": 提示词.as_str() }],
         });
-        let parsed = self.请求模型(&body)?;
-        parsed["choices"][0]["message"]["content"]
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| Error::模型("模型响应缺少 choices[0].message.content".into()))
+        let 解析 = |值: &serde_json::Value| {
+            值["choices"][0]["message"]["content"]
+                .as_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| Error::模型("模型响应缺少 choices[0].message.content".into()))
+        };
+        self.逐个生成(&造体, &解析)
     }
 }
 
 impl 工具对话器 for 对话生成器 {
     fn 对话(&self, 消息: Vec<对话消息>, 工具: Vec<serde_json::Value>) -> Result<模型响应> {
         let 消息json: Vec<serde_json::Value> = 消息.iter().map(消息转json).collect();
-        let body = json!({
-            "model": &self.model,
-            "messages": 消息json,
-            "tools": 工具,
+        let 造体 = |提供商: &模型提供商| json!({
+            "model": &提供商.model,
+            "messages": &消息json,
+            "tools": &工具,
         });
-        let parsed = self.请求模型(&body)?;
-        let message = &parsed["choices"][0]["message"];
-        let 内容 = message["content"].as_str().map(|s| s.to_string());
-        let 工具调用 = 解析工具调用(message);
-        Ok(模型响应 { 内容, 工具调用 })
+        let 解析 = |值: &serde_json::Value| {
+            let message = &值["choices"][0]["message"];
+            Ok(模型响应 {
+                内容: message["content"].as_str().map(|s| s.to_string()),
+                工具调用: 解析工具调用(message),
+            })
+        };
+        self.逐个生成(&造体, &解析)
     }
 }
 

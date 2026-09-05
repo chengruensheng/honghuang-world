@@ -4,7 +4,7 @@ use crate::装配开发受理台;
 
 
 pub fn 启动() -> hm_error::Result<()> {
-    let config = hm_config::default_config();
+    let config = hm_config::运行配置();
     let logger = hm_log::Logger::new(&config.log);
 
     // 持久化目录：空字符串 = 纯内存（不持久化）

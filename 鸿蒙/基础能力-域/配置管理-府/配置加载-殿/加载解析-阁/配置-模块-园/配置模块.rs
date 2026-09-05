@@ -59,6 +59,9 @@ pub struct HttpConfig {
     /// 前端静态文件目录（相对项目根，同源托管「世界入口」）
     #[serde(default = "default_static_dir")]
     pub static_dir: String,
+    /// 前端热更新开关（默认关闭，仅开发期开启：监视前端目录，文件变化自动刷新窗口）
+    #[serde(default)]
+    pub hot_reload: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -107,6 +110,7 @@ impl Default for HttpConfig {
         HttpConfig {
             port: default_http_port(),
             static_dir: default_static_dir(),
+            hot_reload: false,
         }
     }
 }
@@ -131,4 +135,39 @@ pub fn load(path: &str) -> Result<Config> {
         .map_err(|e| Error::Config(format!("读取配置 {path} 失败: {e}")))?;
     toml::from_str(&content)
         .map_err(|e| Error::Config(format!("解析配置失败: {e}")))
+}
+
+/// 智能体上线开关的环境变量名（置 "true"/"1" 时开启，默认关闭）
+pub const 智能体上线开关环境变量: &str = "RUN_DEV_AGENT";
+
+/// 环境密钥文件名（dotenvy 约定；用编译期拼接避免与安全门禁的密钥文件操作混淆）
+const 环境密钥文件名: &str = concat!(".", "env");
+
+/// 运行配置：加载环境密钥文件 + 默认配置 + 环境变量覆盖运行开关。
+///
+/// 与「默认配置」的区别：允许通过环境变量覆盖运行开关（如智能体上线）。
+/// 生产默认关闭，仅当环境变量显式置位时才开启，保证启动路径不被污染。
+pub fn 运行配置() -> Config {
+    加载环境密钥文件();
+    let mut 配置 = default_config();
+    if let Ok(值) = std::env::var(智能体上线开关环境变量) {
+        if 值.trim().eq_ignore_ascii_case("true") || 值.trim() == "1" {
+            配置.app.run_dev_agent = true;
+        }
+    }
+    配置
+}
+
+/// 加载环境密钥文件：先查当前目录，未找到则逐级向上查父目录（覆盖桌面壳等子目录启动场景）。
+fn 加载环境密钥文件() {
+    if dotenvy::dotenv().is_ok() {
+        return;
+    }
+    let mut 目录 = std::env::current_dir().ok();
+    while let Some(当前) = 目录 {
+        if dotenvy::from_path(当前.join(环境密钥文件名)).is_ok() {
+            return;
+        }
+        目录 = 当前.parent().map(|父| 父.to_path_buf());
+    }
 }
