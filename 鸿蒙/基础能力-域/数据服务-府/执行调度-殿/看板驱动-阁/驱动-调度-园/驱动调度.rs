@@ -1,9 +1,31 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::Serialize;
 use hm_agent::{五层协作驱动器, 驱动结果};
 use tc_task::TaskStatus;
+
+/// 驱动事件流环形上限：超限丢弃最旧记录，序号仍单调递增
+const 驱动事件流上限: usize = 500;
+
+/// 一条驱动阶段事件记录（事件接口可查询；预留新一轮时清空）
+#[derive(Debug, Clone, Serialize)]
+pub struct 驱动阶段事件 {
+    /// 本次驱动会话内单调序号（从 1 起，预留时重置）
+    pub 序号: u64,
+    /// 空闲 / 阶段完成 / 错误
+    pub 类型: String,
+    /// 被推进的任务 id（空闲/错误为 None）
+    pub 任务id: Option<u64>,
+    /// 承接角色显示名
+    pub 角色: Option<String>,
+    /// 提交后的新状态显示名
+    pub 新状态: Option<String>,
+    /// 补充消息（错误详情等）
+    pub 消息: Option<String>,
+    /// 事件发生秒级时间戳
+    pub 时间: u64,
+}
 
 /// 一次驱动的结果摘要（状态接口可查询）
 #[derive(Debug, Clone, Serialize)]
@@ -48,6 +70,8 @@ pub struct 看板驱动台 {
     运行中: AtomicBool,
     最近阶段: Mutex<Option<驱动阶段摘要>>,
     最近结果: Mutex<Option<String>>,
+    事件流: Mutex<Vec<驱动阶段事件>>,
+    事件序号: AtomicU64,
 }
 
 impl 看板驱动台 {
@@ -57,6 +81,8 @@ impl 看板驱动台 {
             运行中: AtomicBool::new(false),
             最近阶段: Mutex::new(None),
             最近结果: Mutex::new(None),
+            事件流: Mutex::new(Vec::new()),
+            事件序号: AtomicU64::new(0),
         }
     }
 
@@ -81,6 +107,8 @@ impl 看板驱动台 {
         }
         *self.最近阶段.lock().expect("最近阶段清空锁中毒") = None;
         *self.最近结果.lock().expect("最近结果清空锁中毒") = None;
+        self.事件流.lock().expect("事件流清空锁中毒").clear();
+        self.事件序号.store(0, Ordering::SeqCst);
         true
     }
 
@@ -136,18 +164,33 @@ impl 看板驱动台 {
             };
             let mut 轮次数: usize = 0;
             let mut 失败: Option<hm_error::Error> = None;
+            let mut 空闲: bool = false;
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 for _ in 0..上限 {
                     match 驱动器.执行一轮() {
-                        Ok(驱动结果::空闲) => break,
+                        Ok(驱动结果::空闲) => {
+                            空闲 = true;
+                            break;
+                        }
                         Ok(驱动结果::阶段完成 { 任务id, 角色, 新状态 }) => {
                             轮次数 += 1;
+                            let 角色名 = 角色.名称().to_string();
+                            let 新状态名 = 状态名(&新状态).to_string();
                             驱动台.写最近阶段(驱动阶段摘要 {
                                 类型: "阶段完成".into(),
                                 任务id: Some(任务id),
-                                角色: Some(角色.名称().to_string()),
-                                新状态: Some(状态名(&新状态).to_string()),
+                                角色: Some(角色名.clone()),
+                                新状态: Some(新状态名.clone()),
                                 消息: None,
+                            });
+                            驱动台.记录驱动事件(&驱动阶段事件 {
+                                序号: 0,
+                                类型: "阶段完成".into(),
+                                任务id: Some(任务id),
+                                角色: Some(角色名),
+                                新状态: Some(新状态名),
+                                消息: None,
+                                时间: hm_contract::当前时间戳(),
                             });
                         }
                         Err(e) => {
@@ -175,6 +218,15 @@ impl 看板驱动台 {
                     } else {
                         format!("驱动失败: {e}")
                     });
+                    驱动台.记录驱动事件(&驱动阶段事件 {
+                        序号: 0,
+                        类型: "错误".into(),
+                        任务id: None,
+                        角色: None,
+                        新状态: None,
+                        消息: Some(e.to_string()),
+                        时间: hm_contract::当前时间戳(),
+                    });
                 }
                 None if 轮次数 == 0 => {
                     *驱动台.最近阶段.lock().expect("最近阶段锁中毒") = Some(驱动阶段摘要 {
@@ -186,6 +238,29 @@ impl 看板驱动台 {
                     });
                     *驱动台.最近结果.lock().expect("最近结果锁中毒") =
                         Some("看板无可驱动任务（空闲）".into());
+                    驱动台.记录驱动事件(&驱动阶段事件 {
+                        序号: 0,
+                        类型: "空闲".into(),
+                        任务id: None,
+                        角色: None,
+                        新状态: None,
+                        消息: None,
+                        时间: hm_contract::当前时间戳(),
+                    });
+                }
+                None if 空闲 => {
+                    // 多轮后看板清空：空闲作为会话结束事件记录，最近阶段保留最后推进、最近结果写汇总
+                    驱动台.记录驱动事件(&驱动阶段事件 {
+                        序号: 0,
+                        类型: "空闲".into(),
+                        任务id: None,
+                        角色: None,
+                        新状态: None,
+                        消息: None,
+                        时间: hm_contract::当前时间戳(),
+                    });
+                    *驱动台.最近结果.lock().expect("最近结果锁中毒") =
+                        Some(format!("共推进 {轮次数} 轮"));
                 }
                 None => {
                     // 单轮保持 v1.36 文案兼容；多轮给出汇总
@@ -232,6 +307,23 @@ impl 看板驱动台 {
             std::thread::sleep(Duration::from_millis(20));
         }
         true
+    }
+
+    /// 记录一条驱动阶段事件（环形上限，序号单调递增）
+    pub fn 记录驱动事件(&self, 事件: &驱动阶段事件) {
+        let 序号 = self.事件序号.fetch_add(1, Ordering::SeqCst) + 1;
+        let 记录 = 驱动阶段事件 { 序号, ..事件.clone() };
+        let mut 流 = self.事件流.lock().expect("事件流锁中毒");
+        if 流.len() >= 驱动事件流上限 {
+            流.remove(0);
+        }
+        流.push(记录);
+    }
+
+    /// 返回序号大于 since 的驱动事件增量
+    pub fn 驱动事件增量(&self, since: u64) -> Vec<驱动阶段事件> {
+        let 流 = self.事件流.lock().expect("驱动事件增量锁中毒");
+        流.iter().filter(|记录| 记录.序号 > since).cloned().collect()
     }
 }
 

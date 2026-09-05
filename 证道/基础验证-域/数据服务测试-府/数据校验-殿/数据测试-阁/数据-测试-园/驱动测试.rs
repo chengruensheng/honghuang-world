@@ -4,10 +4,11 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
-    use axum::{Json, extract::State, http::StatusCode};
+    use axum::{Json, extract::{Query, State}, http::StatusCode};
     use hm_http::{
         数据服务状态, 看板驱动台, 看板驱动接口, 看板驱动到空闲接口, 驱动到空闲请求,
-        看板驱动状态接口, 受理错误响应, 发布任务请求, 看板发布, 受理开发任务, 受理失败,
+        看板驱动状态接口, 看板驱动事件接口, 驱动事件响应, 事件游标,
+        受理错误响应, 发布任务请求, 看板发布, 受理开发任务, 受理失败,
     };
     use hm_agent::五层协作驱动器;
     use hm_cognition::{ContextManager, 图谱, 心智地图, 过程上下文};
@@ -447,5 +448,117 @@ mod tests {
         let 看板守卫 = 看板.lock().expect("看板锁");
         let 任务 = 看板守卫.查询(1).expect("任务应存在");
         assert_eq!(任务.status, TaskStatus::已完成);
+    }
+
+    /// 驱动事件流：预留清空且序号递增
+    #[tokio::test]
+    async fn 驱动事件流_预留清空且序号递增() {
+        let 台 = 看板驱动台::新();
+        // 预占即清空上一次会话的事件流与序号
+        assert!(台.预留());
+        assert!(台.驱动事件增量(0).is_empty(), "预留后应清空旧事件");
+        // 新事件序号从 1 递增
+        台.记录驱动事件(&驱动阶段事件_测试("阶段完成", Some(1), Some("圣人".into()), Some("待大罗金仙实现".into())));
+        台.记录驱动事件(&驱动阶段事件_测试("空闲", None, None, None));
+        let 增量 = 台.驱动事件增量(0);
+        assert_eq!(增量.len(), 2);
+        assert_eq!(增量[0].序号, 1);
+        assert_eq!(增量[0].类型, "阶段完成");
+        assert_eq!(增量[1].序号, 2);
+        assert_eq!(增量[1].类型, "空闲");
+        台.释放();
+    }
+
+    /// 驱动事件流：多轮驱动记录完整事件（阶段完成×4 + 空闲）
+    #[tokio::test]
+    async fn 驱动事件流_多轮驱动记录完整事件() {
+        let (状态, 看板) = 驱动状态();
+        装配驱动器(&状态, &看板, Arc::new(模拟对话器::新(完整链路响应())));
+        发布任务(&状态, "事件流任务").await;
+        assert!(状态.看板驱动台.等待完成(10000), "发布自动驱动应完成");
+
+        状态.看板驱动台.启动执行到空闲(10);
+        assert!(状态.看板驱动台.等待完成(10000), "drain 应完成");
+
+        let 事件 = 状态.看板驱动台.驱动事件增量(0);
+        assert_eq!(事件.len(), 5, "应记录 设计/实现/验收/终审 阶段完成 + 空闲");
+        assert_eq!(事件[0].序号, 1);
+        assert_eq!(事件[0].类型, "阶段完成");
+        assert_eq!(事件[0].新状态.as_deref(), Some("待大罗金仙实现"));
+        assert_eq!(事件[3].新状态.as_deref(), Some("已完成"));
+        assert_eq!(事件[4].类型, "空闲");
+    }
+
+    /// 驱动事件流：错误记录错误事件，前面推进轮次各有阶段完成事件
+    #[tokio::test]
+    async fn 驱动事件流_错误记录错误事件() {
+        let (状态, 看板) = 驱动状态();
+        装配驱动器(&状态, &看板, Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+            模型响应 { 内容: Some(实现样例().into()), 工具调用: vec![] },
+            模型响应 { 内容: Some("这不是JSON".into()), 工具调用: vec![] },
+        ])));
+        发布任务(&状态, "错误事件流任务").await;
+        assert!(状态.看板驱动台.等待完成(10000), "发布自动驱动应完成");
+
+        状态.看板驱动台.启动执行到空闲(10);
+        assert!(状态.看板驱动台.等待完成(10000), "应完成");
+
+        let 事件 = 状态.看板驱动台.驱动事件增量(0);
+        assert_eq!(事件.len(), 3, "设计/实现 阶段完成 + 验收错误");
+        assert_eq!(事件[0].类型, "阶段完成");
+        assert_eq!(事件[1].类型, "阶段完成");
+        assert_eq!(事件[2].类型, "错误");
+        assert!(事件[2].消息.as_deref().unwrap_or("").contains("JSON"), "错误事件应含非法产出消息");
+    }
+
+    /// 驱动事件流：增量按游标过滤
+    #[tokio::test]
+    async fn 驱动事件流_增量按游标过滤() {
+        let 台 = 看板驱动台::新();
+        assert!(台.预留());
+        for i in 1..=5 {
+            台.记录驱动事件(&驱动阶段事件_测试("阶段完成", Some(i), Some("圣人".into()), Some("待大罗金仙实现".into())));
+        }
+        let 部分 = 台.驱动事件增量(3);
+        assert_eq!(部分.len(), 2, "since=3 应剩序号 4、5");
+        assert_eq!(部分[0].序号, 4);
+        assert_eq!(部分[1].序号, 5);
+        assert!(台.驱动事件增量(999).is_empty(), "超界 since 应空");
+        台.释放();
+    }
+
+    /// HTTP：驱动事件接口 事件增量与状态
+    #[tokio::test]
+    async fn 驱动事件接口_事件增量与状态() {
+        let (状态, 看板) = 驱动状态();
+        装配驱动器(&状态, &看板, Arc::new(模拟对话器::新(完整链路响应())));
+        发布任务(&状态, "HTTP事件流任务").await;
+        assert!(状态.看板驱动台.等待完成(10000), "发布自动驱动应完成");
+        状态.看板驱动台.启动执行到空闲(10);
+        assert!(状态.看板驱动台.等待完成(10000), "drain 应完成");
+
+        let Json(响应) = 看板驱动事件接口(State(状态.clone()), Query(事件游标 { since: Some(0) })).await;
+        assert_eq!(响应.就绪, true);
+        assert_eq!(响应.运行中, false);
+        assert!(响应.最近结果.is_some(), "应有最近结果");
+        assert_eq!(响应.事件.len(), 5, "全量事件 5 条");
+
+        let Json(部分) = 看板驱动事件接口(State(状态.clone()), Query(事件游标 { since: Some(3) })).await;
+        assert_eq!(部分.事件.len(), 2, "since=3 应剩 2 条");
+        assert_eq!(部分.事件[0].序号, 4);
+    }
+
+    /// 构造驱动阶段事件（测试 helper）
+    fn 驱动阶段事件_测试(类型: &str, 任务id: Option<u64>, 角色: Option<String>, 新状态: Option<String>) -> hm_http::驱动阶段事件 {
+        hm_http::驱动阶段事件 {
+            序号: 0,
+            类型: 类型.into(),
+            任务id,
+            角色,
+            新状态,
+            消息: None,
+            时间: 0,
+        }
     }
 }

@@ -7,7 +7,7 @@ use crate::{
     图谱查询, 格位查询, 语境查询, 日志列表, 记日志,
     看板列表, 看板查询, 看板发布, 看板承接, 看板提交,
     受理开发任务接口, 事件查询, 停止执行, 更新工作区,
-    看板驱动接口, 看板驱动到空闲接口, 看板驱动状态接口,
+    看板驱动接口, 看板驱动到空闲接口, 看板驱动状态接口, 看板驱动事件接口,
 };
 
 /// 构建 axum 路由：只读 API + 同源托管前端静态文件 + 写接口鉴权中间件
@@ -37,6 +37,7 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/dev/pilot", post(看板驱动接口))
         .route("/api/dev/pilot/drain", post(看板驱动到空闲接口))
         .route("/api/dev/pilot/status", get(看板驱动状态接口))
+        .route("/api/dev/pilot/events", get(看板驱动事件接口))
         .fallback_service(ServeDir::new(静态目录))
         .layer(middleware::from_fn_with_state(鉴权令牌, 鉴权层))
         .with_state(状态)
