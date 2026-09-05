@@ -1,0 +1,11 @@
+[package]
+name = "zd-cognition-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-cognition = { path = "../../../鸿蒙/基础能力-域/项目认知-府" }
+toml = { workspace = true }

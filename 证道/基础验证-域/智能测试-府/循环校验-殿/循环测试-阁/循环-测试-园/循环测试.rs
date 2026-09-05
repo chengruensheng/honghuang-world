@@ -111,6 +111,54 @@ mod tests {
     }
 
     #[test]
+    fn 智能体_参数键中英兼容_英文path映射到路径() {
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: None, 工具调用: vec![工具调用("读文件", r#"{"path":"hello.txt"}"#)] },
+            模型响应 { 内容: Some("完成".into()), 工具调用: vec![] },
+        ]));
+        let 执行器 = Arc::new(模拟执行器::新());
+        let 执行器_记录 = 执行器.clone();
+        let 智能体 = 智能体::new(对话器, 执行器, 10);
+
+        let 答复 = 智能体.运行("读取文件".into()).expect("运行应成功");
+        assert_eq!(答复, "完成");
+        let 读记录 = 执行器_记录.读文件记录.lock().expect("锁");
+        assert_eq!(*读记录, vec!["hello.txt".to_string()]);
+    }
+
+    #[test]
+    fn 智能体_参数键中英兼容_英文content映射到内容() {
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: None, 工具调用: vec![工具调用("写文件", r#"{"path":"a.txt","content":"你好"}"#)] },
+            模型响应 { 内容: Some("完成".into()), 工具调用: vec![] },
+        ]));
+        let 执行器 = Arc::new(模拟执行器::新());
+        let 执行器_记录 = 执行器.clone();
+        let 智能体 = 智能体::new(对话器, 执行器, 10);
+
+        智能体.运行("写入文件".into()).expect("运行应成功");
+        let 写记录 = 执行器_记录.写文件记录.lock().expect("锁");
+        assert_eq!(写记录.len(), 1);
+        assert_eq!(写记录[0].0, "a.txt");
+        assert_eq!(写记录[0].1, "你好");
+    }
+
+    #[test]
+    fn 智能体_参数键中英兼容_英文command映射到命令() {
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: None, 工具调用: vec![工具调用("运行命令", r#"{"command":"cargo build"}"#)] },
+            模型响应 { 内容: Some("构建完成".into()), 工具调用: vec![] },
+        ]));
+        let 执行器 = Arc::new(模拟执行器::新());
+        let 执行器_记录 = 执行器.clone();
+        let 智能体 = 智能体::new(对话器, 执行器, 10);
+
+        let 答复 = 智能体.运行("构建项目".into()).expect("运行应成功");
+        assert_eq!(答复, "构建完成");
+        assert_eq!(*执行器_记录.命令记录.lock().expect("锁"), vec!["cargo build".to_string()]);
+    }
+
+    #[test]
     fn 智能体_多轮循环_连续调用多个工具() {
         let 对话器 = Arc::new(模拟对话器::新(vec![
             模型响应 {

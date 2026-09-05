@@ -212,6 +212,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hm-cognition"
+version = "0.1.0"
+dependencies = [
+ "hm-error",
+ "serde",
+]
+
+[[package]]
 name = "hm-config"
 version = "0.1.0"
 dependencies = [
@@ -1169,6 +1177,14 @@ dependencies = [
  "hm-error",
  "hm-execute-contract",
  "serde_json",
+]
+
+[[package]]
+name = "zd-cognition-test"
+version = "0.1.0"
+dependencies = [
+ "hm-cognition",
+ "toml",
 ]
 
 [[package]]

@@ -1,0 +1,208 @@
+/* 主题.css —— 世界入口府设计系统（暗色专业工具风） */
+
+:root {
+  --bg: #080808;
+  --surface: rgba(16, 16, 18, 0.68);
+  --surface-solid: #101012;
+  --text: #ededef;
+  --text-dim: #8a8f98;
+  --text-faint: #52525b;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --wood: #4ade80;
+  --fire: #f87171;
+  --earth: #fbbf24;
+  --metal: #cbd5e1;
+  --water: #60a5fa;
+  --indigo: #6366f1;
+  --purple: #a855f7;
+  --cyan: #67e8f9;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "SF Pro Display", "Inter", "Geist", -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  letter-spacing: -0.02em;
+  -webkit-font-smoothing: antialiased;
+  height: 100%;
+  overflow: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 12% -10%, rgba(99, 102, 241, 0.12), transparent 60%),
+    radial-gradient(800px 500px at 92% 0%, rgba(168, 85, 247, 0.08), transparent 55%);
+}
+
+/* ============ 三栏骨架 ============ */
+.cockpit { position: relative; z-index: 1; display: flex; height: 100vh; }
+
+/* ============ 左栏（侧边栏） ============ */
+.sidebar {
+  width: 228px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: rgba(10, 10, 12, 0.72);
+  backdrop-filter: blur(18px);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 12px;
+}
+
+.logo { display: flex; align-items: center; gap: 11px; padding: 4px 10px 20px; font-size: 15px; font-weight: 600; }
+.logo .mark {
+  width: 28px; height: 28px; border-radius: 8px; position: relative;
+  background: linear-gradient(135deg, var(--indigo), var(--purple));
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.45);
+}
+.logo .mark::after {
+  content: "洪"; position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 14px; color: #fff; font-weight: 700;
+}
+.logo .sub { font-size: 11px; color: var(--text-faint); font-weight: 400; margin-top: 1px; }
+
+.group { font-size: 10px; color: var(--text-faint); letter-spacing: 0.08em; padding: 14px 12px 6px; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 11px; padding: 8px 11px; border-radius: 8px;
+  font-size: 13px; color: var(--text-dim); cursor: pointer; transition: all 0.16s; user-select: none;
+}
+.nav-item svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.nav-item:hover { color: var(--text); background: rgba(255, 255, 255, 0.03); }
+.nav-item.active { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.nav-item.active svg { stroke: var(--indigo); }
+
+.aside-foot { margin-top: auto; padding: 14px 12px 4px; font-size: 11px; color: var(--text-faint); border-top: 1px solid var(--border); }
+.aside-foot .dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--wood);
+  box-shadow: 0 0 8px var(--wood); margin-right: 7px; animation: breathe 2.4s infinite;
+}
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ============ 中栏（主视图区） ============ */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.view-head {
+  padding: 18px 24px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.view-head h2 { font-size: 16px; font-weight: 600; }
+.view-head p { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+.view-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+/* 对话 */
+.chat { flex: 1; overflow-y: auto; padding: 22px 24px; display: flex; flex-direction: column; gap: 16px; }
+.msg-row { display: flex; gap: 11px; }
+.msg-row.user { flex-direction: row-reverse; }
+.avatar { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; font-size: 12px; }
+.avatar.ai { background: linear-gradient(135deg, var(--indigo), var(--purple)); color: #fff; }
+.avatar.u { background: rgba(255, 255, 255, 0.08); }
+.bubble {
+  max-width: 72%; padding: 11px 14px; border-radius: 12px; font-size: 13px; line-height: 1.6;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.msg-row.user .bubble {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.24), rgba(168, 85, 247, 0.18));
+  border-color: rgba(139, 124, 246, 0.28);
+}
+.bubble .role { display: block; font-size: 10px; color: var(--text-faint); margin-bottom: 4px; }
+
+.toolcall { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; background: rgba(255, 255, 255, 0.02); }
+.toolcall .tt {
+  display: flex; align-items: center; gap: 8px; padding: 9px 13px; font-size: 12px; font-weight: 600;
+  background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--border);
+}
+.toolcall .tt svg { width: 13px; height: 13px; stroke: var(--cyan); fill: none; stroke-width: 1.8; }
+.toolcall .tt .cmd { font-family: Consolas, monospace; font-size: 11px; color: var(--cyan); font-weight: 400; }
+.toolcall .tr { padding: 9px 13px; font-size: 12px; color: var(--text-dim); font-family: Consolas, monospace; line-height: 1.6; white-space: pre-wrap; }
+
+.chat-input {
+  display: flex; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--border);
+  background: rgba(8, 8, 8, 0.7); backdrop-filter: blur(16px);
+}
+.chat-input input {
+  flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+  padding: 12px 16px; color: var(--text); font-size: 14px; font-family: inherit; outline: none;
+}
+.chat-input input:focus { border-color: rgba(139, 124, 246, 0.5); }
+.chat-input input::placeholder { color: var(--text-faint); }
+.btn {
+  border: none; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 13px; padding: 0 22px;
+  border-radius: 11px; color: #fff; background: linear-gradient(135deg, var(--indigo), var(--purple));
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.35); transition: transform 0.15s;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* 五行引擎 */
+.ring-wrap { display: flex; align-items: center; gap: 36px; }
+.ring { width: 320px; height: 320px; flex-shrink: 0; position: relative; }
+.ring svg { width: 100%; height: 100%; overflow: visible; }
+.ring .core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+.engines { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; flex: 1; }
+.engine { background: var(--surface); border: 1px solid var(--border); border-radius: 13px; padding: 18px; position: relative; overflow: hidden; }
+.engine:hover { border-color: var(--border-strong); }
+.engine .head { display: flex; justify-content: space-between; align-items: center; }
+.engine .nm { font-size: 14px; font-weight: 600; }
+.engine .el { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.engine .badge { font-size: 10px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--c); color: var(--c); }
+.engine .metric { margin-top: 16px; display: flex; align-items: baseline; gap: 10px; }
+.engine .metric .num { font-size: 30px; font-weight: 700; color: var(--c); letter-spacing: -0.02em; }
+.engine .metric .unit { font-size: 12px; color: var(--text-faint); }
+.engine .bar { height: 3px; border-radius: 99px; margin-top: 14px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.engine .bar i { display: block; height: 100%; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.engine .foot { margin-top: 12px; font-size: 11px; color: var(--text-faint); display: flex; justify-content: space-between; }
+
+/* 项目图谱 */
+.tupu-wrap { height: 100%; display: flex; align-items: center; justify-content: center; padding: 8px 0; }
+.tupu-wrap svg { width: 100%; max-width: 900px; height: auto; }
+
+/* 格位地图 6x6 */
+.matrix { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.cell {
+  border: 1px solid var(--border); border-radius: 9px; padding: 12px 10px 10px 12px;
+  background: var(--surface); cursor: pointer; position: relative; overflow: hidden;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cell::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--c, #6366f1); }
+.cell:hover { border-color: var(--border-strong); }
+.cell.on { border-color: var(--c, #6366f1); background: rgba(255, 255, 255, 0.03); }
+.cell .slot { font-size: 12px; color: var(--text); font-weight: 500; }
+.cell .dim { font-size: 9px; color: var(--text-faint); margin-top: 5px; letter-spacing: 0.05em; }
+
+/* 日志 */
+.log-body { font-family: Consolas, monospace; font-size: 12px; line-height: 2; }
+.log-body .ts { color: var(--text-faint); margin-right: 10px; }
+.log-body .act { color: #c4b5fd; }
+.log-body .ok { color: var(--wood); }
+.log-body .flow { color: var(--earth); }
+.log-body .l { animation: appear 0.3s forwards; }
+@keyframes appear { from { opacity: 0; transform: translateY(4px); } }
+
+/* ============ 右栏（属性面板） ============ */
+.prop {
+  width: 300px; flex-shrink: 0; border-left: 1px solid var(--border);
+  background: rgba(10, 10, 12, 0.72); backdrop-filter: blur(18px); padding: 20px 18px; overflow-y: auto;
+}
+.prop h3 { font-size: 11px; font-weight: 600; color: var(--text-faint); letter-spacing: 0.07em; margin: 0 0 12px; }
+.prop-group { margin-bottom: 24px; }
+.prop-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.prop-item .k { color: var(--text-dim); }
+.prop-item .v { font-weight: 600; }
+.kv {
+  border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; font-size: 11px;
+  color: var(--text-dim); background: rgba(255, 255, 255, 0.02); margin-bottom: 8px; line-height: 1.6;
+}
+.kv b { display: block; color: var(--text); font-size: 12px; margin-bottom: 3px; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (max-width: 1150px) { .prop { display: none; } }

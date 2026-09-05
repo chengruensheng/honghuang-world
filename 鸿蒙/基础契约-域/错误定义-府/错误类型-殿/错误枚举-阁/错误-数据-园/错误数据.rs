@@ -44,6 +44,10 @@ pub enum Error {
     缺少参数(String),
     #[error("危险命令已拦截: {0}")]
     危险命令(String),
+    #[error("格位已存在: {0}")]
+    格位已存在(String),
+    #[error("格位不存在: {0}")]
+    格位不存在(String),
     #[error("未知错误: {0}")]
     Other(String),
 }
