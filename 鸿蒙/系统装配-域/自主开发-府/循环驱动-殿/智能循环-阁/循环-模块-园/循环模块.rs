@@ -1,8 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use hm_contract::Component;
 use hm_content_contract::{工具对话器, 对话消息, 工具调用};
 use hm_error::{Error, Result};
-use hm_execute_contract::执行器;
+use hm_execute_contract::{开发事件, 开发事件类型, 开发执行契约, 执行器};
+
+/// 事件内容截断上限（读文件/命令输出可能很长，事件流只保留摘要）
+const 事件内容上限: usize = 200;
 
 /// 工具名常量（function calling 的 function.name）
 const 读文件: &str = "读文件";
@@ -28,16 +32,36 @@ pub struct 智能体 {
     执行器: Arc<dyn 执行器>,
     最大轮数: usize,
     中断标志: Arc<AtomicBool>,
+    事件回调: Option<Arc<dyn Fn(&开发事件) + Send + Sync>>,
 }
 
 impl 智能体 {
     pub fn new(对话器: Arc<dyn 工具对话器>, 执行器: Arc<dyn 执行器>, 最大轮数: usize) -> Self {
-        智能体 { 对话器, 执行器, 最大轮数, 中断标志: Arc::new(AtomicBool::new(false)) }
+        智能体 { 对话器, 执行器, 最大轮数, 中断标志: Arc::new(AtomicBool::new(false)), 事件回调: None }
+    }
+
+    /// 链式注入事件回调：循环各步（思考/工具调用/工具结果/答复）回调通知外部
+    pub fn 设置事件回调(mut self, 回调: Arc<dyn Fn(&开发事件) + Send + Sync>) -> Self {
+        self.事件回调 = Some(回调);
+        self
     }
 
     /// 返回中断句柄：外部设置 true 可请求停止循环（如 Ctrl+C 回调）
     pub fn 中断句柄(&self) -> Arc<AtomicBool> {
         self.中断标志.clone()
+    }
+
+    /// 发出一个开发事件（未注入回调时静默跳过；内容超长截断）
+    fn 发事件(&self, 轮次: usize, 类型: 开发事件类型, 工具名: &str, 内容: &str) {
+        if let Some(回调) = &self.事件回调 {
+            let 事件 = 开发事件 {
+                轮次,
+                类型,
+                工具名: 工具名.to_string(),
+                内容: 截断(内容, 事件内容上限),
+            };
+            回调(&事件);
+        }
     }
 
     /// 运行自主开发循环，返回 LLM 最终答复
@@ -54,17 +78,20 @@ impl 智能体 {
                 return Err(Error::中断("循环被用户中断".into()));
             }
             tracing::info!("══════ 第 {} 轮 ══════", 轮次 + 1);
+            self.发事件(轮次, 开发事件类型::思考, "", "正在思考下一步行动");
             let 响应 = self.对话器.对话(消息.clone(), 工具.clone())?;
 
             if 响应.工具调用.is_empty() {
                 let 答复 = 响应.内容.clone().unwrap_or_default();
                 tracing::info!("【LLM 最终答复】{}", 答复);
+                self.发事件(轮次, 开发事件类型::任务答复, "", &答复);
                 return Ok(答复);
             }
 
             消息.push(对话消息::助手调用(响应.工具调用.clone()));
             for 调用 in &响应.工具调用 {
                 tracing::info!("【LLM 调用工具】{}  参数：{}", 调用.名称, 调用.参数);
+                self.发事件(轮次, 开发事件类型::工具调用, &调用.名称, &调用.参数);
                 // 工具失败不回传终止循环，而是把错误信息回填给 LLM，让 LLM 看到错误后修正重试
                 let 结果 = match self.执行调用(调用) {
                     Ok(输出) => 输出,
@@ -74,6 +101,7 @@ impl 智能体 {
                     }
                 };
                 tracing::info!("【工具返回】{}", 结果);
+                self.发事件(轮次, 开发事件类型::工具结果, &调用.名称, &结果);
                 消息.push(对话消息::工具结果(调用.id.clone(), 结果));
             }
         }
@@ -117,6 +145,31 @@ fn 取参数字符串(参数: &serde_json::Value, 候选键: &[&str]) -> Result<
         None => "参数".to_string(),
     };
     Err(Error::缺少参数(规范键))
+}
+
+/// 按字符数截断文本（事件流/面板摘要用），超长部分以省略号结尾
+fn 截断(文本: &str, 上限: usize) -> String {
+    if 文本.chars().count() <= 上限 {
+        文本.to_string()
+    } else {
+        let 头部: String = 文本.chars().take(上限).collect();
+        format!("{头部}…")
+    }
+}
+
+/// 智能体实现开发执行契约：受理即运行循环，中断句柄透传
+impl Component for 智能体 {
+    fn name(&self) -> &'static str { "智能体" }
+}
+
+impl 开发执行契约 for 智能体 {
+    fn 执行开发任务(&self, 任务: String) -> Result<String> {
+        self.运行(任务)
+    }
+
+    fn 中断句柄(&self) -> Arc<AtomicBool> {
+        智能体::中断句柄(self)
+    }
 }
 
 /// 三个工具的函数定义（OpenAI function calling 的 tools 数组元素）

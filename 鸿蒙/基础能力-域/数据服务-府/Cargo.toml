@@ -9,6 +9,7 @@ path = "模块.rs"
 [dependencies]
 hm-error = { path = "../../基础契约-域/错误定义-府" }
 hm-domain-contract = { path = "../../基础契约-域/领域契约-府" }
+hm-execute-contract = { path = "../../基础契约-域/执行契约-府" }
 hm-cognition = { path = "../项目认知-府" }
 hm-log = { path = "../日志管理-府" }
 tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }

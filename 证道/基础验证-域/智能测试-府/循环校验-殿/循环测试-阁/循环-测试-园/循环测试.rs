@@ -7,7 +7,7 @@ mod tests {
     use hm_contract::Component;
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
     use hm_error::{Error, Result};
-    use hm_execute_contract::执行器;
+    use hm_execute_contract::{开发事件, 开发事件类型, 执行器};
 
     /// 模拟对话器：按预设序列依次返回模型响应，验证契约可插拔
     struct 模拟对话器 {
@@ -232,5 +232,47 @@ mod tests {
         let 结果 = 智能体.运行("测试中断".into());
         assert!(结果.is_err());
         assert!(结果.expect_err("应返回错误").to_string().contains("中断"));
+    }
+
+    #[test]
+    fn 智能体_事件回调按序发出且内容非空() {
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: None, 工具调用: vec![工具调用("读文件", r#"{"路径":"a.txt"}"#)] },
+            模型响应 { 内容: Some("任务完成".into()), 工具调用: vec![] },
+        ]));
+        let 执行器 = Arc::new(模拟执行器::新());
+        let 事件收集: Arc<Mutex<Vec<开发事件>>> = Arc::new(Mutex::new(Vec::new()));
+        let 收集句柄 = 事件收集.clone();
+        let 智能体 = 智能体::new(对话器, 执行器, 10)
+            .设置事件回调(Arc::new(move |事件: &开发事件| {
+                收集句柄.lock().expect("事件收集锁").push(事件.clone());
+            }));
+
+        let 答复 = 智能体.运行("读取文件并答复".into()).expect("运行应成功");
+        assert_eq!(答复, "任务完成");
+
+        let 事件 = 事件收集.lock().expect("事件收集锁");
+        assert_eq!(事件.len(), 5, "应有 轮0(思考+调用+结果) + 轮1(思考+答复) 五条事件");
+
+        assert_eq!(事件[0].类型, 开发事件类型::思考);
+        assert_eq!(事件[0].轮次, 0);
+        assert!(事件[0].工具名.is_empty());
+
+        assert_eq!(事件[1].类型, 开发事件类型::工具调用);
+        assert_eq!(事件[1].工具名, "读文件");
+        assert!(事件[1].内容.contains("a.txt"));
+
+        assert_eq!(事件[2].类型, 开发事件类型::工具结果);
+        assert_eq!(事件[2].工具名, "读文件");
+        assert!(事件[2].内容.contains("文件内容"));
+
+        assert_eq!(事件[3].类型, 开发事件类型::思考);
+        assert_eq!(事件[3].轮次, 1);
+
+        assert_eq!(事件[4].类型, 开发事件类型::任务答复);
+        assert_eq!(事件[4].轮次, 1);
+        assert_eq!(事件[4].内容, "任务完成");
+
+        assert!(事件.iter().all(|e| !e.内容.is_empty()), "全部事件内容应非空");
     }
 }

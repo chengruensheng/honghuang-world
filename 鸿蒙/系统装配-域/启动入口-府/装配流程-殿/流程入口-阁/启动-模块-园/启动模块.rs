@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::运行自主开发;
+use crate::装配开发受理台;
 
 
 pub fn 启动() -> hm_error::Result<()> {
@@ -27,7 +27,7 @@ pub fn 启动() -> hm_error::Result<()> {
         装配.容器.组件名()
     );
 
-    // 启动数据服务：axum 同源托管前端静态文件 + API（独立线程，失败仅告警不影响主程序）
+    // 数据服务状态：五引擎 + 认知三态 + 日志记录器 + 开发执行台
     let 数据状态 = hm_http::数据服务状态::新(
         装配.任务仓库.clone(),
         装配.迭代日志.clone(),
@@ -38,7 +38,34 @@ pub fn 启动() -> hm_error::Result<()> {
         装配.心智地图.clone(),
         装配.语境.clone(),
         装配.日志记录器.clone(),
+        Arc::new(hm_http::开发执行台::新()),
     );
+
+    // 自主开发智能体上线：run_dev_agent=true 时装配到 HTTP 受理台（默认关闭）。
+    // LLM key 缺失仅告警，受理台保持未上线（受理接口 503），不影响数据服务；
+    // dev_task 非空时自动受理为首个任务
+    if config.app.run_dev_agent {
+        match 装配开发受理台(
+            &数据状态.开发执行台,
+            &config.app.dev_workspace,
+            config.app.dev_max_rounds,
+            config.app.executor_timeout_secs,
+            config.app.executor_max_output_bytes,
+        ) {
+            Ok(()) => {
+                tracing::info!("自主开发智能体已上线（HTTP 受理模式，工作区 {}）", config.app.dev_workspace);
+                if !config.app.dev_task.trim().is_empty() {
+                    match hm_http::受理开发任务(&数据状态, config.app.dev_task.clone()) {
+                        Ok(id) => tracing::info!("已自动受理初始任务 id={id}：{}", config.app.dev_task),
+                        Err(失败) => tracing::warn!("初始任务受理失败（不影响启动）: {失败:?}"),
+                    }
+                }
+            }
+            Err(e) => tracing::warn!("智能体装配失败，HTTP 受理不可用（不影响启动）: {e}"),
+        }
+    }
+
+    // 启动数据服务：axum 同源托管前端静态文件 + API（独立线程，失败仅告警不影响主程序）
     hm_http::启动数据服务(数据状态, config.http.port, config.http.static_dir.clone());
 
     // 启动自检仅在显式开启时运行（默认关闭，避免污染真实业务数据）；
@@ -51,26 +78,6 @@ pub fn 启动() -> hm_error::Result<()> {
         match hm_linkage::演示相克(&装配) {
             Ok(克制) => tracing::info!("五行克制验证通过：事件去重 {}", 克制.去重事件),
             Err(e) => tracing::warn!("五行克制验证失败（不影响启动）: {e}"),
-        }
-    }
-
-    // 自主开发智能体入口仅在显式开启且配置了任务时运行（默认关闭，避免意外调用外部模型）
-    if config.app.run_dev_agent {
-        if config.app.dev_task.trim().is_empty() {
-            tracing::warn!("run_dev_agent 已开启但 dev_task 为空，跳过自主开发入口");
-        } else {
-            tracing::info!("进入自主开发智能体：工作区 {}，任务 {}", config.app.dev_workspace, config.app.dev_task);
-            match 运行自主开发(
-                &config.app.dev_workspace,
-                &config.app.dev_task,
-                config.app.dev_max_rounds,
-                config.app.executor_timeout_secs,
-                config.app.executor_max_output_bytes,
-                config.app.executor_ctrlc,
-            ) {
-                Ok(答复) => tracing::info!("自主开发完成：{答复}"),
-                Err(e) => tracing::warn!("自主开发失败（不影响启动）: {e}"),
-            }
         }
     }
 

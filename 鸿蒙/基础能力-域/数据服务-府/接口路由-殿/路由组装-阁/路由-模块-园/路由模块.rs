@@ -1,9 +1,10 @@
-use axum::{Router, routing::get, response::Redirect};
+use axum::{Router, response::Redirect, routing::{get, post}};
 use tower_http::services::ServeDir;
 use crate::{
     数据服务状态,
     任务列表, 查询任务, 创建任务, 迭代列表, 当前版本, 记忆列表, 规则列表, 事件列表,
     图谱查询, 格位查询, 语境查询, 日志列表, 记日志,
+    受理开发任务接口, 事件查询, 停止执行,
 };
 
 /// 构建 axum 路由：只读 API + 同源托管前端静态文件
@@ -21,6 +22,9 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/cognition/cells", get(格位查询))
         .route("/api/cognition/context", get(语境查询))
         .route("/api/logs", get(日志列表).post(记日志))
+        .route("/api/dev/agent", post(受理开发任务接口))
+        .route("/api/dev/agent/stop", post(停止执行))
+        .route("/api/dev/events", get(事件查询))
         .fallback_service(ServeDir::new(静态目录))
         .with_state(状态)
 }
