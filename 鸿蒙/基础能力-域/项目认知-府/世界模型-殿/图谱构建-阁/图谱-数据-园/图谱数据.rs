@@ -9,7 +9,7 @@ pub enum 符号种类 {
 }
 
 /// 符号：代码中的具名实体（函数/类型/常量），附签名与所属模块
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct 符号 {
     pub 名称: String,
     pub 种类: 符号种类,
@@ -18,25 +18,28 @@ pub struct 符号 {
 }
 
 /// 模块：代码组织单元（如 crate / 文件）
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct 模块 {
     pub 名称: String,
     pub 路径: String,
 }
 
 /// 依赖边：模块间的有向依赖（源依赖目标）
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct 依赖边 {
     pub 源: String,
     pub 目标: String,
 }
 
 /// 图谱：项目整体模型，代码即真源；由模块/符号节点与依赖边构成
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct 图谱 {
     pub 模块集: Vec<模块>,
     pub 符号集: Vec<符号>,
     pub 依赖集: Vec<依赖边>,
+    /// 技术栈线索（如 workspace 依赖的 crate 名：serde/tokio/...），供规则提炼
+    #[serde(default)]
+    pub 技术栈: Vec<String>,
 }
 
 impl 图谱 {
@@ -53,7 +56,17 @@ impl 图谱 {
     }
 
     pub fn 添加依赖(&mut self, 依赖: 依赖边) {
-        self.依赖集.push(依赖);
+        if !self.依赖集.iter().any(|边| 边 == &依赖) {
+            self.依赖集.push(依赖);
+        }
+    }
+
+    /// 追加技术栈线索（去重）
+    pub fn 添加技术栈(&mut self, 名称: impl Into<String>) {
+        let 名称 = 名称.into();
+        if !self.技术栈.iter().any(|已有| 已有 == &名称) {
+            self.技术栈.push(名称);
+        }
     }
 
     /// 返回指定模块直接依赖的所有模块名
