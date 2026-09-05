@@ -1,7 +1,7 @@
 // 对话视图.js —— 对话界面（含模拟执行流：读文件 → 写文件 → 运行命令）
 
 import { 记日志 } from '../../../运行支撑-殿/数据服务-阁/日志-数据-园/日志数据.js';
-import { 更新引擎数值 } from '../../../运行支撑-殿/数据服务-阁/引擎-数据-园/引擎数据.js';
+import { 加载引擎数据 } from '../../../运行支撑-殿/数据服务-阁/引擎-数据-园/引擎数据.js';
 
 const 图标 = `<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
 
@@ -10,7 +10,7 @@ let 面板容器 = null;
 let 定时器列表 = [];
 let 运行中 = false;
 let 轮次 = 0;
-let 任务数 = 42;
+
 
 export const 对话视图 = {
   键: '对话',
@@ -61,16 +61,29 @@ function 下达(输入框, 按钮) {
   定时器列表.push(setTimeout(() => { 气泡('ai', '运行测试验证改动。'); 设置过程('运行命令'); }, 5200));
   定时器列表.push(setTimeout(() => { 工具调用('运行命令', 'cargo test'); }, 6000));
   定时器列表.push(setTimeout(() => { 工具结果('95 passed; 0 failed'); }, 6800));
-  定时器列表.push(setTimeout(() => {
-    气泡('ai', '✅ 修复完成，测试全部通过。');
-    记日志('【完成】', 'ok', '任务完成 · 测试全绿');
-    设置过程('任务完成');
-    任务数 += 1;
-    更新引擎数值(0, 任务数);
-    渲染面板();
-    运行中 = false;
-    按钮.disabled = false;
-  }, 7600));
+   定时器列表.push(setTimeout(async () => {
+     气泡('ai', '✅ 修复完成，测试全部通过。');
+     记日志('【完成】', 'ok', '任务完成 · 测试全绿');
+     设置过程('任务完成');
+     await 创建任务(文案);
+     await 加载引擎数据();
+     渲染面板();
+     运行中 = false;
+     按钮.disabled = false;
+   }, 7600));
+}
+
+/** 下达任务后真实创建任务并落库（持久化） */
+async function 创建任务(文案) {
+  try {
+    await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 标题: `对话任务: ${文案}`, 描述: '由世界入口对话视图下达' }),
+    });
+  } catch (错误) {
+    console.warn('创建任务失败（后端未就绪？）', 错误);
+  }
 }
 
 function 气泡(角色, 文本) {

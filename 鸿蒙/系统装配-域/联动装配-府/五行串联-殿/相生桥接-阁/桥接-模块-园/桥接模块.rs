@@ -1,9 +1,11 @@
 use std::sync::{Arc, Mutex};
 use hm_contract::Component;
-use hm_signal::{信号总线, 信号类型, 载荷键};
+use hm_signal::{信号总线, 信号类型, 载荷键, 信号};
 use hm_signal_bus::内存信号总线;
 use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
 use hm_container::组件容器;
+use hm_cognition::{图谱, 心智地图, 过程上下文};
+use hm_log::运行日志记录器;
 use crate::{克制金克木, 克制木克土, 克制土克水, 克制水克火, 克制火克金};
 use tc_task::{Task, TaskStatus, TaskStore};
 use lj_iteration::{Iteration, Version, IterationLog, 迭代状态};
@@ -21,8 +23,16 @@ const 事件驱动前缀: &str = "事件驱动: ";
 const 任务完成前缀: &str = "任务完成: ";
 /// 土生金生成规则的优先级（记忆生成 = 低优先级，人工添加可传更高）
 const 记忆生成规则优先级: u32 = 1;
+/// 信号转日志的默认样式（动作类）
+const 信号日志样式: &str = "act";
+/// 五行引擎持久化文件名（相对持久化目录，跨引擎统一避免魔法字符串）
+const 持久化文件_任务: &str = "任务.toml";
+const 持久化文件_迭代: &str = "迭代.toml";
+const 持久化文件_记忆: &str = "记忆.toml";
+const 持久化文件_规则: &str = "规则.toml";
+const 持久化文件_事件: &str = "事件.toml";
 
-/// 五行装配：持有五引擎（领域契约 trait 对象）与信号总线的完整装配体
+/// 五行装配：持有五引擎（领域契约 trait 对象）、认知三态、日志记录器与信号总线的完整装配体
 ///
 /// 府可插拔：各引擎字段均为 `Arc<Mutex<dyn 领域契约>>`，
 /// 生产路径装配真实实现，测试路径注入 mock，核心无特权。
@@ -34,6 +44,10 @@ pub struct 五行装配 {
     pub 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>>,
     pub 规则库: Arc<Mutex<dyn 规则库契约<Rule>>>,
     pub 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>>,
+    pub 图谱: Arc<Mutex<图谱>>,
+    pub 心智地图: Arc<Mutex<心智地图>>,
+    pub 语境: Arc<Mutex<过程上下文>>,
+    pub 日志记录器: Arc<Mutex<运行日志记录器>>,
 }
 
 impl 五行装配 {
@@ -44,55 +58,88 @@ impl 五行装配 {
 
     /// 装配五行并指定容量上限（相克约束：过盛才约束新增，而非删除已有）
     pub fn 装配带上限(容量上限: usize) -> Self {
+        Self::装配带持久化(容量上限, None)
+    }
+
+    /// 装配五行并指定持久化目录（容量上限取默认值）：历史文件存在则加载，否则新建
+    pub fn 装配带持久化目录(持久化目录: Option<String>) -> Self {
+        Self::装配带持久化(默认容量上限, 持久化目录)
+    }
+
+    /// 装配五行并指定容量上限与持久化目录：历史文件存在则加载，否则新建；
+    /// 同时实例化认知三态（空结构）与运行日志记录器。
+    pub fn 装配带持久化(容量上限: usize, 持久化目录: Option<String>) -> Self {
         let 容器 = 组件容器::new();
 
         let 信号总线 = Arc::new(内存信号总线::new());
         容器.注册(信号总线.clone());
         let 信号: Arc<dyn 信号总线> = 信号总线.clone();
 
-        let 任务仓库 = Arc::new(Mutex::new(TaskStore::new()));
+        let 任务路径 = 持久化目录.as_ref().map(|d| format!("{d}/{}", 持久化文件_任务));
+        let 任务仓库 = 加载或新建::<TaskStore>(任务路径.clone(), TaskStore::new, TaskStore::加载);
+        let 任务仓库 = Arc::new(Mutex::new(任务仓库));
         {
             let mut 引擎 = 任务仓库.lock().expect("引擎锁中毒");
             容器.注册命名(引擎.name());
             引擎.设置信号总线(信号.clone());
+            if let Some(路径) = &任务路径 { 引擎.设置持久化路径(路径.clone()); }
         }
         克制金克木(&任务仓库, 容量上限);
         let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = 任务仓库;
 
-        let 迭代日志 = Arc::new(Mutex::new(IterationLog::new()));
+        let 迭代路径 = 持久化目录.as_ref().map(|d| format!("{d}/{}", 持久化文件_迭代));
+        let 迭代日志 = 加载或新建::<IterationLog>(迭代路径.clone(), IterationLog::new, IterationLog::加载);
+        let 迭代日志 = Arc::new(Mutex::new(迭代日志));
         {
             let mut 引擎 = 迭代日志.lock().expect("引擎锁中毒");
             容器.注册命名(引擎.name());
             引擎.设置信号总线(信号.clone());
+            if let Some(路径) = &迭代路径 { 引擎.设置持久化路径(路径.clone()); }
         }
         克制水克火(&迭代日志, 容量上限);
         let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = 迭代日志;
 
-        let 记忆库 = Arc::new(Mutex::new(MemoryStore::new()));
+        let 记忆路径 = 持久化目录.as_ref().map(|d| format!("{d}/{}", 持久化文件_记忆));
+        let 记忆库 = 加载或新建::<MemoryStore>(记忆路径.clone(), MemoryStore::new, MemoryStore::加载);
+        let 记忆库 = Arc::new(Mutex::new(记忆库));
         {
             let mut 引擎 = 记忆库.lock().expect("引擎锁中毒");
             容器.注册命名(引擎.name());
             引擎.设置信号总线(信号.clone());
+            if let Some(路径) = &记忆路径 { 引擎.设置持久化路径(路径.clone()); }
         }
         克制木克土(&记忆库, 容量上限);
         let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = 记忆库;
 
-        let 规则库 = Arc::new(Mutex::new(RuleSet::new()));
+        let 规则路径 = 持久化目录.as_ref().map(|d| format!("{d}/{}", 持久化文件_规则));
+        let 规则库 = 加载或新建::<RuleSet>(规则路径.clone(), RuleSet::new, RuleSet::加载);
+        let 规则库 = Arc::new(Mutex::new(规则库));
         {
             let mut 引擎 = 规则库.lock().expect("引擎锁中毒");
             容器.注册命名(引擎.name());
             引擎.设置信号总线(信号.clone());
+            if let Some(路径) = &规则路径 { 引擎.设置持久化路径(路径.clone()); }
         }
         克制火克金(&规则库, 容量上限);
         let 规则库: Arc<Mutex<dyn 规则库契约<Rule>>> = 规则库;
 
-        let 事件总线 = Arc::new(Mutex::new(EventBus::new()));
+        let 事件路径 = 持久化目录.as_ref().map(|d| format!("{d}/{}", 持久化文件_事件));
+        let 事件总线 = 加载或新建::<EventBus>(事件路径.clone(), EventBus::new, EventBus::加载);
+        let 事件总线 = Arc::new(Mutex::new(事件总线));
         {
             let mut 引擎 = 事件总线.lock().expect("引擎锁中毒");
             容器.注册命名(引擎.name());
             引擎.设置信号总线(信号.clone());
+            if let Some(路径) = &事件路径 { 引擎.设置持久化路径(路径.clone()); }
         }
         let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = 事件总线;
+
+        // 认知三态（空结构，等待未来填充真实数据）
+        let 图谱 = Arc::new(Mutex::new(图谱::新()));
+        let 心智地图 = Arc::new(Mutex::new(心智地图::新()));
+        let 语境 = Arc::new(Mutex::new(过程上下文::新()));
+        // 运行日志记录器（信号转日志，供前端日志视图读取）
+        let 日志记录器 = Arc::new(Mutex::new(运行日志记录器::new()));
 
         桥接木生火(&信号, &迭代日志);
         桥接火生土(&信号, &记忆库);
@@ -103,6 +150,9 @@ impl 五行装配 {
         // 五行相克：土克水（事件去重）保留信号驱动；其余约束已通过容量上限内置引擎
         克制土克水(&信号, &事件总线);
 
+        // 信号转日志：把每类信号记录为一条运行日志
+        桥接信号转日志(&信号, &日志记录器);
+
         五行装配 {
             容器,
             信号总线: 信号,
@@ -111,10 +161,66 @@ impl 五行装配 {
             记忆库,
             规则库,
             事件总线,
+            图谱,
+            心智地图,
+            语境,
+            日志记录器,
         }
     }
+}
 
+/// 加载或新建：历史文件存在则加载，损坏则告警回退新建；否则新建
+fn 加载或新建<T>(
+    路径: Option<String>,
+    新建: impl FnOnce() -> T,
+    加载: impl FnOnce(&str) -> hm_error::Result<T>,
+) -> T {
+    match 路径 {
+        Some(p) if std::path::Path::new(&p).exists() => match 加载(&p) {
+            Ok(引擎) => 引擎,
+            Err(e) => {
+                tracing::warn!("加载持久化数据失败，回退新建: {e}");
+                新建()
+            }
+        },
+        _ => 新建(),
+    }
+}
 
+/// 信号转日志：订阅全部七类信号，每条信号记录为一条运行日志
+fn 桥接信号转日志(总线: &Arc<dyn 信号总线>, 日志记录器: &Arc<Mutex<运行日志记录器>>) {
+    let 日志记录器 = 日志记录器.clone();
+    let 处理器 = Arc::new(move |sig: &信号| {
+        let 内容 = 信号摘要(sig);
+        日志记录器
+            .lock()
+            .expect("日志锁中毒")
+            .记日志(sig.类型.clone(), 信号日志样式.to_string(), 内容);
+    });
+    let 类型列表 = [
+        信号类型::任务完成,
+        信号类型::任务推进,
+        信号类型::迭代完成,
+        信号类型::迭代放弃,
+        信号类型::记忆写入,
+        信号类型::规则命中,
+        信号类型::事件发布,
+    ];
+    for 类型 in 类型列表 {
+        总线.订阅(类型, 处理器.clone());
+    }
+}
+
+/// 从信号载荷提取摘要文本（优先标题 → 内容 → 变更说明 → 规则名 → 结论 → 类型 → 占位）
+fn 信号摘要(sig: &信号) -> String {
+    let 载荷 = &sig.载荷;
+    if let Some(标题) = &载荷.标题 { return 标题.clone(); }
+    if let Some(内容) = &载荷.内容 { return 内容.clone(); }
+    if let Some(变更说明) = &载荷.变更说明 { return 变更说明.clone(); }
+    if let Some(规则名) = &载荷.规则名 { return 规则名.clone(); }
+    if let Some(结论) = &载荷.结论 { return 结论.clone(); }
+    if let Some(类型) = &载荷.类型 { return 类型.clone(); }
+    "（无载荷）".to_string()
 }
 
 /// 木生火：任务完成 → 开启迭代
@@ -209,4 +315,3 @@ fn 桥接水生木(总线: &Arc<dyn 信号总线>, 任务仓库: &Arc<Mutex<dyn 
         }
     }));
 }
-

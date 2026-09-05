@@ -7,6 +7,10 @@ pub struct Config {
     pub app: AppConfig,
     #[serde(default)]
     pub log: LogConfig,
+    #[serde(default)]
+    pub http: HttpConfig,
+    #[serde(default)]
+    pub persistence: PersistenceConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +51,23 @@ pub struct LogConfig {
     pub level: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct HttpConfig {
+    /// HTTP 服务监听端口
+    #[serde(default = "default_http_port")]
+    pub port: u16,
+    /// 前端静态文件目录（相对项目根，同源托管「世界入口」）
+    #[serde(default = "default_static_dir")]
+    pub static_dir: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PersistenceConfig {
+    /// 五行引擎持久化目录；空字符串 = 不持久化（纯内存）
+    #[serde(default)]
+    pub dir: String,
+}
+
 fn default_name() -> String { "洪荒·世界".into() }
 fn default_version() -> String { "0.1.0".into() }
 fn default_level() -> String { "info".into() }
@@ -55,6 +76,8 @@ fn default_max_rounds() -> usize { 20 }
 fn default_executor_timeout_secs() -> u64 { 30 }
 fn default_executor_max_output_bytes() -> u64 { 64 * 1024 }
 fn default_executor_ctrlc() -> bool { true }
+fn default_http_port() -> u16 { 8321 }
+fn default_static_dir() -> String { "乾坤/界面呈现-域/世界入口-府".into() }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -76,6 +99,21 @@ impl Default for AppConfig {
 impl Default for LogConfig {
     fn default() -> Self {
         LogConfig { level: default_level() }
+    }
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        HttpConfig {
+            port: default_http_port(),
+            static_dir: default_static_dir(),
+        }
+    }
+}
+
+impl Default for PersistenceConfig {
+    fn default() -> Self {
+        PersistenceConfig { dir: String::new() }
     }
 }
 

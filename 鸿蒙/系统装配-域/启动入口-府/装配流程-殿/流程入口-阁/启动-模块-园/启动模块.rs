@@ -7,8 +7,15 @@ pub fn 启动() -> hm_error::Result<()> {
     let config = hm_config::default_config();
     let logger = hm_log::Logger::new(&config.log);
 
-    // 生产路径装配五行：五引擎 + 信号总线，串成闭环
-    let 装配 = hm_linkage::五行装配::装配();
+    // 持久化目录：空字符串 = 纯内存（不持久化）
+    let 持久化目录 = if config.persistence.dir.trim().is_empty() {
+        None
+    } else {
+        Some(config.persistence.dir.clone())
+    };
+
+    // 生产路径装配五行：五引擎 + 信号总线 + 认知三态 + 日志记录器，串成闭环
+    let 装配 = hm_linkage::五行装配::装配带持久化目录(持久化目录);
 
     // 通过运行时容器统一管理生命周期：注册日志器并初始化（府可插拔）
     装配.容器.注册初始化(Arc::new(logger));
@@ -19,6 +26,20 @@ pub fn 启动() -> hm_error::Result<()> {
         "五行相生装配完成：任务/迭代/记忆/规则/事件 五引擎与信号总线已串联（已注册组件 {:?}）",
         装配.容器.组件名()
     );
+
+    // 启动数据服务：axum 同源托管前端静态文件 + API（独立线程，失败仅告警不影响主程序）
+    let 数据状态 = hm_http::数据服务状态::新(
+        装配.任务仓库.clone(),
+        装配.迭代日志.clone(),
+        装配.记忆库.clone(),
+        装配.规则库.clone(),
+        装配.事件总线.clone(),
+        装配.图谱.clone(),
+        装配.心智地图.clone(),
+        装配.语境.clone(),
+        装配.日志记录器.clone(),
+    );
+    hm_http::启动数据服务(数据状态, config.http.port, config.http.static_dir.clone());
 
     // 启动自检仅在显式开启时运行（默认关闭，避免污染真实业务数据）；
     // 验证失败仅告警并继续启动，不得因失败导致程序退出
@@ -52,6 +73,7 @@ pub fn 启动() -> hm_error::Result<()> {
             }
         }
     }
+
 
     Ok(())
 }

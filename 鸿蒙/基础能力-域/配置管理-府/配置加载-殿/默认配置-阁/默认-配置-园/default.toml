@@ -12,3 +12,10 @@ executor_ctrlc = true
 
 [log]
 level = "info"
+
+[http]
+port = 8321
+static_dir = "乾坤/界面呈现-域/世界入口-府"
+
+[persistence]
+dir = ""

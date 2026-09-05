@@ -8,7 +8,8 @@ import { 五行视图 } from './视图呈现-殿/引擎观测-阁/五行-视图-
 import { 图谱视图 } from './视图呈现-殿/认知观测-阁/图谱-视图-园/图谱视图.js';
 import { 格位视图 } from './视图呈现-殿/认知观测-阁/格位-视图-园/格位视图.js';
 import { 日志视图 } from './视图呈现-殿/日志观测-阁/日志-视图-园/日志视图.js';
-import { 记日志 } from './运行支撑-殿/数据服务-阁/日志-数据-园/日志数据.js';
+import { 记日志, 加载日志 } from './运行支撑-殿/数据服务-阁/日志-数据-园/日志数据.js';
+import { 加载引擎数据 } from './运行支撑-殿/数据服务-阁/引擎-数据-园/引擎数据.js';
 
 注册视图(对话视图);
 注册视图(五行视图);
@@ -18,7 +19,7 @@ import { 记日志 } from './运行支撑-殿/数据服务-阁/日志-数据-园
 
 let 当前视图对象 = null;
 
-function 启动() {
+async function 启动() {
   const 侧栏容器 = document.getElementById('侧栏');
   const 主容器 = document.getElementById('主区');
   const 面板容器 = document.getElementById('面板');
@@ -42,6 +43,7 @@ function 启动() {
   const 初始键 = 恢复键 || 全部视图()[0].键;
   切换视图(初始键);
 
+  await Promise.all([加载引擎数据(), 加载日志()]);
   记日志('【就绪】', 'ok', '世界入口已启动');
 }
 
