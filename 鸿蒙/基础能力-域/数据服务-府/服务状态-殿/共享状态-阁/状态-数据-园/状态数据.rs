@@ -3,6 +3,7 @@ use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约
 use hm_cognition::{图谱, 心智地图, 过程上下文};
 use hm_log::运行日志记录器;
 use crate::开发执行台;
+use crate::看板驱动台;
 use tc_task::{Task, TaskStatus, TaskBoard};
 use lj_iteration::{Iteration, Version};
 use qk_memory::Memory;
@@ -27,6 +28,7 @@ pub struct 数据服务状态 {
     pub 任务看板: Arc<Mutex<TaskBoard>>,
     pub 日志记录器: Arc<Mutex<运行日志记录器>>,
     pub 开发执行台: Arc<开发执行台>,
+    pub 看板驱动台: Arc<看板驱动台>,
     pub 鉴权令牌: Option<String>,
     pub 重装配工作区: Option<重装配回调>,
 }
@@ -44,6 +46,7 @@ impl 数据服务状态 {
         任务看板: Arc<Mutex<TaskBoard>>,
         日志记录器: Arc<Mutex<运行日志记录器>>,
         开发执行台: Arc<开发执行台>,
+        看板驱动台: Arc<看板驱动台>,
         鉴权令牌: Option<String>,
     ) -> Self {
         数据服务状态 {
@@ -58,6 +61,7 @@ impl 数据服务状态 {
             任务看板,
             日志记录器,
             开发执行台,
+            看板驱动台,
             鉴权令牌,
             重装配工作区: None,
         }

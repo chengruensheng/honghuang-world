@@ -2,7 +2,7 @@
 
 import { 创建存储 } from '../../状态管理-阁/响应式-核心-园/响应式核心.js';
 
-export const 看板存储 = 创建存储({ 任务: [], 选中: null });
+export const 看板存储 = 创建存储({ 任务: [], 选中: null, 驱动: null });
 
 const 取json = (响应) => 响应.json();
 
@@ -56,4 +56,20 @@ export async function 提交任务(id, 角色, 下一状态) {
 /** 选中任务（用于属性面板展示详情） */
 export function 选中任务(id) {
   看板存储.更新({ 选中: id });
+}
+
+/** 驱动看板一轮（POST /api/dev/pilot）—— AI 自主流转五层协作 */
+export async function 驱动一轮() {
+  const 响应 = await fetch('/api/dev/pilot', { method: 'POST' });
+  if (!响应.ok) {
+    const 体 = await 响应.json().catch(() => null);
+    throw new Error((体 && 体.错误) || `驱动失败: ${响应.status}`);
+  }
+}
+
+/** 查询看板驱动台状态（GET /api/dev/pilot/status） */
+export async function 驱动状态() {
+  const 状态 = await fetch('/api/dev/pilot/status').then(取json);
+  看板存储.更新({ 驱动: 状态 });
+  return 状态;
 }

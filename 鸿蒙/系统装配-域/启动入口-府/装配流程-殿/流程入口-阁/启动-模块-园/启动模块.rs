@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::装配开发受理台;
+use crate::{装配开发受理台, 装配看板驱动台};
 
 
 pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
@@ -52,9 +52,10 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         装配.图谱.clone(),
         装配.心智地图.clone(),
         装配.语境.clone(),
-        任务看板,
+        任务看板.clone(),
         装配.日志记录器.clone(),
         Arc::new(hm_http::开发执行台::新()),
+        Arc::new(hm_http::看板驱动台::新()),
         鉴权令牌,
     );
 
@@ -84,6 +85,23 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                         Ok(id) => tracing::info!("已自动受理初始任务 id={id}：{}", config.app.dev_task),
                         Err(失败) => tracing::warn!("初始任务受理失败（不影响启动）: {失败:?}"),
                     }
+                }
+                // 看板驱动台装配：驱动接口 /api/dev/pilot 就绪（LLM key 缺失时未就绪，驱动接口 503 fail-loud）
+                let 驱动上下文路径 = match &持久化目录 {
+                    Some(d) => format!("{d}/看板驱动上下文.jsonl"),
+                    None => std::env::temp_dir().join("洪荒看板驱动上下文.jsonl").to_string_lossy().to_string(),
+                };
+                match 装配看板驱动台(
+                    &数据状态.看板驱动台,
+                    任务看板.clone(),
+                    &驱动上下文路径,
+                    &config.app.dev_workspace,
+                    config.app.dev_max_rounds,
+                    config.app.executor_timeout_secs,
+                    config.app.executor_max_output_bytes,
+                ) {
+                    Ok(()) => tracing::info!("看板驱动已上线（HTTP 驱动模式）"),
+                    Err(e) => tracing::warn!("看板驱动装配失败，驱动接口不可用（不影响启动）: {e}"),
                 }
             }
             Err(e) => tracing::warn!("智能体装配失败，HTTP 受理不可用（不影响启动）: {e}"),

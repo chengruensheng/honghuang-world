@@ -1381,6 +1381,7 @@ version = "0.1.0"
 dependencies = [
  "ctrlc",
  "hm-agent",
+ "hm-cognition",
  "hm-config",
  "hm-content",
  "hm-contract",
@@ -1505,6 +1506,7 @@ dependencies = [
  "axum",
  "dy-rule",
  "hd-event",
+ "hm-agent",
  "hm-cognition",
  "hm-contract",
  "hm-domain-contract",
@@ -5342,7 +5344,9 @@ dependencies = [
  "axum",
  "dy-rule",
  "hd-event",
+ "hm-agent",
  "hm-cognition",
+ "hm-content-contract",
  "hm-contract",
  "hm-domain-contract",
  "hm-error",
@@ -5352,6 +5356,7 @@ dependencies = [
  "hm-log",
  "lj-iteration",
  "qk-memory",
+ "serde_json",
  "tc-task",
  "tokio",
 ]
