@@ -12,4 +12,6 @@ hm-content-contract = { path = "../../../鸿蒙/基础契约-域/内容契约-�
 hm-execute-contract = { path = "../../../鸿蒙/基础契约-域/执行契约-府" }
 hm-contract = { path = "../../../鸿蒙/基础契约-域/核心契约-府" }
 hm-error = { path = "../../../鸿蒙/基础契约-域/错误定义-府" }
+hm-cognition = { path = "../../../鸿蒙/基础能力-域/项目认知-府" }
+tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
 serde_json = { workspace = true }

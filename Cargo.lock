@@ -1365,11 +1365,13 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "hm-agent"
 version = "0.1.0"
 dependencies = [
+ "hm-cognition",
  "hm-content-contract",
  "hm-contract",
  "hm-error",
  "hm-execute-contract",
  "serde_json",
+ "tc-task",
  "tracing",
 ]
 
@@ -5281,11 +5283,13 @@ name = "zd-agent-test"
 version = "0.1.0"
 dependencies = [
  "hm-agent",
+ "hm-cognition",
  "hm-content-contract",
  "hm-contract",
  "hm-error",
  "hm-execute-contract",
  "serde_json",
+ "tc-task",
 ]
 
 [[package]]

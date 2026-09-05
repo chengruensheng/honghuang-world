@@ -3,11 +3,13 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::atomic::Ordering;
     use std::sync::{Arc, Mutex};
-    use hm_agent::智能体;
+    use hm_agent::{智能体, 五层协作驱动器, 驱动结果};
     use hm_contract::Component;
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
     use hm_error::{Error, Result};
     use hm_execute_contract::{开发事件, 开发事件类型, 执行器};
+    use hm_cognition::ContextManager;
+    use tc_task::{Task, TaskBoard, TaskStatus, AgentRole};
 
     /// 模拟对话器：按预设序列依次返回模型响应，验证契约可插拔
     struct 模拟对话器 {
@@ -349,4 +351,197 @@ mod tests {
         assert_eq!(答复, "已修正");
         assert_eq!(智能体.当前任务清单(), "（任务清单为空）");
     }
+
+    // ==================== 五层协作驱动器 ====================
+
+    fn 临时路径(名: &str) -> String {
+        let 目录 = std::env::temp_dir().join("zd-agent-驱动器");
+        let _ = std::fs::create_dir_all(&目录);
+        目录.join(名).to_string_lossy().to_string()
+    }
+
+    fn 造任务(标题: &str) -> Task {
+        Task::新建(0, 标题.to_string(), "需求描述".to_string(), 0)
+    }
+
+    fn 新驱动器(看板: TaskBoard, 序列: Vec<模型响应>, 上下文路径: &str) -> (五层协作驱动器, Arc<Mutex<TaskBoard>>) {
+        let 看板 = Arc::new(Mutex::new(看板));
+        let 上下文 = Arc::new(Mutex::new(ContextManager::新(上下文路径)));
+        let 对话器 = Arc::new(模拟对话器::新(序列));
+        let 执行器 = Arc::new(模拟执行器::新());
+        let 驱动器 = 五层协作驱动器::新(看板.clone(), 上下文, 对话器, 执行器, 10);
+        (驱动器, 看板)
+    }
+
+    fn 设计样例() -> &'static str {
+        r#"{"边界定义":{"模块":"a"},"安全区域":[],"契约":[{"契约名":"测试契约","方法":[{"名称":"方法一","签名":"fn 方法一()","描述":"做某事"}],"描述":"契约描述"}],"修改文件":[],"新建文件":[],"依赖":[]}"#
+    }
+
+    fn 实现样例() -> &'static str {
+        r#"{"代码变更":[{"文件路径":"src/x.rs","变更类型":"修改","摘要":"实现功能"}],"自检":{"通过":true,"边界合规":true,"契约合规":true,"问题":[]}}"#
+    }
+
+    fn 验收样例(结果: bool) -> String {
+        format!(
+            r#"{{"轮次":[{{"轮次":1,"通过":{0},"边界检查":true,"契约检查":true,"安全检查":true,"事实检查":true,"完整性检查":true,"问题":[],"建议":"无"}}],"最终结果":{0}}}"#,
+            结果
+        )
+    }
+
+    fn 终审样例(通过: bool) -> String {
+        format!(
+            r#"{{"通过":{0},"需求满足度":9,"可维护性":8,"代码质量":8,"风险评估":"低","评语":"通过"}}"#,
+            通过
+        )
+    }
+
+    #[test]
+    fn 驱动器_圣人设计阶段产出设计文档() {
+        let mut 看板 = TaskBoard::新建(临时路径("圣人"));
+        let mut task = 造任务("设计任务");
+        task.status = TaskStatus::待圣人设计;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] }],
+            &临时路径("ctx-圣人"),
+        );
+
+        let 结果 = 驱动器.执行一轮().expect("驱动应成功");
+        assert_eq!(
+            结果,
+            驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::圣人, 新状态: TaskStatus::待大罗金仙实现 }
+        );
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        let 设计 = 任务.设计文档.as_ref().expect("设计文档应写入");
+        assert_eq!(设计.契约[0].契约名, "测试契约");
+        assert_eq!(设计.契约[0].方法[0].名称, "方法一");
+    }
+
+    #[test]
+    fn 驱动器_大罗金仙实现阶段产出实现文档() {
+        let mut 看板 = TaskBoard::新建(临时路径("大罗金仙"));
+        let mut task = 造任务("实现任务");
+        task.status = TaskStatus::待大罗金仙实现;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 内容: Some(实现样例().into()), 工具调用: vec![] }],
+            &临时路径("ctx-大罗金仙"),
+        );
+
+        let 结果 = 驱动器.执行一轮().expect("驱动应成功");
+        assert_eq!(
+            结果,
+            驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::大罗金仙, 新状态: TaskStatus::待准圣验收 }
+        );
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        let 实现 = 任务.实现文档.as_ref().expect("实现文档应写入");
+        assert!(实现.自检.通过);
+        assert_eq!(实现.代码变更[0].文件路径, "src/x.rs");
+    }
+
+    #[test]
+    fn 驱动器_准圣验收不通过流转到待修复() {
+        let mut 看板 = TaskBoard::新建(临时路径("准圣"));
+        let mut task = 造任务("验收任务");
+        task.status = TaskStatus::待准圣验收;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 内容: Some(验收样例(false).into()), 工具调用: vec![] }],
+            &临时路径("ctx-准圣"),
+        );
+
+        let 结果 = 驱动器.执行一轮().expect("驱动应成功");
+        assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::准圣, 新状态: TaskStatus::待修复 });
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待修复);
+        let 验收 = 任务.验收文档.as_ref().expect("验收文档应写入");
+        assert!(!验收.最终结果);
+    }
+
+    #[test]
+    fn 驱动器_道祖终审通过到已完成() {
+        let mut 看板 = TaskBoard::新建(临时路径("道祖"));
+        let mut task = 造任务("终审任务");
+        task.status = TaskStatus::待道祖终审;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 内容: Some(终审样例(true).into()), 工具调用: vec![] }],
+            &临时路径("ctx-道祖"),
+        );
+
+        let 结果 = 驱动器.执行一轮().expect("驱动应成功");
+        assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::道祖, 新状态: TaskStatus::已完成 });
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::已完成);
+        assert!(任务.终审文档.as_ref().expect("终审文档应写入").通过);
+    }
+
+    #[test]
+    fn 驱动器_完整链路五阶段到已完成() {
+        let mut 看板 = TaskBoard::新建(临时路径("完整链路"));
+        let mut task = 造任务("完整任务");
+        task.status = TaskStatus::待圣人设计;
+        看板.发布任务(task).expect("发布应成功");
+        let 序列 = vec![
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+            模型响应 { 内容: Some(实现样例().into()), 工具调用: vec![] },
+            模型响应 { 内容: Some(验收样例(true).into()), 工具调用: vec![] },
+            模型响应 { 内容: Some(终审样例(true).into()), 工具调用: vec![] },
+        ];
+        let (驱动器, 看板) = 新驱动器(看板, 序列, &临时路径("ctx-完整"));
+
+        let 结果 = 驱动器.执行到空闲(6).expect("驱动应成功");
+        assert_eq!(结果.len(), 4, "应完成四个阶段");
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::已完成);
+        assert!(任务.设计文档.is_some(), "设计文档应写入");
+        assert!(任务.实现文档.is_some(), "实现文档应写入");
+        assert!(任务.验收文档.is_some(), "验收文档应写入");
+        assert!(任务.终审文档.is_some(), "终审文档应写入");
+        assert_eq!(任务.承接历史.len(), 4, "四角色各承接一次");
+    }
+
+    #[test]
+    fn 驱动器_无任务返回空闲() {
+        let 看板 = TaskBoard::新建(临时路径("空闲"));
+        let (驱动器, _) = 新驱动器(看板, vec![], &临时路径("ctx-空闲"));
+        assert_eq!(驱动器.执行一轮().expect("空看板应返回空闲"), 驱动结果::空闲);
+    }
+
+    #[test]
+    fn 驱动器_非法产出返回错误且状态不变() {
+        let mut 看板 = TaskBoard::新建(临时路径("坏产出"));
+        let mut task = 造任务("坏产出任务");
+        task.status = TaskStatus::待圣人设计;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 内容: Some("抱歉我无法输出 JSON".into()), 工具调用: vec![] }],
+            &临时路径("ctx-坏产出"),
+        );
+
+        let 结果 = 驱动器.执行一轮();
+        assert!(结果.is_err(), "非 JSON 产出应返回错误");
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待圣人设计, "任务状态应保持不变（未承接未提交）");
+        assert!(任务.设计文档.is_none(), "文档不应写入");
+        assert!(任务.承接历史.is_empty(), "不应产生承接记录");
+    }
+
 }
