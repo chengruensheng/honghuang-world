@@ -1,6 +1,8 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::{装配开发受理台, 装配看板驱动台};
+use hm_agent::认知注入;
+use hm_cognition::上下文库;
 
 
 pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
@@ -91,6 +93,12 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     Some(d) => format!("{d}/看板驱动上下文.jsonl"),
                     None => std::env::temp_dir().join("洪荒看板驱动上下文.jsonl").to_string_lossy().to_string(),
                 };
+                // 三态认知注入：看板驱动通道带上 格位/图谱/临时上下文（推/拉/流），每轮过程记录回临时态
+                let 认知注入 = 认知注入::新(
+                    数据状态.图谱.clone(),
+                    数据状态.心智地图.clone(),
+                    Arc::new(Mutex::new(上下文库::新_带上限(1000))),
+                );
                 match 装配看板驱动台(
                     &数据状态.看板驱动台,
                     任务看板.clone(),
@@ -99,6 +107,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     config.app.dev_max_rounds,
                     config.app.executor_timeout_secs,
                     config.app.executor_max_output_bytes,
+                    Some(认知注入),
                 ) {
                     Ok(()) => tracing::info!("看板驱动已上线（HTTP 驱动模式）"),
                     Err(e) => tracing::warn!("看板驱动装配失败，驱动接口不可用（不影响启动）: {e}"),

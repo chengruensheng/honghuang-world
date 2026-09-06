@@ -5,6 +5,8 @@ use hm_content_contract::{工具对话器, 对话消息, 工具调用};
 use hm_error::{Error, Result};
 use hm_execute_contract::{开发事件, 开发事件类型, 开发执行契约, 执行器};
 use super::super::任务_清单_园::{任务项, 格式化清单, 解析任务清单, 清单项键_内容, 清单项键_状态, 状态_待办, 状态_进行中, 状态_已完成};
+use super::super::认知_注入_园::认知注入;
+use hm_cognition::消息角色 as 认知消息角色;
 
 /// 事件内容截断上限（读文件/命令输出可能很长，事件流只保留摘要）
 const 事件内容上限: usize = 200;
@@ -50,11 +52,19 @@ pub struct 智能体 {
     中断标志: Arc<AtomicBool>,
     事件回调: Option<Arc<dyn Fn(&开发事件) + Send + Sync>>,
     任务清单: Arc<Mutex<Vec<任务项>>>,
+    /// 三态认知注入（可选）：装配后 LLM 决策前带 推（格位）/拉（图谱）/流（临时），并把过程记录回临时态
+    认知: Option<认知注入>,
 }
 
 impl 智能体 {
     pub fn new(对话器: Arc<dyn 工具对话器>, 执行器: Arc<dyn 执行器>, 最大轮数: usize) -> Self {
-        智能体 { 对话器, 执行器, 最大轮数, 中断标志: Arc::new(AtomicBool::new(false)), 事件回调: None, 任务清单: Arc::new(Mutex::new(Vec::new())) }
+        智能体 { 对话器, 执行器, 最大轮数, 中断标志: Arc::new(AtomicBool::new(false)), 事件回调: None, 任务清单: Arc::new(Mutex::new(Vec::new())), 认知: None }
+    }
+
+    /// 链式装配三态认知注入：未装配时行为与旧版完全一致
+    pub fn 装配认知(mut self, 认知: 认知注入) -> Self {
+        self.认知 = Some(认知);
+        self
     }
 
     /// 链式注入事件回调：循环各步（思考/工具调用/工具结果/答复）回调通知外部
@@ -89,10 +99,21 @@ impl 智能体 {
 
     /// 运行自主开发循环，返回 LLM 最终答复
     pub fn 运行(&self, 任务: String) -> Result<String> {
+        // 三态初始注入：推（格位常驻）+ 拉（图谱按任务关键词），插在系统提示之后、用户任务之前
+        let 初始注入 = match &self.认知 {
+            Some(认知) => {
+                认知.记录(认知消息角色::用户, 任务.clone());
+                认知.初始注入(&任务)
+            }
+            None => String::new(),
+        };
         let mut 消息 = vec![
             对话消息::系统(系统提示.to_string()),
             对话消息::用户(任务),
         ];
+        if !初始注入.is_empty() {
+            消息.insert(1, 对话消息::系统(初始注入));
+        }
         let 工具 = 工具定义();
 
         for 轮次 in 0..self.最大轮数 {
@@ -102,12 +123,22 @@ impl 智能体 {
             }
             tracing::info!("══════ 第 {} 轮 ══════", 轮次 + 1);
             self.发事件(轮次, 开发事件类型::思考, "", "正在思考下一步行动");
+            // 每轮流注入：临时上下文最近过程（非空才插入）
+            if let Some(认知) = &self.认知 {
+                let 流 = 认知.流注入();
+                if !流.is_empty() {
+                    消息.push(对话消息::系统(流));
+                }
+            }
             let 响应 = self.对话器.对话(消息.clone(), 工具.clone())?;
 
             if 响应.工具调用.is_empty() {
                 let 答复 = 响应.内容.clone().unwrap_or_default();
                 tracing::info!("【LLM 最终答复】{}", 答复);
                 self.发事件(轮次, 开发事件类型::任务答复, "", &答复);
+                if let Some(认知) = &self.认知 {
+                    认知.记录(认知消息角色::助手, 答复.clone());
+                }
                 return Ok(答复);
             }
 
@@ -125,6 +156,10 @@ impl 智能体 {
                 };
                 tracing::info!("【工具返回】{}", 结果);
                 self.发事件(轮次, 开发事件类型::工具结果, &调用.名称, &结果);
+                if let Some(认知) = &self.认知 {
+                    认知.记录(认知消息角色::助手, format!("调用工具 {} 参数 {}", 调用.名称, 调用.参数));
+                    认知.记录(认知消息角色::工具结果, 结果.clone());
+                }
                 消息.push(对话消息::工具结果(调用.id.clone(), 结果));
             }
         }

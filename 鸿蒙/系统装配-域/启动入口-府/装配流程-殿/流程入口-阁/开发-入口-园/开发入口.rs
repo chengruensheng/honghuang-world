@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use hm_agent::{智能体, 五层协作驱动器};
+use hm_agent::{智能体, 五层协作驱动器, 认知注入};
 use hm_cognition::ContextManager;
 use hm_content::对话生成器;
 use hm_execute::本地执行器;
@@ -48,6 +48,7 @@ pub fn 装配看板驱动台(
     最大轮数: usize,
     executor_timeout_secs: u64,
     executor_max_output_bytes: u64,
+    认知: Option<认知注入>,
 ) -> hm_error::Result<()> {
     if let Some(父) = std::path::Path::new(上下文路径).parent() {
         std::fs::create_dir_all(父).map_err(hm_error::Error::Io)?;
@@ -59,7 +60,10 @@ pub fn 装配看板驱动台(
         executor_timeout_secs,
         executor_max_output_bytes,
     ));
-    let 驱动器 = Arc::new(五层协作驱动器::新(看板, 上下文, 对话器, 执行器, 最大轮数));
-    驱动台.装配(驱动器);
+    let mut 驱动器 = 五层协作驱动器::新(看板, 上下文, 对话器, 执行器, 最大轮数);
+    if let Some(注入) = 认知 {
+        驱动器 = 驱动器.装配认知(注入);
+    }
+    驱动台.装配(Arc::new(驱动器));
     Ok(())
 }

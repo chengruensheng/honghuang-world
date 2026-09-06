@@ -10,8 +10,8 @@ mod tests {
         看板驱动状态接口, 看板驱动事件接口, 驱动事件响应, 事件游标,
         受理错误响应, 发布任务请求, 看板发布, 受理开发任务, 受理失败,
     };
-    use hm_agent::五层协作驱动器;
-    use hm_cognition::{ContextManager, 图谱, 心智地图, 过程上下文};
+    use hm_agent::{五层协作驱动器, 认知注入};
+    use hm_cognition::{ContextManager, 上下文库, 图谱, 心智地图, 过程上下文, 消息角色};
     use hm_contract::Component;
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
     use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
@@ -106,6 +106,22 @@ mod tests {
         状态.看板驱动台.装配(驱动器);
     }
 
+    /// 带三态认知注入装配驱动器（返回 上下文库 句柄供断言临时态记录）
+    fn 装配驱动器带认知(状态: &数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) -> Arc<Mutex<上下文库>> {
+        let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
+        let 上下文 = Arc::new(Mutex::new(ContextManager::新(
+            std::env::temp_dir().join(format!("洪荒驱动测试上下文_认知_{序号}.jsonl")).to_string_lossy().to_string(),
+        )));
+        let 库 = Arc::new(Mutex::new(上下文库::新_带上限(1000)));
+        let 注入 = 认知注入::新(状态.图谱.clone(), 状态.心智地图.clone(), 库.clone());
+        let 驱动器 = Arc::new(
+            五层协作驱动器::新(看板.clone(), 上下文, 对话器, Arc::new(模拟执行器), 10)
+                .装配认知(注入),
+        );
+        状态.看板驱动台.装配(驱动器);
+        库
+    }
+
     /// 通过 HTTP handler 发布任务（与真实链路一致：状态=待圣人设计、发起人=道祖）
     async fn 发布任务(状态: &数据服务状态, 标题: &str) {
         let 请求 = Json(发布任务请求 {
@@ -189,6 +205,40 @@ mod tests {
         assert_eq!(阶段.新状态.as_deref(), Some("待大罗金仙实现"));
         let 结果 = 摘要.最近结果.expect("应有最近结果");
         assert!(结果.contains("已推进"), "最近结果应说明推进: {结果}");
+    }
+
+    /// 带三态认知注入装配驱动一轮：流转正常 + 临时态上下文库记录 阶段提示 与 答复
+    #[tokio::test]
+    async fn 驱动台_带认知装配驱动一轮记录临时态() {
+        let (状态, 看板) = 驱动状态();
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+        ]));
+        let 库 = 装配驱动器带认知(&状态, &看板, 对话器);
+        发布任务(&状态, "认知装配流转任务").await;
+
+        assert!(状态.看板驱动台.等待完成(5000), "发布后自动驱动应在超时内完成");
+
+        // 任务正常流转（认知装配不改变流转语义）
+        let 看板守卫 = 看板.lock().expect("看板锁");
+        let 任务 = 看板守卫.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待大罗金仙实现);
+        let 设计 = 任务.设计文档.as_ref().expect("设计文档应写入");
+        assert_eq!(设计.契约[0].契约名, "测试契约");
+        drop(看板守卫);
+
+        // 临时态上下文库记录本轮过程：阶段提示（用户）+ 助手答复
+        let 库 = 库.lock().expect("上下文锁");
+        assert!(库.长度() >= 2, "临时态应至少记录提示与答复，实际 {}", 库.长度());
+        let 最近 = 库.最近(20);
+        assert!(
+            最近.iter().any(|m| m.角色 == 消息角色::用户 && m.内容.contains("认知装配流转任务")),
+            "临时态应记录含任务标题的阶段提示"
+        );
+        assert!(
+            最近.iter().any(|m| m.角色 == 消息角色::助手),
+            "临时态应记录助手答复"
+        );
     }
 
     /// 空看板驱动一轮返回 空闲

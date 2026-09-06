@@ -8,7 +8,7 @@ use tc_task::{
     Task, TaskBoard, TaskStatus, DesignDoc, ImplementationDoc, VerificationDoc,
     FinalAcceptanceDoc,
 };
-use crate::循环驱动_殿::智能体;
+use crate::循环驱动_殿::{智能体, 认知注入};
 
 /// 驱动一轮的结果
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +31,8 @@ pub struct 五层协作驱动器 {
     对话器: Arc<dyn 工具对话器>,
     执行器: Arc<dyn 执行器>,
     最大轮数: usize,
+    /// 三态认知注入（可选）：装配后每轮智能体带 推/拉/流 认知，并把过程记录回临时态
+    认知: Option<认知注入>,
 }
 
 impl 五层协作驱动器 {
@@ -41,7 +43,13 @@ impl 五层协作驱动器 {
         执行器: Arc<dyn 执行器>,
         最大轮数: usize,
     ) -> Self {
-        五层协作驱动器 { 看板, 上下文, 对话器, 执行器, 最大轮数 }
+        五层协作驱动器 { 看板, 上下文, 对话器, 执行器, 最大轮数, 认知: None }
+    }
+
+    /// 链式装配三态认知注入：未装配时行为与旧版完全一致
+    pub fn 装配认知(mut self, 认知: 认知注入) -> Self {
+        self.认知 = Some(认知);
+        self
     }
 
     /// 执行一轮：返回 阶段完成 或 空闲
@@ -71,7 +79,10 @@ impl 五层协作驱动器 {
 
         // 4. 组装阶段提示并执行（智能体循环，LLM 可用工具实际干活）
         let 提示 = 阶段提示(&角色, &快照);
-        let 智能体 = 智能体::new(self.对话器.clone(), self.执行器.clone(), self.最大轮数);
+        let mut 智能体 = 智能体::new(self.对话器.clone(), self.执行器.clone(), self.最大轮数);
+        if let Some(认知) = &self.认知 {
+            智能体 = 智能体.装配认知(认知.clone());
+        }
         let 答复 = 智能体.运行(提示.clone())?;
 
         // 5. 解析阶段产出为文档（失败 → 任务保持待承接，可重试）
