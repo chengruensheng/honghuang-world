@@ -2,7 +2,7 @@ use hm_contract::当前时间戳;
 use crate::{维度, 图谱, 心智地图, 上下文库, 维度载荷, 经历载荷, 消息角色, 冷却默认轮数, 晋升重复阈值};
 
 /// 纠错事件：一次纠错的不可变记录（可追溯回放）
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct 纠错事件 {
     pub 时间: u64,
     pub 检测到的差异: String,

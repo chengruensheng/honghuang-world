@@ -94,11 +94,59 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     None => std::env::temp_dir().join("洪荒看板驱动上下文.jsonl").to_string_lossy().to_string(),
                 };
                 // 三态认知注入：看板驱动通道带上 格位/图谱/临时上下文（推/拉/流），每轮过程记录回临时态
-                let 认知注入 = 认知注入::新(
-                    数据状态.图谱.clone(),
-                    数据状态.心智地图.clone(),
-                    Arc::new(Mutex::new(上下文库::新_带上限(1000))),
-                );
+                // 三态持久化：persistence.dir/认知三态/ 存在历史则恢复（损坏告警保持空态），每轮对话后自动写穿
+                let 尝试恢复: Option<认知注入> = 持久化目录.as_ref().and_then(|d| {
+                    let 存储 = match hm_cognition::三态存储::新(format!("{d}/认知三态")) {
+                        Ok(存储) => 存储,
+                        Err(失败) => {
+                            tracing::warn!("认知三态存储目录创建失败，跳过持久化: {失败}");
+                            return None;
+                        }
+                    };
+                    if !存储.已存在() {
+                        return None;
+                    }
+                    match 存储.加载() {
+                        Ok((图谱, 心智, 上下文库)) => {
+                            *数据状态.图谱.lock().expect("图谱锁中毒") = 图谱;
+                            *数据状态.心智地图.lock().expect("心智锁中毒") = 心智;
+                            tracing::info!("认知三态已从历史恢复（临时消息 {} 条）", 上下文库.长度());
+                            Some(
+                                认知注入::新(
+                                    数据状态.图谱.clone(),
+                                    数据状态.心智地图.clone(),
+                                    Arc::new(Mutex::new(上下文库)),
+                                )
+                                .装配存储(Arc::new(存储)),
+                            )
+                        }
+                        Err(失败) => {
+                            tracing::warn!("认知三态恢复失败，保持空态继续启动: {失败}");
+                            None
+                        }
+                    }
+                });
+                let 认知注入 = match 尝试恢复 {
+                    Some(注入) => 注入,
+                    None => {
+                        let 存储 = 持久化目录.as_ref().and_then(|d| {
+                            hm_cognition::三态存储::新(format!("{d}/认知三态")).ok()
+                        });
+                        match 存储 {
+                            Some(存储) => 认知注入::新(
+                                数据状态.图谱.clone(),
+                                数据状态.心智地图.clone(),
+                                Arc::new(Mutex::new(上下文库::新_带上限(1000))),
+                            )
+                            .装配存储(Arc::new(存储)),
+                            None => 认知注入::新(
+                                数据状态.图谱.clone(),
+                                数据状态.心智地图.clone(),
+                                Arc::new(Mutex::new(上下文库::新_带上限(1000))),
+                            ),
+                        }
+                    }
+                };
                 match 装配看板驱动台(
                     &数据状态.看板驱动台,
                     任务看板.clone(),

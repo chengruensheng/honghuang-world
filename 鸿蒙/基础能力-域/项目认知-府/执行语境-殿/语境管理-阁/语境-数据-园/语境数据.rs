@@ -91,6 +91,18 @@ impl 上下文库 {
         }
     }
 
+    /// 从已持久化消息流重建（供三态存储加载：恢复 下一id 单调性 + 截断到上限）
+    pub fn 导入(消息流: Vec<上下文消息>, 最大条数: usize) -> Self {
+        let 长度 = 消息流.len();
+        let 消息流 = if 长度 > 最大条数 {
+            消息流.into_iter().skip(长度 - 最大条数).collect()
+        } else {
+            消息流
+        };
+        let 下一id = 消息流.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+        上下文库 { 消息流, 下一id, 最大条数 }
+    }
+
     /// 追加一条消息，返回新消息；超过硬上限时丢弃最早
     pub fn 追加(&mut self, 角色: 消息角色, 内容: impl Into<String>) -> 上下文消息 {
         let 消息 = 上下文消息 {

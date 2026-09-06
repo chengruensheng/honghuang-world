@@ -5,7 +5,7 @@ mod tests {
     use hm_agent::{智能体, 五层协作驱动器, 认知注入, 驱动结果};
     use hm_contract::Component;
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应, 消息角色 as 契约角色};
-    use hm_cognition::{ContextManager, 上下文库, 模块, 图谱, 维度, 心智地图, 消息角色};
+    use hm_cognition::{ContextManager, 上下文库, 模块, 图谱, 三态存储, 维度, 心智地图, 消息角色};
     use hm_error::{Error, Result};
     use hm_execute_contract::执行器;
     use tc_task::{AgentRole, Task, TaskBoard, TaskStatus};
@@ -271,4 +271,42 @@ mod tests {
             "临时态应记录助手答复"
         );
     }
+    #[test]
+    fn 智能体_装配存储每轮保存三态() {
+        let (图谱, 心智, 上下文) = 辅助三态();
+        let 目录 = std::env::temp_dir()
+            .join("zd-agent-三态存储")
+            .join(format!("存_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&目录);
+        let 存储 = Arc::new(三态存储::新(&目录).expect("创建存储"));
+        let 注入 = 认知注入::新(图谱, 心智, 上下文).装配存储(存储.clone());
+        let 对话器 = Arc::new(记录对话器::新(vec![
+            模型响应 {
+                内容: None,
+                工具调用: vec![工具调用 { id: "call_1".into(), 名称: "读文件".into(), 参数: r#"{"路径":"/tmp/a.txt"}"#.into() }],
+            },
+            模型响应 { 内容: Some("完成".into()), 工具调用: vec![] },
+        ]));
+        let 智能体 = 智能体::new(对话器.clone(), Arc::new(模拟执行器), 5).装配认知(注入);
+
+        智能体.运行("持久化任务".into()).expect("运行应成功");
+
+        // 三态文件应已写穿落盘
+        assert!(存储.目录().join("心智地图.json").exists(), "心智地图应落盘");
+        assert!(存储.目录().join("图谱.json").exists(), "图谱应落盘");
+        assert!(存储.目录().join("上下文库.jsonl").exists(), "上下文库应落盘");
+
+        // 加载的上下文库应含运行记录（任务/工具调用/最终答复）
+        let 加载库 = 存储.加载上下文().expect("加载上下文库");
+        assert!(加载库.长度() >= 3, "临时态应含运行记录，实际 {}", 加载库.长度());
+        let 全部 = 加载库.全部();
+        assert!(全部.iter().any(|m| m.内容.contains("持久化任务")), "应含任务记录");
+        assert!(全部.iter().any(|m| m.内容.contains("调用工具 读文件")), "应含工具调用记录");
+        assert!(全部.iter().any(|m| m.角色 == 消息角色::助手 && m.内容 == "完成"), "应含最终答复");
+
+        // 心智地图可加载且含已写格位
+        let 加载心智 = 存储.加载心智().expect("加载心智地图");
+        assert!(加载心智.查询格位(维度::目标, "现况").is_some(), "已写格位应保留");
+    }
+
 }

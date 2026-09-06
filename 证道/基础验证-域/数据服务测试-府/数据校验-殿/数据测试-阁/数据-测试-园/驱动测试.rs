@@ -11,7 +11,7 @@ mod tests {
         受理错误响应, 发布任务请求, 看板发布, 受理开发任务, 受理失败,
     };
     use hm_agent::{五层协作驱动器, 认知注入};
-    use hm_cognition::{ContextManager, 上下文库, 图谱, 心智地图, 过程上下文, 消息角色};
+    use hm_cognition::{ContextManager, 上下文库, 三态存储, 图谱, 心智地图, 过程上下文, 消息角色};
     use hm_contract::Component;
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
     use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
@@ -120,6 +120,25 @@ mod tests {
         );
         状态.看板驱动台.装配(驱动器);
         库
+    }
+
+    /// 带三态认知注入 + 持久化存储装配驱动器（返回 存储 句柄供断言落盘）
+    fn 装配驱动器带存储(状态: &数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) -> Arc<三态存储> {
+        let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
+        let 上下文 = Arc::new(Mutex::new(ContextManager::新(
+            std::env::temp_dir().join(format!("洪荒驱动测试上下文_存储_{序号}.jsonl")).to_string_lossy().to_string(),
+        )));
+        let 存储 = Arc::new(三态存储::新(
+            std::env::temp_dir().join(format!("洪荒驱动测试三态_{序号}")),
+        ).expect("创建三态存储"));
+        let 注入 = 认知注入::新(状态.图谱.clone(), 状态.心智地图.clone(), Arc::new(Mutex::new(上下文库::新_带上限(1000))))
+            .装配存储(存储.clone());
+        let 驱动器 = Arc::new(
+            五层协作驱动器::新(看板.clone(), 上下文, 对话器, Arc::new(模拟执行器), 10)
+                .装配认知(注入),
+        );
+        状态.看板驱动台.装配(驱动器);
+        存储
     }
 
     /// 通过 HTTP handler 发布任务（与真实链路一致：状态=待圣人设计、发起人=道祖）
@@ -238,6 +257,34 @@ mod tests {
         assert!(
             最近.iter().any(|m| m.角色 == 消息角色::助手),
             "临时态应记录助手答复"
+        );
+    }
+
+    /// 带三态持久化存储装配驱动一轮：落盘 + 上下文库可加载
+    #[tokio::test]
+    async fn 驱动台_带存储装配驱动后持久化() {
+        let (状态, 看板) = 驱动状态();
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+        ]));
+        let 存储 = 装配驱动器带存储(&状态, &看板, 对话器);
+        发布任务(&状态, "持久化流转任务").await;
+
+        assert!(状态.看板驱动台.等待完成(5000), "发布后自动驱动应在超时内完成");
+
+        // 任务正常流转
+        let 看板守卫 = 看板.lock().expect("看板锁");
+        assert_eq!(看板守卫.查询(1).expect("任务应存在").status, TaskStatus::待大罗金仙实现);
+        drop(看板守卫);
+
+        // 三态文件已写穿落盘，上下文库可加载且含阶段提示
+        assert!(存储.目录().join("心智地图.json").exists(), "心智地图应落盘");
+        assert!(存储.目录().join("图谱.json").exists(), "图谱应落盘");
+        assert!(存储.目录().join("上下文库.jsonl").exists(), "上下文库应落盘");
+        let 库 = 存储.加载上下文().expect("加载上下文库");
+        assert!(
+            库.全部().iter().any(|m| m.角色 == 消息角色::用户 && m.内容.contains("持久化流转任务")),
+            "临时态应含阶段提示"
         );
     }
 
