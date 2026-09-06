@@ -12,6 +12,7 @@ hm-contract = { path = "../../基础契约-域/核心契约-府" }
 hm-domain-contract = { path = "../../基础契约-域/领域契约-府" }
 hm-execute-contract = { path = "../../基础契约-域/执行契约-府" }
 hm-cognition = { path = "../项目认知-府" }
+hm-content = { path = "../内容生成-府" }
 hm-agent = { path = "../../系统装配-域/自主开发-府" }
 hm-log = { path = "../日志管理-府" }
 tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }

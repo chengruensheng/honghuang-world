@@ -11,6 +11,8 @@ pub struct Config {
     pub http: HttpConfig,
     #[serde(default)]
     pub persistence: PersistenceConfig,
+    #[serde(default)]
+    pub llm: LlmConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -79,6 +81,61 @@ pub struct PersistenceConfig {
     pub dir: String,
 }
 
+/// 商业级 LLM 池配置：多供应商（任意数量）+ 启动默认选择 + 运行时选择落盘。
+#[derive(Debug, Clone, Deserialize)]
+pub struct LlmConfig {
+    /// 供应商池（配置顺序即故障转移优先级；可为空 = 回退环境变量单供应商）
+    #[serde(default)]
+    pub providers: Vec<LlmProvider>,
+    /// 启动默认选中的供应商名（空 = 第一个启用供应商）
+    #[serde(default)]
+    pub selected_provider: String,
+    /// 启动默认选中的模型名（空 = 选中供应商的 model 字段）
+    #[serde(default)]
+    pub selected_model: String,
+    /// 运行时选择持久化文件名（相对 persistence.dir；空 = 仅运行时生效）
+    #[serde(default = "default_llm_state_file")]
+    pub state_file: String,
+}
+
+/// 单个 LLM 供应商配置（OpenAI 兼容协议）。
+#[derive(Debug, Clone, Deserialize)]
+pub struct LlmProvider {
+    /// 供应商名（唯一；界面展示与故障转移日志用）
+    #[serde(default)]
+    pub name: String,
+    /// 协议类型（预留扩展；当前仅 "openai" 生效，其余按 openai 兼容处理）
+    #[serde(default = "default_llm_kind")]
+    pub kind: String,
+    /// chat/completions 端点（OpenAI 兼容）
+    #[serde(default)]
+    pub base_url: String,
+    /// list-models 端点（空 = 推导 `{base_url}/models`）
+    #[serde(default)]
+    pub models_url: String,
+    /// API 密钥：直接值（开发期）或 `env:变量名` 引用环境变量（推荐，密钥不入库）
+    #[serde(default)]
+    pub api_key: String,
+    /// 默认模型名（选中供应商时的默认模型）
+    #[serde(default)]
+    pub model: String,
+    /// 单次请求超时秒数
+    #[serde(default = "default_llm_timeout")]
+    pub timeout_secs: u64,
+    /// 失败重试次数（首次 + 重试 = 总尝试次数）
+    #[serde(default = "default_llm_retry")]
+    pub retry: u32,
+    /// 是否启用（false = 池内跳过，不参与选择与故障转移）
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_llm_state_file() -> String { "llm-选择.json".into() } // 运行时选择文件（相对 persistence.dir）
+fn default_llm_kind() -> String { "openai".into() }
+fn default_llm_timeout() -> u64 { 30 }
+fn default_llm_retry() -> u32 { 2 }
+fn default_true() -> bool { true }
+
 fn default_name() -> String { "洪荒·世界".into() }
 fn default_version() -> String { "0.1.0".into() }
 fn default_level() -> String { "info".into() }
@@ -131,6 +188,17 @@ impl Default for HttpConfig {
 impl Default for PersistenceConfig {
     fn default() -> Self {
         PersistenceConfig { dir: String::new() }
+    }
+}
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        LlmConfig {
+            providers: Vec::new(),
+            selected_provider: String::new(),
+            selected_model: String::new(),
+            state_file: default_llm_state_file(),
+        }
     }
 }
 

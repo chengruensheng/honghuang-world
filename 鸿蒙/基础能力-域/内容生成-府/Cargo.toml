@@ -10,6 +10,7 @@ path = "模块.rs"
 hm-content-contract = { path = "../../基础契约-域/内容契约-府" }
 hm-contract = { path = "../../基础契约-域/核心契约-府" }
 hm-error = { path = "../../基础契约-域/错误定义-府" }
+hm-config = { path = "../../基础能力-域/配置管理-府" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ureq = { workspace = true }

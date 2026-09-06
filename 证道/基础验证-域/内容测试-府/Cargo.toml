@@ -11,3 +11,5 @@ hm-content-contract = { path = "../../../鸿蒙/基础契约-域/内容契约-�
 hm-content = { path = "../../../鸿蒙/基础能力-域/内容生成-府" }
 hm-contract = { path = "../../../鸿蒙/基础契约-域/核心契约-府" }
 hm-error = { path = "../../../鸿蒙/基础契约-域/错误定义-府" }
+hm-config = { path = "../../../鸿蒙/基础能力-域/配置管理-府" }
+serde_json = { workspace = true }

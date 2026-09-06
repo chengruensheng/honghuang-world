@@ -1,5 +1,7 @@
 use std::time::Duration;
 use hm_content_contract::{内容生成器, 工具对话器, 对话消息, 消息角色, 工具调用, 模型响应};
+
+use super::super::解析密钥;
 use hm_contract::Component;
 use hm_error::{Error, Result};
 use serde_json::json;
@@ -69,6 +71,35 @@ impl 对话生成器 {
             主: 模型提供商 { api_key: 主密钥, base_url: 主地址, model: 主模型 },
             备选: Some(模型提供商 { api_key: 备密钥, base_url: 备地址, model: 备模型 }),
         }
+    }
+
+    /// 从 LLM 池配置构造：取前两个 启用且密钥有效 的供应商为 主/备（兼容池配置与旧主备语义）。
+    /// 无有效供应商时返回空主（生成时报错），由调用方决定是否回退。
+    pub fn 从配置(配置: &hm_config::LlmConfig) -> Self {
+        let mut 启用们 = 配置
+            .providers
+            .iter()
+            .filter(|p| p.enabled && !解析密钥(&p.api_key).is_empty());
+        let 主项 = 启用们.next();
+        let 备项 = 启用们.next();
+        let 主 = match 主项 {
+            Some(p) => 模型提供商 {
+                api_key: 解析密钥(&p.api_key),
+                base_url: p.base_url.clone(),
+                model: p.model.clone(),
+            },
+            None => 模型提供商 {
+                api_key: String::new(),
+                base_url: String::new(),
+                model: String::new(),
+            },
+        };
+        let 备选 = 备项.map(|p| 模型提供商 {
+            api_key: 解析密钥(&p.api_key),
+            base_url: p.base_url.clone(),
+            model: p.model.clone(),
+        });
+        对话生成器 { 主, 备选 }
     }
 
     /// 从环境变量构建：主 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL，
@@ -178,8 +209,8 @@ impl 工具对话器 for 对话生成器 {
     }
 }
 
-/// 将对话消息转为 OpenAI 兼容 API 的 messages 元素
-fn 消息转json(消息: &对话消息) -> serde_json::Value {
+/// 将对话消息转为 OpenAI 兼容 API 的 messages 元素（供 对话生成器 与 LLM池 共用）
+pub fn 消息转json(消息: &对话消息) -> serde_json::Value {
     match 消息.角色 {
         消息角色::System | 消息角色::User => json!({
             "role": 消息.角色.序列化(),
@@ -209,8 +240,8 @@ fn 消息转json(消息: &对话消息) -> serde_json::Value {
     }
 }
 
-/// 从模型响应消息里解析工具调用列表
-fn 解析工具调用(message: &serde_json::Value) -> Vec<工具调用> {
+/// 从模型响应消息里解析工具调用列表（供 对话生成器 与 LLM池 共用）
+pub fn 解析工具调用(message: &serde_json::Value) -> Vec<工具调用> {
     let mut 结果 = Vec::new();
     if let Some(调用数组) = message["tool_calls"].as_array() {
         for 条目 in 调用数组 {

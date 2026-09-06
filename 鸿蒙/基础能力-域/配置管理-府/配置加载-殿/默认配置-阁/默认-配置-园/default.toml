@@ -21,3 +21,24 @@ auth_token = ""
 
 [persistence]
 dir = ""
+
+[llm]
+# 商业级 LLM 池：多供应商配置（配置顺序即故障转移优先级）。
+# selected_provider / selected_model 留空 = 自动选择第一个启用供应商。
+# api_key 推荐写 env:环境变量名（密钥不入库）；开发期可写明文。
+# models_url 留空时推导为 {base_url}/models（供应商 list 端点不同时请显式配置）。
+selected_provider = ""
+selected_model = ""
+state_file = "llm-选择.json"
+
+# 示例（取消注释即启用，可配置任意数量）：
+# [[llm.providers]]
+# name = "minimax"
+# kind = "openai"
+# base_url = "https://api.minimax.chat/v1/text/chatcompletion_v2"
+# models_url = "https://api.minimax.chat/v1/models"
+# api_key = "env:LLM_API_KEY"
+# model = "abab6.5s-chat"
+# timeout_secs = 30
+# retry = 2
+# enabled = true""

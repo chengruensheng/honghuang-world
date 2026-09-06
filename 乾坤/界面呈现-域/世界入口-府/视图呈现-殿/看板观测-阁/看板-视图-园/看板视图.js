@@ -1,6 +1,6 @@
 // 看板视图.js —— 任务看板（五层协作卡片视图，按状态分组展示 + 发布/承接/提交交互）
 
-import { 看板存储, 加载看板数据, 发布任务, 承接任务, 提交任务, 选中任务, 驱动一轮, 驱动到空闲, 驱动状态 } from '../../../运行支撑-殿/数据服务-阁/看板-数据-园/看板数据.js';
+import { 看板存储, 加载看板数据, 发布任务, 承接任务, 提交任务, 清理任务, 选中任务, 驱动一轮, 驱动到空闲, 驱动状态 } from '../../../运行支撑-殿/数据服务-阁/看板-数据-园/看板数据.js';
 
 const 图标 = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`;
 
@@ -15,6 +15,9 @@ const 状态分组 = [
   { 状态: '待修复', 色: '#f97316', 角色: 'A' },
   { 状态: '待道祖终审', 色: '#cbd5e1', 角色: '道祖' },
   { 状态: '道祖终审中', 色: '#cbd5e1', 角色: '道祖' },
+  { 状态: '待清理', 色: '#22d3ee', 角色: '太乙金仙' },
+  { 状态: '清理中', 色: '#22d3ee', 角色: '太乙金仙' },
+  { 状态: '清理完成', 色: '#60a5fa', 角色: null },
   { 状态: '已完成', 色: '#60a5fa', 角色: null },
   { 状态: '已取消', 色: '#64748b', 角色: null },
 ];
@@ -24,6 +27,7 @@ const 角色映射 = {
   '圣人': '圣人',
   'A': '大罗金仙',
   '准圣': '准圣',
+  '太乙金仙': '太乙金仙',
 };
 
 const 流转选项 = {
@@ -36,7 +40,9 @@ const 流转选项 = {
   '准圣验收中': [{ 状态: '待道祖终审', 角色: '准圣' }, { 状态: '待修复', 角色: '准圣' }],
   '待修复': [{ 状态: '大罗金仙实现中', 角色: 'A' }],
   '待道祖终审': [{ 状态: '道祖终审中', 角色: '道祖' }],
-  '道祖终审中': [{ 状态: '已完成', 角色: '道祖' }, { 状态: '待修复', 角色: '道祖' }],
+  '道祖终审中': [{ 状态: '待清理', 角色: '道祖' }, { 状态: '待修复', 角色: '道祖' }],
+  '待清理': [{ 状态: '清理中', 角色: '太乙金仙' }],
+  '清理中': [{ 状态: '清理完成', 角色: '太乙金仙' }],
 };
 
 export const 看板视图 = {
@@ -180,7 +186,7 @@ function 渲染看板(容器) {
   let html = '';
   for (const 分组 of 状态分组) {
     const 任务们 = 任务列表.filter((t) => t.status === 分组.状态);
-    if (任务们.length === 0 && !['待受理', '待圣人设计', '待大罗金仙实现', '待准圣验收', '待道祖终审', '已完成'].includes(分组.状态)) continue;
+    if (任务们.length === 0 && !['待受理', '待圣人设计', '待大罗金仙实现', '待准圣验收', '待道祖终审', '待清理', '已完成'].includes(分组.状态)) continue;
     html += `<div class="board-col" style="border-top:3px solid ${分组.色}">`;
     html += `<div class="board-col-head"><span class="board-col-title">${分组.状态}</span><span class="board-col-count">${任务们.length}</span></div>`;
     for (const 任务 of 任务们) {
@@ -199,6 +205,9 @@ function 渲染看板(容器) {
       for (const 流 of 流转) {
         const 流转角色 = 流.角色 ? 角色映射[流.角色] : null;
         html += `<button class="btn-submit" data-id="${任务.id}" data-role="${流转角色 || ''}" data-next="${流.状态}">→ ${流.状态}</button>`;
+      }
+      if (任务.status === '待清理') {
+        html += `<button class="btn-clean" data-id="${任务.id}">🧹 一键清理</button>`;
       }
       html += `</div>`;
     }
@@ -229,6 +238,14 @@ function 渲染看板(容器) {
       const role = 按钮.dataset.role;
       const next = 按钮.dataset.next;
       try { await 提交任务(id, role, next); } catch (err) { alert(err.message); }
+    });
+  });
+
+  容器.querySelectorAll('.btn-clean').forEach((按钮) => {
+    按钮.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = Number(按钮.dataset.id);
+      try { await 清理任务(id); } catch (err) { alert(err.message); }
     });
   });
 }

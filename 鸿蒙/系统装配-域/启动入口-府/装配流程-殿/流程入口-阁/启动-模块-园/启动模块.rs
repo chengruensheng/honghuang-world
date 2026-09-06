@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::{装配开发受理台, 装配看板驱动台};
 use hm_agent::认知注入;
 use hm_cognition::上下文库;
+use hm_content::LLM池;
 
 
 pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
@@ -14,6 +15,38 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         None
     } else {
         Some(config.persistence.dir.clone())
+    };
+
+    // 商业级 LLM 池：配置 providers 非空 → 从配置（多供应商池）；否则回退环境变量单点（兼容 v1.43）。
+    // 状态文件相对 persistence.dir；无持久化目录时仅运行时生效（不落盘）。
+    let mut llm配置 = config.llm.clone();
+    if !llm配置.state_file.is_empty() {
+        if let Some(d) = &持久化目录 {
+            llm配置.state_file = format!("{d}/{}", llm配置.state_file);
+        } else {
+            llm配置.state_file = String::new();
+        }
+    }
+    let llm池: Option<Arc<LLM池>> = if !llm配置.providers.is_empty() {
+        let 池 = LLM池::从配置(&llm配置);
+        if 池.可用() {
+            tracing::info!("LLM 池已装配（配置 {} 个供应商）", 池.供应商清单().len());
+            Some(Arc::new(池))
+        } else {
+            tracing::warn!("LLM 池配置无可用供应商（全部禁用或密钥缺失）");
+            None
+        }
+    } else {
+        match LLM池::从环境() {
+            Ok(池) => {
+                tracing::info!("LLM 池已装配（环境变量注入，供应商 {} 个）", 池.供应商清单().len());
+                Some(Arc::new(池))
+            }
+            Err(e) => {
+                tracing::warn!("LLM 池未装配（未配置供应商且环境密钥缺失）: {e}");
+                None
+            }
+        }
     };
 
     // 生产路径装配五行：五引擎 + 信号总线 + 认知三态 + 日志记录器，串成闭环
@@ -58,6 +91,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         装配.日志记录器.clone(),
         Arc::new(hm_http::开发执行台::新()),
         Arc::new(hm_http::看板驱动台::新()),
+        llm池.clone(),
         鉴权令牌,
     );
 
@@ -71,6 +105,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
             config.app.dev_max_rounds,
             config.app.executor_timeout_secs,
             config.app.executor_max_output_bytes,
+            llm池.clone(),
         ) {
             Ok(()) => {
                 tracing::info!("自主开发智能体已上线（HTTP 受理模式，工作区 {}）", config.app.dev_workspace);
@@ -79,8 +114,9 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 let 最大轮数 = config.app.dev_max_rounds;
                 let 超时秒 = config.app.executor_timeout_secs;
                 let 输出上限 = config.app.executor_max_output_bytes;
+                let 重装配池 = llm池.clone();
                 数据状态.重装配工作区 = Some(Arc::new(move |新工作区: &str| {
-                    装配开发受理台(&执行台, 新工作区, 最大轮数, 超时秒, 输出上限)
+                    装配开发受理台(&执行台, 新工作区, 最大轮数, 超时秒, 输出上限, 重装配池.clone())
                 }));
                 if !config.app.dev_task.trim().is_empty() {
                     match hm_http::受理开发任务(&数据状态, config.app.dev_task.clone()) {
@@ -156,6 +192,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     config.app.executor_timeout_secs,
                     config.app.executor_max_output_bytes,
                     Some(认知注入),
+                    llm池.clone(),
                 ) {
                     Ok(()) => tracing::info!("看板驱动已上线（HTTP 驱动模式）"),
                     Err(e) => tracing::warn!("看板驱动装配失败，驱动接口不可用（不影响启动）: {e}"),

@@ -42,6 +42,7 @@ fn 解析角色(s: &str) -> Option<AgentRole> {
         "圣人" => Some(AgentRole::圣人),
         "大罗金仙" => Some(AgentRole::大罗金仙),
         "准圣" => Some(AgentRole::准圣),
+        "太乙金仙" => Some(AgentRole::太乙金仙),
         _ => None,
     }
 }
@@ -61,6 +62,9 @@ fn 解析状态(s: &str) -> Option<TaskStatus> {
         "待修复" => Some(TaskStatus::待修复),
         "待道祖终审" => Some(TaskStatus::待道祖终审),
         "道祖终审中" => Some(TaskStatus::道祖终审中),
+        "待清理" => Some(TaskStatus::待清理),
+        "清理中" => Some(TaskStatus::清理中),
+        "清理完成" => Some(TaskStatus::清理完成),
         _ => None,
     }
 }
@@ -168,6 +172,21 @@ pub async fn 看板提交(
     let mut board = 状态.任务看板.lock().expect("看板锁中毒");
     board
         .提交任务(id, role, next)
+        .map(|_| StatusCode::OK)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
+}
+
+/// POST /api/board/{id}/clean — 太乙金仙一键清理（承接+提交）
+pub async fn 看板清理(
+    State(状态): State<数据服务状态>,
+    Path(id): Path<u64>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let mut board = 状态.任务看板.lock().expect("看板锁中毒");
+    board
+        .承接任务(id, AgentRole::太乙金仙)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    board
+        .提交任务(id, AgentRole::太乙金仙, TaskStatus::清理完成)
         .map(|_| StatusCode::OK)
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }

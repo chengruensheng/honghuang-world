@@ -26,13 +26,14 @@ export const 对话视图 = {
   图标,
   挂载(容器) {
     主容器 = 容器;
-    容器.innerHTML = `<div class="view-head"><div><h2>对话</h2><p>下达需求，发布到看板由驱动器自主五层流转（圣人设计→大罗金仙实现→准圣验收→道祖终审）</p></div></div><div class="chat" id="chat"></div><div class="chat-input"><input id="task" placeholder="下达需求，如：在沙箱里写一个 fibonacci 模块…" /><button class="btn" id="go">下达</button></div>`;
+    容器.innerHTML = `<div class="view-head"><div><h2>对话</h2><p>下达需求，发布到看板由驱动器自主五层流转（圣人设计→大罗金仙实现→准圣验收→道祖终审）</p></div></div><div class="llm-bar" id="llm-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;margin-bottom:10px;border:1px solid #e4e3dd;border-radius:12px;background:#faf9f5;font-size:13px;"><span style="color:#6b7280;white-space:nowrap;">模型选择</span><select id="llm-provider" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;"></select><select id="llm-model" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;min-width:160px;"></select><span id="llm-hint" style="color:#6b7280;font-size:12px;"></span></div><div class="chat" id="chat"></div><div class="chat-input"><input id="task" placeholder="下达需求，如：在沙箱里写一个 fibonacci 模块…" /><button class="btn" id="go">下达</button></div>`;
     const 输入框 = 容器.querySelector('#task');
     锁定按钮 = 容器.querySelector('#go');
     锁定按钮.addEventListener('click', () => 下达(输入框));
     输入框.addEventListener('keydown', (事件) => {
       if (事件.key === 'Enter') 下达(输入框);
     });
+    初始化模型选择();
   },
   属性(容器) {
     面板容器 = 容器;
@@ -192,4 +193,99 @@ function 转义(文本) {
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;');
+}
+
+/** 初始化模型选择条：拉取池状态 → 供应商下拉 → 拉取模型列表 → 模型下拉 → 切换生效 */
+async function 初始化模型选择() {
+  if (!主容器) return;
+  const 供应商框 = 主容器.querySelector('#llm-provider');
+  const 模型框 = 主容器.querySelector('#llm-model');
+  const 提示 = 主容器.querySelector('#llm-hint');
+  if (!供应商框 || !模型框 || !提示) return;
+  try {
+    const 状态 = await fetch('/api/llm/status').then((响应) => 响应.json());
+    if (!状态.配置 || !状态.供应商 || 状态.供应商.length === 0) {
+      提示.textContent = '未配置 LLM 池（default.toml [llm] 或环境变量）';
+      供应商框.disabled = true;
+      模型框.disabled = true;
+      return;
+    }
+    const 当前 = 状态.当前选择 || null;
+    for (const 供应商 of 状态.供应商) {
+      const 选项 = document.createElement('option');
+      选项.value = 供应商.名称;
+      选项.textContent = `${供应商.名称}（默认 ${供应商.模型 || '—'}）`;
+      供应商框.appendChild(选项);
+    }
+    if (当前 && 当前.供应商) 供应商框.value = 当前.供应商;
+    供应商框.addEventListener('change', () => {
+      提示.textContent = '';
+      刷新模型列表(供应商框, 模型框, 提示, 当前);
+    });
+    模型框.addEventListener('change', () => 应用模型选择(供应商框, 模型框, 提示));
+    await 刷新模型列表(供应商框, 模型框, 提示, 当前);
+  } catch (错误) {
+    console.warn('LLM 状态获取失败', 错误);
+    提示.textContent = '无法获取 LLM 池状态（后端未就绪？）';
+  }
+}
+
+/** 拉取当前供应商的可用模型列表并填充下拉 */
+async function 刷新模型列表(供应商框, 模型框, 提示, 当前) {
+  模型框.innerHTML = '';
+  const 选中 = 供应商框.value;
+  if (!选中) return;
+  try {
+    const 响应 = await fetch('/api/llm/models').then((r) => r.json());
+    const 条目 = (响应.结果 || []).find((r) => r.供应商 === 选中);
+    if (条目 && 条目.模型 && 条目.模型.length > 0) {
+      for (const 模型 of 条目.模型) {
+        const 选项 = document.createElement('option');
+        选项.value = 模型.id;
+        选项.textContent = 模型.id;
+        模型框.appendChild(选项);
+      }
+      if (当前 && 当前.供应商 === 选中 && 当前.模型) {
+        const 已存在 = [...模型框.options].some((o) => o.value === 当前.模型);
+        if (已存在) {
+          模型框.value = 当前.模型;
+        } else {
+          const 补充 = document.createElement('option');
+          补充.value = 当前.模型;
+          补充.textContent = `${当前.模型}（当前）`;
+          模型框.appendChild(补充);
+          模型框.value = 当前.模型;
+        }
+      }
+      提示.textContent = '已从 API 获取可用模型';
+    } else {
+      提示.textContent = '模型列表不可用：' + (条目 ? 条目.错误 || '空列表' : '未知供应商');
+    }
+  } catch (错误) {
+    console.warn('模型列表获取失败', 错误);
+    提示.textContent = '模型列表拉取失败';
+  }
+}
+
+/** 切换模型：POST /api/llm/select 运行时全局生效并落盘 */
+async function 应用模型选择(供应商框, 模型框, 提示) {
+  const 供应商 = 供应商框.value;
+  const 模型 = 模型框.value;
+  if (!供应商 || !模型) return;
+  try {
+    const 响应 = await fetch('/api/llm/select', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 供应商, 模型 }),
+    });
+    if (响应.ok) {
+      提示.textContent = `已切换：${供应商} / ${模型}`;
+      记日志('【模型】', 'act', `切换 LLM 选择：${供应商} / ${模型}`);
+    } else {
+      提示.textContent = '切换失败（非法供应商或模型？）';
+    }
+  } catch (错误) {
+    console.warn('模型切换失败', 错误);
+    提示.textContent = '切换失败（后端未就绪？）';
+  }
 }

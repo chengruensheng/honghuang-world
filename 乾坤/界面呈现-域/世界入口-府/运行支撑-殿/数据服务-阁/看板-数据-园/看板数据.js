@@ -53,6 +53,13 @@ export async function 提交任务(id, 角色, 下一状态) {
   await 加载看板数据();
 }
 
+/** 太乙金仙一键清理（承接+提交） */
+export async function 清理任务(id) {
+  const 响应 = await fetch(`/api/board/${id}/clean`, { method: 'POST' });
+  if (!响应.ok) throw new Error(`清理失败: ${响应.status}`);
+  await 加载看板数据();
+}
+
 /** 选中任务（用于属性面板展示详情） */
 export function 选中任务(id) {
   看板存储.更新({ 选中: id });

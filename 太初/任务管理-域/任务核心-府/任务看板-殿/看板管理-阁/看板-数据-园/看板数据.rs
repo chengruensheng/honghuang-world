@@ -123,7 +123,7 @@ impl TaskBoard {
         let 描述 = task.description.clone();
         执行推进(task, next, role, Some("提交".to_string()))?;
         self.保存()?;
-        if next == TaskStatus::已完成 {
+        if next == TaskStatus::已完成 || next == TaskStatus::清理完成 {
             self.发布信号(
                 信号类型::任务完成,
                 信号载荷 {

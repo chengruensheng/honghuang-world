@@ -66,13 +66,14 @@ mod tests {
                         _ => "500 Internal Server Error",
                     };
                     let 响应 = format!(
-                        "HTTP/1.0 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                        "HTTP/1.0 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                         状态文本,
                         响应体.len(),
                         响应体,
                     );
                     let _ = 流.write_all(响应.as_bytes());
                     let _ = 流.flush();
+                    let _ = 流.shutdown(std::net::Shutdown::Both);
                 }
             }
         });
