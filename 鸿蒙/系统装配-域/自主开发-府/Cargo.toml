@@ -13,5 +13,6 @@ hm-execute-contract = { path = "../../基础契约-域/执行契约-府" }
 hm-error = { path = "../../基础契约-域/错误定义-府" }
 hm-cognition = { path = "../../基础能力-域/项目认知-府" }
 tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

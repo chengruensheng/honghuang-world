@@ -27,6 +27,9 @@ dir = ""
 # selected_provider / selected_model 留空 = 自动选择第一个启用供应商。
 # api_key 推荐写 env:环境变量名（密钥不入库）；开发期可写明文。
 # models_url 留空时推导为 {base_url}/models（供应商 list 端点不同时请显式配置）。
+# 快捷接入：前端对话页「＋ 接入供应商」可选内置模板（DeepSeek/智谱GLM/通义Qwen/Kimi/
+# MiniMax/火山方舟/OpenAI/OpenRouter/Ollama）或自定义供应商——填官网+密钥 → 获取可用模型
+# → 接入并选择；api_key 写 env:变量名 会记入 llm-接入.json，重启自动恢复；明文仅会话内有效。
 selected_provider = ""
 selected_model = ""
 state_file = "llm-选择.json"

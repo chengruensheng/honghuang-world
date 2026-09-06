@@ -115,7 +115,7 @@ fn 失败状态码(失败: &受理失败) -> StatusCode {
     match 失败 {
         受理失败::未上线 => StatusCode::SERVICE_UNAVAILABLE,
         受理失败::运行中 => StatusCode::CONFLICT,
-        受理失败::任务为空 | 受理失败::创建受阻(_) => StatusCode::BAD_REQUEST,
+        受理失败::任务为空 | 受理失败::无待确认 | 受理失败::创建受阻(_) => StatusCode::BAD_REQUEST,
     }
 }
 
@@ -125,6 +125,60 @@ fn 失败消息(失败: &受理失败) -> String {
         受理失败::未上线 => "智能体未上线：需配置 LLM_API_KEY 并开启 run_dev_agent 后重启".into(),
         受理失败::运行中 => "已有任务执行中，请等待完成后再下达".into(),
         受理失败::任务为空 => "任务内容不能为空".into(),
+        受理失败::无待确认 => "当前无待确认需求：请先与道祖澄清并对齐".into(),
         受理失败::创建受阻(e) => format!("任务创建受阻: {e}"),
+    }
+}
+
+/// 道祖对话请求体
+#[derive(Debug, Deserialize)]
+pub struct 道祖对话请求 {
+    pub 消息: String,
+}
+
+/// 道祖对话响应体：阶段 + 回复 + 待确认需求
+#[derive(Debug, Serialize)]
+pub struct 道祖对话响应 {
+    pub 阶段: hm_agent::会话阶段,
+    pub 回复: String,
+    pub 需求: Option<hm_agent::需求摘要>,
+}
+
+/// 道祖确认响应体
+#[derive(Debug, Serialize)]
+pub struct 道祖确认响应 {
+    pub 任务id: u64,
+}
+
+/// POST /api/dev/chat：道祖接待用户消息（闲聊/澄清/对齐）
+pub async fn 道祖对话接口(
+    状态: State<数据服务状态>,
+    Json(请求): Json<道祖对话请求>,
+) -> Result<Json<道祖对话响应>, (StatusCode, Json<受理错误响应>)> {
+    let 接待 = 状态.道祖接待.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(受理错误响应 { 错误: "道祖未上线：需配置 LLM 并开启 run_dev_agent".into() }),
+    ))?;
+    let 接待 = 接待.lock().expect("道祖接待锁中毒");
+    let 响应 = 接待.接待(请求.消息).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(受理错误响应 { 错误: e.to_string() }),
+        )
+    })?;
+    Ok(Json(道祖对话响应 {
+        阶段: 响应.阶段,
+        回复: 响应.回复,
+        需求: 响应.需求,
+    }))
+}
+
+/// POST /api/dev/chat/confirm：确认发布对齐需求（落看板 + 写记忆 + 自动驱动）
+pub async fn 道祖确认接口(
+    状态: State<数据服务状态>,
+) -> Result<Json<道祖确认响应>, (StatusCode, Json<受理错误响应>)> {
+    match crate::确认发布对齐需求(&状态) {
+        Ok(id) => Ok(Json(道祖确认响应 { 任务id: id })),
+        Err(失败) => Err((失败状态码(&失败), Json(受理错误响应 { 错误: 失败消息(&失败) }))),
     }
 }

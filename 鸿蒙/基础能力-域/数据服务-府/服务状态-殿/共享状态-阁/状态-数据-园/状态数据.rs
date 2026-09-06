@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
 use hm_cognition::{图谱, 心智地图, 过程上下文};
 use hm_content::LLM池;
+use hm_agent::道祖接待;
 use hm_log::运行日志记录器;
 use crate::开发执行台;
 use crate::看板驱动台;
@@ -30,6 +31,8 @@ pub struct 数据服务状态 {
     pub 日志记录器: Arc<Mutex<运行日志记录器>>,
     pub 开发执行台: Arc<开发执行台>,
     pub 看板驱动台: Arc<看板驱动台>,
+    /// 道祖接待器（主控澄清会话，未装配时 None，对话接口返回未上线）
+    pub 道祖接待: Option<Arc<Mutex<道祖接待>>>,
     /// 商业级 LLM 池（未配置/未装配时 None，LLM 相关接口返回 未配置）
     pub llm池: Option<Arc<LLM池>>,
     pub 鉴权令牌: Option<String>,
@@ -66,6 +69,7 @@ impl 数据服务状态 {
             日志记录器,
             开发执行台,
             看板驱动台,
+            道祖接待: None,
             llm池,
             鉴权令牌,
             重装配工作区: None,

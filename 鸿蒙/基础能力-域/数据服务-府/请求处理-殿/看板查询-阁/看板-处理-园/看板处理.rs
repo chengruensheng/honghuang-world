@@ -70,24 +70,11 @@ fn 解析状态(s: &str) -> Option<TaskStatus> {
 }
 
 fn 解析场景(s: &str) -> Option<TaskScene> {
-    match s {
-        "理解" => Some(TaskScene::理解),
-        "设计" => Some(TaskScene::设计),
-        "修改" => Some(TaskScene::修改),
-        "调试" => Some(TaskScene::调试),
-        "重构" => Some(TaskScene::重构),
-        _ => None,
-    }
+    TaskScene::解析(s)
 }
 
 fn 解析优先级(s: &str) -> Option<TaskPriority> {
-    match s {
-        "P0" => Some(TaskPriority::P0),
-        "P1" => Some(TaskPriority::P1),
-        "P2" => Some(TaskPriority::P2),
-        "P3" => Some(TaskPriority::P3),
-        _ => None,
-    }
+    TaskPriority::解析(s)
 }
 
 /// GET /api/board — 看板任务列表（可选筛选）

@@ -1370,6 +1370,7 @@ dependencies = [
  "hm-contract",
  "hm-error",
  "hm-execute-contract",
+ "serde",
  "serde_json",
  "tc-task",
  "tracing",

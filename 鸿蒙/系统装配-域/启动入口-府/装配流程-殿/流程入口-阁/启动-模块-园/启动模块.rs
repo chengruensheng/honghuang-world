@@ -1,10 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{装配开发受理台, 装配看板驱动台};
-use hm_agent::认知注入;
+use hm_agent::{认知注入, 道祖接待};
 use hm_cognition::上下文库;
 use hm_content::LLM池;
 
+/// 道祖接待会话持久化文件名（位于 persistence.dir 下）
+const 道祖接待文件名: &str = "道祖接待.json";
 
 pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
     let config = hm_config::运行配置();
@@ -29,6 +31,10 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
     }
     let llm池: Option<Arc<LLM池>> = if !llm配置.providers.is_empty() {
         let 池 = LLM池::从配置(&llm配置);
+        // 运行时接入的 env 引用供应商（llm-接入.json）合并进池，重启自动恢复
+        if let Err(e) = 池.从接入文件合并() {
+            tracing::warn!("LLM 接入文件合并失败: {e}");
+        }
         if 池.可用() {
             tracing::info!("LLM 池已装配（配置 {} 个供应商）", 池.供应商清单().len());
             Some(Arc::new(池))
@@ -196,6 +202,18 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 ) {
                     Ok(()) => tracing::info!("看板驱动已上线（HTTP 驱动模式）"),
                     Err(e) => tracing::warn!("看板驱动装配失败，驱动接口不可用（不影响启动）: {e}"),
+                }
+                // 道祖接待器装配：主控澄清会话（持久化到 persistence.dir/道祖接待.json，重启恢复）
+                let 道祖路径 = match &持久化目录 {
+                    Some(d) => format!("{d}/{道祖接待文件名}"),
+                    None => std::env::temp_dir().join(道祖接待文件名).to_string_lossy().to_string(),
+                };
+                match 道祖接待::加载(llm池.clone().expect("LLM 池已装配"), 道祖路径) {
+                    Ok(接待) => {
+                        数据状态.道祖接待 = Some(Arc::new(Mutex::new(接待)));
+                        tracing::info!("道祖接待已上线（主控澄清模式）");
+                    }
+                    Err(e) => tracing::warn!("道祖接待装配失败，对话澄清不可用（不影响启动）: {e}"),
                 }
             }
             Err(e) => tracing::warn!("智能体装配失败，HTTP 受理不可用（不影响启动）: {e}"),
