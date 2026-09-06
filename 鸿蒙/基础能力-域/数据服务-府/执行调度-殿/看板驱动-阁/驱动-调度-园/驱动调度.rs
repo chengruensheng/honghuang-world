@@ -343,5 +343,8 @@ fn 状态名(状态: &TaskStatus) -> &'static str {
         TaskStatus::待修复 => "待修复",
         TaskStatus::待道祖终审 => "待道祖终审",
         TaskStatus::道祖终审中 => "道祖终审中",
+        TaskStatus::待清理 => "待清理",
+        TaskStatus::清理中 => "清理中",
+        TaskStatus::清理完成 => "清理完成",
     }
 }

@@ -50,7 +50,7 @@ mod tests {
     }
 
     #[test]
-    fn 五层状态_完整流转路径到已完成() {
+    fn 六层状态_完整流转路径到清理完成() {
         let 路径 = [
             TaskStatus::待受理,
             TaskStatus::待圣人设计,
@@ -61,7 +61,9 @@ mod tests {
             TaskStatus::准圣验收中,
             TaskStatus::待道祖终审,
             TaskStatus::道祖终审中,
-            TaskStatus::已完成,
+            TaskStatus::待清理,
+            TaskStatus::清理中,
+            TaskStatus::清理完成,
         ];
         for i in 0..路径.len() - 1 {
             assert!(
@@ -143,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn 看板_五层完整流转到已完成() {
+    fn 看板_六层完整流转到清理完成() {
         let path = 临时路径("完整流转");
         let mut board = TaskBoard::新建(&path);
         let id = board.发布任务(造任务("完整流转测试")).expect("发布应成功");
@@ -158,12 +160,15 @@ mod tests {
         board.提交任务(id, AgentRole::准圣, TaskStatus::待道祖终审).expect("准圣提交通过");
 
         board.承接任务(id, AgentRole::道祖).expect("道祖承接");
-        board.提交任务(id, AgentRole::道祖, TaskStatus::已完成).expect("道祖终审通过");
+        board.提交任务(id, AgentRole::道祖, TaskStatus::待清理).expect("道祖终审通过");
+
+        board.承接任务(id, AgentRole::太乙金仙).expect("太乙金仙承接");
+        board.提交任务(id, AgentRole::太乙金仙, TaskStatus::清理完成).expect("太乙金仙清理完成");
 
         let task = board.查询(id).expect("任务应存在");
-        assert_eq!(task.status, TaskStatus::已完成);
-        assert_eq!(task.状态历史.len(), 9);
-        assert_eq!(task.承接历史, vec![AgentRole::圣人, AgentRole::大罗金仙, AgentRole::准圣, AgentRole::道祖]);
+        assert_eq!(task.status, TaskStatus::清理完成);
+        assert_eq!(task.状态历史.len(), 11);
+        assert_eq!(task.承接历史, vec![AgentRole::圣人, AgentRole::大罗金仙, AgentRole::准圣, AgentRole::道祖, AgentRole::太乙金仙]);
         std::fs::remove_file(&path).ok();
     }
 

@@ -28,6 +28,9 @@ pub struct AppConfig {
     /// 自主开发智能体的工作区根目录
     #[serde(default = "default_workspace")]
     pub dev_workspace: String,
+    /// 图谱扫描根目录（相对当前工作目录；默认 ./ 即项目根，启动时自动扫描建世界态图谱）
+    #[serde(default = "default_scan_root")]
+    pub scan_root: String,
     /// 自主开发智能体的任务描述
     #[serde(default)]
     pub dev_task: String,
@@ -80,6 +83,7 @@ fn default_name() -> String { "洪荒·世界".into() }
 fn default_version() -> String { "0.1.0".into() }
 fn default_level() -> String { "info".into() }
 fn default_workspace() -> String { "./工作区".into() }
+fn default_scan_root() -> String { "./".into() }
 fn default_max_rounds() -> usize { 20 }
 fn default_executor_timeout_secs() -> u64 { 30 }
 fn default_executor_max_output_bytes() -> u64 { 64 * 1024 }
@@ -96,6 +100,7 @@ impl Default for AppConfig {
             run_self_test: false,
             run_dev_agent: false,
             dev_workspace: default_workspace(),
+            scan_root: default_scan_root(),
             dev_task: String::new(),
             dev_max_rounds: default_max_rounds(),
             executor_timeout_secs: default_executor_timeout_secs(),

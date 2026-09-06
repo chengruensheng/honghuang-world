@@ -210,4 +210,39 @@ mod tests {
         // 按名称获取未命中返回空
         assert!(装配.容器.按名称获取("不存在的组件").is_none());
     }
+    #[test]
+    fn 装配带扫描_图谱自动建() {
+        // 临时微型 workspace：装配带扫描 后 图谱 应含扫描出的 crate 模块
+        let 根 = std::env::temp_dir().join("zd-linkage-扫描").join(format!("配_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&根);
+        std::fs::create_dir_all(根.join("甲").join("src")).expect("建甲");
+        std::fs::write(根.join("Cargo.toml"), "[workspace]\nmembers = [\"甲\"]\n").expect("写根Cargo");
+        std::fs::write(根.join("甲").join("Cargo.toml"), "[package]\nname = \"甲\"\n").expect("写甲Cargo");
+        std::fs::write(根.join("甲").join("src").join("主.rs"), "pub fn 运行() {}").expect("写主");
+
+        let 装配 = 五行装配::装配带扫描(None, Some(根.to_string_lossy().to_string()));
+        let 图谱 = 装配.图谱.lock().expect("图谱锁");
+        assert_eq!(图谱.模块集.len(), 1, "扫描后应含 1 个 crate 模块");
+        assert_eq!(图谱.模块集[0].名称, "甲");
+        assert_eq!(图谱.模块集[0].路径, "甲");
+        assert!(图谱.查符号("运行").is_some(), "pub fn 运行 应被提取");
+    }
+
+    #[test]
+    fn 装配带持久化目录_图谱保持空() {
+        // 兼容：装配带持久化目录（未指定扫描根）→ 图谱保持空（v1.40 行为）
+        let 装配 = 五行装配::装配带持久化目录(None);
+        let 图谱 = 装配.图谱.lock().expect("图谱锁");
+        assert!(图谱.模块集.is_empty(), "未指定扫描根时图谱应保持空");
+        assert!(图谱.符号集.is_empty());
+    }
+
+    #[test]
+    fn 装配带扫描_扫描失败回退空图谱() {
+        // 扫描根 指向不存在目录 → 告警回退空图谱，装配本身不失败
+        let 装配 = 五行装配::装配带扫描(None, Some("Z:/不存在的扫描根".to_string()));
+        let 图谱 = 装配.图谱.lock().expect("图谱锁");
+        assert!(图谱.模块集.is_empty(), "扫描失败应回退空图谱");
+    }
+
 }

@@ -10,6 +10,7 @@ pub fn 状态归属角色(状态: TaskStatus) -> Option<AgentRole> {
         }
         TaskStatus::待准圣验收 | TaskStatus::准圣验收中 => Some(AgentRole::准圣),
         TaskStatus::待道祖终审 | TaskStatus::道祖终审中 => Some(AgentRole::道祖),
+        TaskStatus::待清理 | TaskStatus::清理中 => Some(AgentRole::太乙金仙),
         _ => None,
     }
 }
@@ -22,6 +23,7 @@ pub fn 承接后状态(状态: TaskStatus) -> Option<TaskStatus> {
         TaskStatus::待准圣验收 => Some(TaskStatus::准圣验收中),
         TaskStatus::待修复 => Some(TaskStatus::大罗金仙实现中),
         TaskStatus::待道祖终审 => Some(TaskStatus::道祖终审中),
+        TaskStatus::待清理 => Some(TaskStatus::清理中),
         _ => None,
     }
 }

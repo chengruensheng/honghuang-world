@@ -58,17 +58,23 @@ impl 五行装配 {
 
     /// 装配五行并指定容量上限（相克约束：过盛才约束新增，而非删除已有）
     pub fn 装配带上限(容量上限: usize) -> Self {
-        Self::装配带持久化(容量上限, None)
+        Self::装配带持久化(容量上限, None, None)
     }
 
     /// 装配五行并指定持久化目录（容量上限取默认值）：历史文件存在则加载，否则新建
     pub fn 装配带持久化目录(持久化目录: Option<String>) -> Self {
-        Self::装配带持久化(默认容量上限, 持久化目录)
+        Self::装配带持久化(默认容量上限, 持久化目录, None)
+    }
+
+    /// 装配五行并指定持久化目录与图谱扫描根：扫描根 Some 时自动扫描 Rust workspace
+    /// 构建世界态图谱（扫描失败告警回退空图谱，不阻断启动）；None 保持空图谱（v1.40 行为）
+    pub fn 装配带扫描(持久化目录: Option<String>, 扫描根: Option<String>) -> Self {
+        Self::装配带持久化(默认容量上限, 持久化目录, 扫描根)
     }
 
     /// 装配五行并指定容量上限与持久化目录：历史文件存在则加载，否则新建；
     /// 同时实例化认知三态（空结构）与运行日志记录器。
-    pub fn 装配带持久化(容量上限: usize, 持久化目录: Option<String>) -> Self {
+    pub fn 装配带持久化(容量上限: usize, 持久化目录: Option<String>, 扫描根: Option<String>) -> Self {
         let 容器 = Arc::new(组件容器::new());
 
         let 信号总线 = Arc::new(内存信号总线::new());
@@ -134,8 +140,27 @@ impl 五行装配 {
         }
         let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = 事件总线;
 
-        // 认知三态（空结构，等待未来填充真实数据）
-        let 图谱 = Arc::new(Mutex::new(图谱::新()));
+        // 认知三态：世界态图谱——扫描根 Some 时自动扫描 Rust workspace 构建（代码即真源）；
+        // 扫描失败告警回退空图谱，不阻断启动（v1.40 起为空结构，等待填充）
+        let 图谱 = Arc::new(Mutex::new(match &扫描根 {
+            Some(根) => match hm_cognition::Rust扫描器::新().扫描(std::path::Path::new(根)) {
+                Ok(图) => {
+                    tracing::info!(
+                        "图谱扫描完成：{} 模块、{} 符号、{} 依赖、技术栈 {} 项",
+                        图.模块集.len(),
+                        图.符号集.len(),
+                        图.依赖集.len(),
+                        图.技术栈.len()
+                    );
+                    图
+                }
+                Err(失败) => {
+                    tracing::warn!("图谱扫描失败，回退空图谱（不影响启动）: {失败}");
+                    图谱::新()
+                }
+            },
+            None => 图谱::新(),
+        }));
         let 心智地图 = Arc::new(Mutex::new(心智地图::新()));
         let 语境 = Arc::new(Mutex::new(过程上下文::新()));
         // 运行日志记录器（信号转日志，供前端日志视图读取）

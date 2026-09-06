@@ -161,6 +161,8 @@ fn 可承接(状态: TaskStatus) -> bool {
             | TaskStatus::待准圣验收
             | TaskStatus::待道祖终审
             | TaskStatus::待修复
+            | TaskStatus::待清理
+            | TaskStatus::清理中
     )
 }
 
@@ -171,6 +173,7 @@ fn 状态归属角色(状态: TaskStatus) -> Option<AgentRole> {
         TaskStatus::待大罗金仙实现 | TaskStatus::待修复 => Some(AgentRole::大罗金仙),
         TaskStatus::待准圣验收 => Some(AgentRole::准圣),
         TaskStatus::待道祖终审 => Some(AgentRole::道祖),
+        TaskStatus::待清理 | TaskStatus::清理中 => Some(AgentRole::太乙金仙),
         _ => None,
     }
 }
@@ -201,6 +204,11 @@ fn 阶段提示(角色: &AgentRole, 快照: &任务快照) -> String {
              输出终审文档 JSON：\
              {\"通过\":true,\"需求满足度\":10,\"可维护性\":9,\"代码质量\":9,\"风险评估\":\"\",\"评语\":\"\"}"
         }
+        AgentRole::太乙金仙 => {
+            "你的任务是【清理】。对已终审通过的任务做收尾清理：核对产物、归档、移除临时文件。\
+             输出清理记录 JSON：\
+             {\"清理项\":[{\"项\":\"\",\"结果\":\"已清理\"}],\"归档完成\":true}"
+        }
     };
     format!(
         "你是{角色}（{职责}），在「洪荒·世界」项目五层协作中负责本阶段。\n\
@@ -228,6 +236,7 @@ fn 角色职责(角色: &AgentRole) -> &'static str {
         AgentRole::圣人 => "边界契约设计",
         AgentRole::大罗金仙 => "代码实现与自检",
         AgentRole::准圣 => "逐项验收",
+        AgentRole::太乙金仙 => "清理与归档",
     }
 }
 
@@ -280,8 +289,15 @@ fn 解析并构造(
         AgentRole::道祖 => {
             let doc: FinalAcceptanceDoc = serde_json::from_value(值)
                 .map_err(|e| Error::反序列化(format!("终审文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
-            let 下一状态 = if doc.通过 { TaskStatus::已完成 } else { TaskStatus::待修复 };
+            let 下一状态 = if doc.通过 { TaskStatus::待清理 } else { TaskStatus::待修复 };
             Ok((Box::new(move |看板, id| 看板.更新终审文档(id, doc)), 下一状态))
+        }
+        AgentRole::太乙金仙 => {
+            // 清理阶段无文档槽位（Task 未扩展字段）：校验顶层对象即可，推进到 清理完成
+            if !值.is_object() {
+                return Err(Error::反序列化(format!("清理记录 JSON 顶层必须是对象，前 200 字：{}", 截断(&json, 200))));
+            }
+            Ok((Box::new(|_看板, _id| Ok(())), TaskStatus::清理完成))
         }
     }
 }

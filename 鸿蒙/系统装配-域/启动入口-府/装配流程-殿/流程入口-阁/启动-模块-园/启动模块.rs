@@ -17,7 +17,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
     };
 
     // 生产路径装配五行：五引擎 + 信号总线 + 认知三态 + 日志记录器，串成闭环
-    let 装配 = hm_linkage::五行装配::装配带持久化目录(持久化目录.clone());
+    let 装配 = hm_linkage::五行装配::装配带扫描(持久化目录.clone(), Some(config.app.scan_root.clone()));
 
     // 通过运行时容器统一管理生命周期：注册日志器并初始化（府可插拔）
     装配.容器.注册初始化(Arc::new(logger));

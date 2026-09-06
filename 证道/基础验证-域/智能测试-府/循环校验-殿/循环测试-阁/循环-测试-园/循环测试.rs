@@ -468,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn 驱动器_道祖终审通过到已完成() {
+    fn 驱动器_道祖终审通过进入待清理() {
         let mut 看板 = TaskBoard::新建(临时路径("道祖"));
         let mut task = 造任务("终审任务");
         task.status = TaskStatus::待道祖终审;
@@ -480,16 +480,16 @@ mod tests {
         );
 
         let 结果 = 驱动器.执行一轮().expect("驱动应成功");
-        assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::道祖, 新状态: TaskStatus::已完成 });
+        assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::道祖, 新状态: TaskStatus::待清理 });
 
         let 看板 = 看板.lock().expect("看板锁");
         let 任务 = 看板.查询(1).expect("任务应存在");
-        assert_eq!(任务.status, TaskStatus::已完成);
+        assert_eq!(任务.status, TaskStatus::待清理);
         assert!(任务.终审文档.as_ref().expect("终审文档应写入").通过);
     }
 
     #[test]
-    fn 驱动器_完整链路五阶段到已完成() {
+    fn 驱动器_完整链路六阶段到清理完成() {
         let mut 看板 = TaskBoard::新建(临时路径("完整链路"));
         let mut task = 造任务("完整任务");
         task.status = TaskStatus::待圣人设计;
@@ -499,20 +499,21 @@ mod tests {
             模型响应 { 内容: Some(实现样例().into()), 工具调用: vec![] },
             模型响应 { 内容: Some(验收样例(true).into()), 工具调用: vec![] },
             模型响应 { 内容: Some(终审样例(true).into()), 工具调用: vec![] },
+            模型响应 { 内容: Some(r#"{"清理项":[{"项":"临时文件","结果":"已清理"}],"归档完成":true}"#.into()), 工具调用: vec![] },
         ];
         let (驱动器, 看板) = 新驱动器(看板, 序列, &临时路径("ctx-完整"));
 
-        let 结果 = 驱动器.执行到空闲(6).expect("驱动应成功");
-        assert_eq!(结果.len(), 4, "应完成四个阶段");
+        let 结果 = 驱动器.执行到空闲(8).expect("驱动应成功");
+        assert_eq!(结果.len(), 5, "应完成五个阶段（设计/实现/验收/终审/清理）");
 
         let 看板 = 看板.lock().expect("看板锁");
         let 任务 = 看板.查询(1).expect("任务应存在");
-        assert_eq!(任务.status, TaskStatus::已完成);
+        assert_eq!(任务.status, TaskStatus::清理完成);
         assert!(任务.设计文档.is_some(), "设计文档应写入");
         assert!(任务.实现文档.is_some(), "实现文档应写入");
         assert!(任务.验收文档.is_some(), "验收文档应写入");
         assert!(任务.终审文档.is_some(), "终审文档应写入");
-        assert_eq!(任务.承接历史.len(), 4, "四角色各承接一次");
+        assert_eq!(任务.承接历史.len(), 5, "五角色各承接一次");
     }
 
     #[test]
