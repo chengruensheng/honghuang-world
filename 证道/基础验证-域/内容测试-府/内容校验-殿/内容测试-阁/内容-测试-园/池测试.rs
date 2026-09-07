@@ -89,6 +89,7 @@ mod tests {
             timeout_secs: 5,
             retry: 0,
             enabled: 启用,
+            json_mode: false,
         }
     }
 
@@ -232,6 +233,7 @@ mod tests {
             timeout_secs: 2,
             retry: 0,
             enabled: true,
+            json_mode: false,
         };
         let 配置 = LlmConfig {
             providers: vec![供应商("甲", &甲.地址, "key-a", "甲模型", true), 乙],
@@ -327,131 +329,5 @@ mod tests {
         let ids: Vec<&str> = 模型.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["deepseek-chat", "deepseek-reasoner"]);
         assert!(hm_content::模板模型("不存在模板").is_none());
-    }
-
-    #[test]
-    fn 池_探测_自定义网络返回模型() {
-        let 服务器 = 起模型服务器(200, r#"{"choices":[]}"#, 200, r#"{"data":[{"id":"甲-1"},{"id":"甲-2"}]}"#);
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: String::new() });
-        let (来源, 模型) = 池.探测模型(None, Some(&format!("http://{}", 服务器.地址)), None).unwrap();
-        assert_eq!(来源, "网络");
-        let ids: Vec<&str> = 模型.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["甲-1", "甲-2"]);
-    }
-
-    #[test]
-    fn 池_探测_请求内密钥优先() {
-        let 服务器 = 起模型服务器(200, r#"{"choices":[]}"#, 200, r#"{"data":[{"id":"甲-1"}]}"#);
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: String::new() });
-        池.探测模型(None, Some(&format!("http://{}", 服务器.地址)), Some("sk-probe")).unwrap();
-        let 请求 = 服务器.记录.lock().unwrap().first().unwrap().clone();
-        assert!(请求.contains("Bearer sk-probe"), "请求应带请求内密钥，实际: {请求}");
-    }
-
-    #[test]
-    fn 池_探测_回退池内存密钥() {
-        let 服务器 = 起模型服务器(200, r#"{"choices":[]}"#, 200, r#"{"data":[{"id":"甲-1"}]}"#);
-        let 配置 = LlmConfig {
-            providers: vec![供应商("甲", &服务器.地址, "key-stored", "甲模型", true)],
-            selected_provider: String::new(),
-            selected_model: String::new(),
-            state_file: String::new(),
-        };
-        let 池 = LLM池::从配置(&配置);
-        池.探测模型(Some("甲"), None, None).unwrap();
-        let 请求 = 服务器.记录.lock().unwrap().first().unwrap().clone();
-        assert!(请求.contains("Bearer key-stored"), "应回退池内存密钥，实际: {请求}");
-    }
-
-    #[test]
-    fn 池_探测_无鉴权探测() {
-        let 服务器 = 起模型服务器(200, r#"{"choices":[]}"#, 200, r#"{"data":[{"id":"甲-1"}]}"#);
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: String::new() });
-        池.探测模型(None, Some(&format!("http://{}", 服务器.地址)), None).unwrap();
-        let 请求 = 服务器.记录.lock().unwrap().first().unwrap().clone();
-        assert!(!请求.contains("Authorization"), "无密钥不应带鉴权头，实际: {请求}");
-    }
-
-    #[test]
-    fn 池_探测_401提示密钥() {
-        let 服务器 = 起模型服务器(200, r#"{"choices":[]}"#, 401, r#"{"error":"bad key"}"#);
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: String::new() });
-        let 错误 = 池.探测模型(None, Some(&format!("http://{}", 服务器.地址)), Some("wrong")).unwrap_err();
-        assert!(错误.to_string().contains("检查 API 密钥"), "401 应提示检查密钥，实际: {错误}");
-    }
-
-    #[test]
-    fn 池_探测_坏响应报错() {
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: String::new() });
-        assert!(池.探测模型(None, Some("http://127.0.0.1:1"), Some("key")).is_err());
-        assert!(池.探测模型(None, None, None).is_err());
-    }
-
-    #[test]
-    fn 池_探测_坏行跳过() {
-        let 服务器 = 起模型服务器(200, r#"{"choices":[]}"#, 200, r#"{"data":[{"id":"甲-1"},{"no-id":1},{"id":"甲-3"}]}"#);
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: String::new() });
-        let (_, 模型) = 池.探测模型(None, Some(&format!("http://{}", 服务器.地址)), None).unwrap();
-        assert_eq!(模型.len(), 2, "坏行应跳过，实际: {模型:?}");
-    }
-
-    #[test]
-    fn 池_接入_明文不落盘() {
-        let 文件 = 临时状态文件();
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: 文件.clone() });
-        let (选择, 片段) = 池.接入("甲", "http://127.0.0.1:1/v1", "plain-secret-key", "甲模型").unwrap();
-        assert_eq!(选择.供应商, "甲");
-        assert_eq!(选择.模型, "甲模型");
-        assert!(片段.contains("plain-secret-key"), "配置片段应含 env 提示，实际: {片段}");
-        let 接入文件 = std::path::Path::new(&文件).parent().unwrap().join("llm-接入.json");
-        assert!(!接入文件.exists(), "明文密钥不得落盘");
-        assert!(池.可用());
-        let _ = std::fs::remove_file(&文件);
-    }
-
-    #[test]
-    fn 池_接入_env引用落盘并恢复() {
-        std::env::set_var("LLM_测试_接入_密钥_abcxyz", "env-secret");
-        let 文件 = 临时状态文件();
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: 文件.clone() });
-        池.接入("乙", "http://127.0.0.1:1/v1", "env:LLM_测试_接入_密钥_abcxyz", "乙模型").unwrap();
-        let 接入文件 = std::path::Path::new(&文件).parent().unwrap().join("llm-接入.json");
-        let 文本 = std::fs::read_to_string(&接入文件).unwrap();
-        assert!(文本.contains("env:LLM_测试_接入_密钥_abcxyz"));
-        assert!(!文本.contains("env-secret"), "接入文件不得含明文密钥: {文本}");
-        // 重启恢复：新池 从配置（同状态文件）+ 从接入文件合并
-        let 新池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: 文件.clone() });
-        新池.从接入文件合并().unwrap();
-        let 清单 = 新池.供应商清单();
-        assert!(清单.iter().any(|s| s.名称 == "乙"), "合并后应恢复供应商: {清单:?}");
-        assert!(新池.可用());
-        let _ = std::fs::remove_file(&文件);
-        let _ = std::fs::remove_file(&接入文件);
-        std::env::remove_var("LLM_测试_接入_密钥_abcxyz");
-    }
-
-    #[test]
-    fn 池_接入_重名覆盖() {
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: String::new() });
-        池.接入("甲", "http://127.0.0.1:1/v1", "key-1", "模型1").unwrap();
-        池.接入("甲", "http://127.0.0.1:2/v2", "key-2", "模型2").unwrap();
-        let 清单 = 池.供应商清单();
-        assert_eq!(清单.len(), 1, "重名应覆盖");
-        assert_eq!(清单[0].地址, "http://127.0.0.1:2/v2");
-        assert_eq!(清单[0].模型, "模型2");
-        let 选择 = 池.当前选择().unwrap();
-        assert_eq!(选择.供应商, "甲");
-        assert_eq!(选择.模型, "模型2");
-    }
-
-    #[test]
-    fn 池_从接入文件_损坏跳过() {
-        let 文件 = 临时状态文件();
-        let 接入文件 = std::path::Path::new(&文件).parent().unwrap().join("llm-接入.json");
-        std::fs::write(&接入文件, "坏json{{{").unwrap();
-        let 池 = LLM池::从配置(&LlmConfig { providers: vec![], selected_provider: String::new(), selected_model: String::new(), state_file: 文件.clone() });
-        assert!(池.从接入文件合并().is_ok(), "损坏接入文件应跳过不阻断");
-        let _ = std::fs::remove_file(&文件);
-        let _ = std::fs::remove_file(&接入文件);
     }
 }

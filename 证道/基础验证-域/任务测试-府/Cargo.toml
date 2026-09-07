@@ -8,3 +8,4 @@ path = "模块.rs"
 
 [dependencies]
 tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
+serde_json = { workspace = true }

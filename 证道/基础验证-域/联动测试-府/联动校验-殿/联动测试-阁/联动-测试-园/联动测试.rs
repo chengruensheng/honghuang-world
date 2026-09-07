@@ -240,7 +240,11 @@ mod tests {
     #[test]
     fn 装配带扫描_扫描失败回退空图谱() {
         // 扫描根 指向不存在目录 → 告警回退空图谱，装配本身不失败
-        let 装配 = 五行装配::装配带扫描(None, Some("Z:/不存在的扫描根".to_string()));
+        let 不存在根 = std::env::temp_dir()
+            .join(format!("zd-linkage-不存在-{}", std::process::id()))
+            .to_string_lossy()
+            .to_string();
+        let 装配 = 五行装配::装配带扫描(None, Some(不存在根));
         let 图谱 = 装配.图谱.lock().expect("图谱锁");
         assert!(图谱.模块集.is_empty(), "扫描失败应回退空图谱");
     }

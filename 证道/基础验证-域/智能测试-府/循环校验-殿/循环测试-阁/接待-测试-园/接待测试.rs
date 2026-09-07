@@ -4,10 +4,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use hm_agent::{道祖接待, 会话阶段};
+    use hm_agent::{道祖接待, 会话阶段, 认知注入};
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
     use hm_contract::Component;
     use hm_error::{Error, Result};
+    use hm_cognition::{上下文库, 模块, 图谱, 维度, 心智地图};
 
     /// 模拟对话器：按预设序列依次返回模型响应，验证道祖接待契约可插拔
     struct 模拟对话器 {
@@ -28,6 +29,33 @@ mod tests {
         fn 对话(&self, _消息: Vec<对话消息>, _工具: Vec<serde_json::Value>) -> Result<模型响应> {
             let mut 序列 = self.响应序列.lock().expect("模拟对话器 锁中毒");
             序列.pop_front().ok_or_else(|| Error::Other("对话序列已耗尽".into()))
+        }
+    }
+
+    /// 记录对话器：捕获每次对话的消息序列（供断言系统提示含认知记忆）
+    struct 记录对话器 {
+        记录: Mutex<Vec<Vec<对话消息>>>,
+        响应序列: Mutex<VecDeque<模型响应>>,
+    }
+
+    impl 记录对话器 {
+        fn 新(序列: Vec<模型响应>) -> Self {
+            记录对话器 { 记录: Mutex::new(Vec::new()), 响应序列: Mutex::new(序列.into()) }
+        }
+    }
+
+    impl Component for 记录对话器 {
+        fn name(&self) -> &'static str { "记录对话器" }
+    }
+
+    impl 工具对话器 for 记录对话器 {
+        fn 对话(&self, 消息: Vec<对话消息>, _工具: Vec<serde_json::Value>) -> Result<模型响应> {
+            self.记录.lock().expect("记录对话器 锁中毒").push(消息);
+            self.响应序列
+                .lock()
+                .expect("记录对话器序列 锁中毒")
+                .pop_front()
+                .ok_or_else(|| Error::Other("对话序列已耗尽".into()))
         }
     }
 
@@ -188,5 +216,33 @@ mod tests {
         let 接待 = 道祖接待::新(模拟);
         let 结果 = 接待.接待("来个任务".into());
         assert!(结果.is_err(), "对齐总结缺标题应返回错误");
+    }
+
+    #[test]
+    fn 道祖接待_装配认知后系统提示含认知记忆() {
+        let mut 图谱 = 图谱::新();
+        图谱.添加模块(模块 { 名称: "hm-linkage".into(), 路径: "鸿蒙/联动装配".into() });
+        let mut 心智 = 心智地图::新();
+        心智.写(维度::目标, "现况", "完成三态认知装配", 0.9, vec!["v1.41".into()])
+            .expect("写格位应成功");
+        let 认知 = 认知注入::新(
+            Arc::new(Mutex::new(图谱)),
+            Arc::new(Mutex::new(心智)),
+            Arc::new(Mutex::new(上下文库::新_带上限(1000))),
+        );
+
+        let 对话器 = Arc::new(记录对话器::新(vec![闲聊响应("你好，来访者")]));
+        let 接待 = 道祖接待::新(对话器.clone()).装配认知(认知);
+        接待.接待("你好".into()).expect("接待应成功");
+
+        let 记录 = 对话器.记录.lock().expect("记录锁");
+        let 首轮 = &记录[0];
+        match &首轮[0] {
+            对话消息 { 内容: Some(系统提示), .. } => {
+                assert!(系统提示.contains("【项目认知记忆】"), "系统提示应含认知记忆段，实际 {系统提示}");
+                assert!(系统提示.contains("完成三态认知装配"), "认知记忆应含格位摘要，实际 {系统提示}");
+            }
+            _ => panic!("首条应为含内容的系统消息"),
+        }
     }
 }
