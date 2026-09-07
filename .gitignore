@@ -15,3 +15,18 @@
 
 # Tauri 工具自动生成的 schema（随 dev/build 自动生成，非手写）
 /鸿蒙/系统装配-域/桌面封装-府/src-tauri/gen/
+
+# 前端测试依赖（乾坤 happy-dom，npm install 生成，不入库）
+/乾坤/node_modules/
+
+# 本地运行日志（每次启动生成，非项目代码）
+/启动日志.txt
+/启动错误.txt
+/验收测试结果.txt
+/验收测试结果2.txt
+/验收测试结果3.txt
+
+# 本机 AI 协作与记忆（非项目代码，避免跨机漂移）
+/.codebuddy/
+/.cache/
+/tmp/
