@@ -1,6 +1,7 @@
 // 五行视图.js —— 五行引擎观测（相生环 + 引擎卡片）
 
 import { 引擎存储 } from '../../../运行支撑-殿/数据服务-阁/引擎-数据-园/引擎数据.js';
+import { 渲染属性面板 } from '../../../框架布局-殿/属性面板-阁/面板-组件-园/面板组件.js';
 
 const 图标 = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/></svg>`;
 
@@ -35,7 +36,7 @@ export const 五行视图 = {
   },
   属性(容器) {
     面板容器 = 容器;
-    渲染属性面板();
+    渲染引擎列表();
   },
 };
 
@@ -84,10 +85,10 @@ function 渲染卡片(容器) {
   });
 }
 
-function 渲染属性面板() {
+function 渲染引擎列表() {
   if (!面板容器) return;
   const 列表 = 引擎存储.取值().列表;
-  面板容器.innerHTML = `<h3>引擎列表</h3><div class="prop-group">${列表.map(详情卡).join('')}</div>`;
+  渲染属性面板(面板容器, '引擎列表', `${列表.length} 引擎`, '', `<div class="prop-group">${列表.map(详情卡).join('')}</div>`);
   面板容器.querySelectorAll('.kv').forEach((元素) => {
     元素.addEventListener('click', () => {
       const 名 = 元素.dataset.名;
@@ -103,11 +104,11 @@ function 详情卡(引擎) {
 
 function 选中引擎(引擎) {
   if (!面板容器) return;
-  面板容器.innerHTML = 引擎详情模板(引擎);
+  渲染属性面板(面板容器, '引擎详情', 引擎.名, '', 引擎详情内容(引擎));
 }
 
-function 引擎详情模板(引擎) {
-  return `<h3>引擎详情</h3><div class="prop-group">
+function 引擎详情内容(引擎) {
+  return `<div class="prop-group">
     <div class="prop-item"><span class="k">引擎</span><span class="v" style="color:${引擎.色}">${引擎.名}</span></div>
     <div class="prop-item"><span class="k">五行</span><span class="v">${引擎.行}</span></div>
     <div class="prop-item"><span class="k">职责</span><span class="v">${引擎.事}</span></div>

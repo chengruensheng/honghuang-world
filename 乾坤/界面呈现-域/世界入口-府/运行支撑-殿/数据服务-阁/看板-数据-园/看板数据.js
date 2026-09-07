@@ -53,11 +53,51 @@ export async function 提交任务(id, 角色, 下一状态) {
   await 加载看板数据();
 }
 
-/** 太乙金仙一键清理（承接+提交） */
+/** 太乙金仙一键清理（前置交付核验门禁，未通过返回 400 拒绝清理） */
 export async function 清理任务(id) {
   const 响应 = await fetch(`/api/board/${id}/clean`, { method: 'POST' });
-  if (!响应.ok) throw new Error(`清理失败: ${响应.status}`);
+  if (!响应.ok) {
+    const 消息 = await 响应.text().catch(() => '');
+    throw new Error(消息 || `清理失败: ${响应.status}`);
+  }
   await 加载看板数据();
+}
+
+/** 扫尾检查：对任务执行交付证据核验（声明变更 vs 工作区实际 + 自检） */
+export async function 扫尾任务(id) {
+  const 响应 = await fetch(`/api/board/${id}/sweep`, { method: 'POST' });
+  if (!响应.ok) throw new Error(`扫尾检查失败: ${响应.status}`);
+  const 报告 = await 响应.json();
+  await 加载看板数据();
+  return 报告;
+}
+
+/** 道祖澄清并推进（POST /api/board/{id}/clarify）—— 结论 + 继续/终止 */
+export async function 澄清推进(id, 结论, 继续) {
+  const 响应 = await fetch(`/api/board/${id}/clarify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 结论, 继续 }),
+  });
+  if (!响应.ok) throw new Error(`澄清失败: ${响应.status}`);
+  const 结果 = await 响应.json();
+  await 加载看板数据();
+  return 结果;
+}
+
+/** 定向回退（POST /api/board/{id}/rollback）—— 建议根源层级可选，缺省由追溯器按任务文档纯规则判断 */
+export async function 定向回退(id, 错误描述, 建议根源层级) {
+  const body = { 错误描述 };
+  if (建议根源层级) body.建议根源层级 = 建议根源层级;
+  const 响应 = await fetch(`/api/board/${id}/rollback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!响应.ok) throw new Error(`定向回退失败: ${响应.status}`);
+  const 结果 = await 响应.json();
+  await 加载看板数据();
+  return 结果;
 }
 
 /** 选中任务（用于属性面板展示详情） */
@@ -92,4 +132,15 @@ export async function 驱动状态() {
   const 状态 = await fetch('/api/dev/pilot/status').then(取json);
   看板存储.更新({ 驱动: 状态 });
   return 状态;
+}
+
+/** 驱动会话清单（GET /api/dev/sessions）—— 每次发布→五层驱动的固化回放记录 */
+export async function 会话清单() {
+  const 数据 = await fetch('/api/dev/sessions').then(取json);
+  return 数据.会话 || [];
+}
+
+/** 驱动会话回放（GET /api/dev/sessions/{id}）—— 元数据 + 全程驱动过程事件 */
+export async function 会话回放(会话id) {
+  return fetch(`/api/dev/sessions/${会话id}`).then(取json);
 }

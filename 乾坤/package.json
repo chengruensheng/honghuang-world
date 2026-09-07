@@ -1,0 +1,11 @@
+{
+  "name": "乾坤",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test \"前端测试-府/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.0"
+  }
+}

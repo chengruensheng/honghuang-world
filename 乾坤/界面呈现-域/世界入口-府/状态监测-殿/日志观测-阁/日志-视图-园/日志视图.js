@@ -1,6 +1,7 @@
 // 日志视图.js —— 运行日志（订阅日志共享存储，实时刷新）
 
 import { 日志存储 } from '../../../运行支撑-殿/数据服务-阁/日志-数据-园/日志数据.js';
+import { 渲染属性面板 } from '../../../框架布局-殿/属性面板-阁/面板-组件-园/面板组件.js';
 
 const 图标 = `<svg viewBox="0 0 24 24"><polyline points="4 17 10 11 14 15 20 7"/><path d="M14 7h6v6"/></svg>`;
 
@@ -16,7 +17,7 @@ export const 日志视图 = {
     日志存储.订阅(() => 渲染日志(容器.querySelector('#log')));
   },
   属性(容器) {
-    容器.innerHTML = `<h3>日志说明</h3><div class="prop-group"><div class="kv"><b>相生闭环</b>每次任务触发一轮五行流转</div></div>`;
+    渲染属性面板(容器, '日志说明', '', '', `<div class="prop-group"><div class="kv"><b>相生闭环</b>每次任务触发一轮五行流转</div></div>`);
   },
 };
 

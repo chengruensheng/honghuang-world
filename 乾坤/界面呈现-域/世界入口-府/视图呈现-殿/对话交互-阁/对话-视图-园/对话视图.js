@@ -1,9 +1,12 @@
 // 对话视图.js —— 道祖接待（主控澄清：闲聊/识别任务/澄清细节 → 对齐 → 确认发布 → 看板自主流转）
+// 模型选择逻辑已拆至 模型选择-园/模型选择.js（供底部状态栏浮层调用）
 
 import { 记日志 } from '../../../运行支撑-殿/数据服务-阁/日志-数据-园/日志数据.js';
 import { 加载引擎数据 } from '../../../运行支撑-殿/数据服务-阁/引擎-数据-园/引擎数据.js';
 import { 加载看板数据 } from '../../../运行支撑-殿/数据服务-阁/看板-数据-园/看板数据.js';
 import { 道祖对话, 确认发布 } from '../../../运行支撑-殿/数据服务-阁/对话-数据-园/对话数据.js';
+import { 渲染属性面板 } from '../../../框架布局-殿/属性面板-阁/面板-组件-园/面板组件.js';
+import { 事件图标, 事件类型类 } from '../../看板观测-阁/事件-呈现-园/事件呈现.js';
 
 const 图标 = `<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
 
@@ -14,6 +17,11 @@ const 轮询超时 = 15 * 60 * 1000;
 let 主容器 = null;
 let 面板容器 = null;
 let 轮询器 = null;
+let 过程轮询器 = null;
+let 过程游标 = 0;
+let 过程面板打开 = false;
+let 历史面板打开 = false;
+let 历史已加载 = false;
 let 运行中 = false;
 let 对话中 = false;
 let 待确认需求 = null;
@@ -30,16 +38,40 @@ export const 对话视图 = {
   图标,
   挂载(容器) {
     主容器 = 容器;
-    容器.innerHTML = `<div class="view-head"><div><h2>对话</h2><p>向道祖下达需求，澄清对齐后确认发布，看板由五层协作自主流转</p></div></div><div class="llm-bar" id="llm-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;margin-bottom:10px;border:1px solid #e4e3dd;border-radius:12px;background:#faf9f5;font-size:13px;"><span style="color:#6b7280;white-space:nowrap;">模型选择</span><select id="llm-provider" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;"></select><select id="llm-model" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;min-width:160px;"></select><span id="llm-hint" style="color:#6b7280;font-size:12px;"></span><button class="btn" id="llm-add" style="margin-left:auto;font-size:12px;padding:3px 10px;">＋ 接入供应商</button></div><div id="llm-panel" style="display:none;margin-bottom:10px;padding:12px;border:1px solid #e4e3dd;border-radius:12px;background:#faf9f5;font-size:13px;flex-direction:column;gap:8px;"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><span style="color:#6b7280;">模板</span><select id="llm-tpl" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;"></select><button class="btn" id="llm-tpl-fill" style="font-size:12px;padding:3px 10px;">填入模板</button></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><span style="color:#6b7280;">名称</span><input id="llm-name" placeholder="供应商名称" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;font-size:13px;width:120px;" /><span style="color:#6b7280;">官网</span><input id="llm-base" placeholder="https://api.xxx.com/v1" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;font-size:13px;flex:1;min-width:220px;" /><span style="color:#6b7280;">密钥</span><input id="llm-key" type="password" placeholder="密钥，或 env:变量名" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;font-size:13px;flex:1;min-width:180px;" /></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><button class="btn" id="llm-fetch" style="font-size:12px;padding:3px 10px;">获取可用模型</button><select id="llm-pick" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;min-width:200px;"></select><button class="btn" id="llm-connect" style="font-size:12px;padding:3px 10px;">接入并选择</button></div><div id="llm-panel-hint" style="color:#6b7280;font-size:12px;"></div><pre id="llm-toml" style="display:none;margin:0;padding:8px;background:#f0eee8;border-radius:8px;font-size:12px;overflow:auto;white-space:pre-wrap;"></pre></div><div class="chat" id="chat"></div><div id="confirm-bar" class="confirm-bar" style="display:none"></div><div class="chat-input"><input id="task" placeholder="向道祖下达需求，如：写一个 fibonacci 模块…" /><button class="btn" id="go">发送</button></div>`;
+    容器.innerHTML = `<div class="view-head"><div><h2>对话</h2><p>向道祖下达需求，澄清对齐后确认发布，看板由五层协作自主流转</p></div></div><div class="chat" id="chat"></div><div id="confirm-bar" class="confirm-bar" style="display:none"></div><div class="chat-input"><input id="task" placeholder="向道祖下达需求，如：写一个 fibonacci 模块…" /><button class="btn" id="go">发送</button></div><div class="process-panel" id="process-panel"><div class="process-header" id="process-header"><span class="process-title">实时过程</span><span class="process-status" id="process-status">待命</span><span class="process-count" id="process-count"></span><span class="process-chevron">▸</span></div><div class="process-stream" id="process-stream" style="display:none"></div><div class="history-header" id="history-header"><span class="process-title">历史会话</span><span class="history-hint">回放任一次驱动过程</span><span class="history-chevron">▸</span></div><div class="history-body" id="history-body" style="display:none"><div id="history-list"></div><div id="history-replay"></div></div></div>`;
     const 输入框 = 容器.querySelector('#task');
     锁定按钮 = 容器.querySelector('#go');
     锁定按钮.addEventListener('click', () => 发送消息(输入框));
     输入框.addEventListener('keydown', (事件) => {
       if (事件.key === 'Enter') 发送消息(输入框);
     });
-    初始化模型选择();
-    初始化接入面板();
     欢迎气泡();
+    // 过程面板点击展开/折叠
+    const 过程头 = 容器.querySelector('#process-header');
+    if (过程头) {
+      过程头.addEventListener('click', () => {
+        过程面板打开 = !过程面板打开;
+        const 流 = 容器.querySelector('#process-stream');
+        const 箭头 = 容器.querySelector('.process-chevron');
+        if (流) 流.style.display = 过程面板打开 ? 'block' : 'none';
+        if (箭头) 箭头.textContent = 过程面板打开 ? '▾' : '▸';
+      });
+    }
+    // 历史会话面板：点击展开/折叠，首次展开时加载会话清单
+    const 历史头 = 容器.querySelector('#history-header');
+    if (历史头) {
+      历史头.addEventListener('click', () => {
+        历史面板打开 = !历史面板打开;
+        const 体 = 容器.querySelector('#history-body');
+        const 箭头 = 容器.querySelector('.history-chevron');
+        if (体) 体.style.display = 历史面板打开 ? 'block' : 'none';
+        if (箭头) 箭头.textContent = 历史面板打开 ? '▾' : '▸';
+        if (历史面板打开 && !历史已加载) {
+          历史已加载 = true;
+          加载会话列表();
+        }
+      });
+    }
   },
   属性(容器) {
     面板容器 = 容器;
@@ -47,6 +79,7 @@ export const 对话视图 = {
   },
    卸载() {
      停止轮询();
+     停止过程轮询();
      运行中 = false;
      对话中 = false;
      待确认需求 = null;
@@ -54,6 +87,8 @@ export const 对话视图 = {
      面板容器 = null;
    },
 };
+
+// ============ 对话核心逻辑 ============
 
 /** 欢迎语：道祖接待开场 */
 function 欢迎气泡() {
@@ -138,8 +173,11 @@ async function 确认发布任务() {
     设置过程('自主流转中');
     轮询起始 = Date.now();
     游标 = 0;
+    过程游标 = 0;
+    清空过程流();
     await 加载看板数据();
     启动轮询();
+    启动过程轮询();
   } catch (错误) {
     气泡('道祖', `⛔ ${错误.message || '发布失败'}`);
     设置过程('待确认');
@@ -205,6 +243,8 @@ function 停止轮询() {
 /** 本轮驱动结束：刷新引擎数据、记日志、解锁 */
 async function 完成(最近结果) {
   停止轮询();
+  停止过程轮询();
+  更新过程状态('已完成');
   设置过程('本轮完成');
   记日志('【完成】', 'ok', 最近结果 || '驱动器本轮完成');
   await 加载引擎数据();
@@ -237,18 +277,22 @@ function 设置过程(文本) {
   if (流) 流.innerHTML = `<div class="kv"><b>当前动作</b>${转义(文本)}</div>`;
 }
 
-/** 渲染属性面板：道祖接待 + 看板驱动台状态 */
+/** 渲染属性面板：道祖接待 + 看板驱动台状态（复用统一折叠框架） */
 function 渲染面板(状态) {
   if (!面板容器) return;
   const 块 = 状态 || { 运行中, 最近结果: null };
   const 结果文案 = 块.最近结果 ? 转义(块.最近结果) : '—';
-  面板容器.innerHTML = `<h3>道祖接待状态</h3><div class="prop-group">
-    <div class="prop-item"><span class="k">模式</span><span class="v">道祖接待 → 澄清对齐 → 确认发布 → 五层流转</span></div>
-    <div class="prop-item"><span class="k">状态</span><span class="v">${块.运行中 ? '自主流转中' : '待命'}</span></div>
-    <div class="prop-item"><span class="k">流转</span><span class="v">圣人设计 → 大罗金仙实现 → 准圣验收 → 道祖终审 → 太乙金仙清理</span></div>
-    <div class="prop-item"><span class="k">最近结果</span><span class="v">${结果文案}</span></div>
-  </div><h3>执行过程</h3><div id="p-flow"><div class="kv"><b>当前动作</b>${块.运行中 ? '自主流转中' : '待命'}</div></div>
-  ${块.运行中 ? '<div style="font-size:12px;color:#64748b;margin-top:6px;">驱动为单轮原子执行，不可中断；可在看板视图查看任务卡片状态。</div>' : ''}`;
+  const 状态文案 = 块.运行中 ? '自主流转中' : '待命';
+  渲染属性面板(面板容器, '道祖接待状态', 状态文案, 块.运行中 ? 'running' : '', `
+    <div class="prop-group">
+      <div class="prop-item"><span class="k">模式</span><span class="v">道祖接待 → 澄清对齐 → 确认发布 → 五层流转</span></div>
+      <div class="prop-item"><span class="k">状态</span><span class="v">${状态文案}</span></div>
+      <div class="prop-item"><span class="k">流转</span><span class="v">圣人设计 → 大罗金仙实现 → 准圣验收 → 道祖终审 → 太乙金仙清理</span></div>
+      <div class="prop-item"><span class="k">最近结果</span><span class="v">${结果文案}</span></div>
+    </div>
+    <h3>执行过程</h3><div id="p-flow"><div class="kv"><b>当前动作</b>${状态文案}</div></div>
+    ${块.运行中 ? '<div style="font-size:12px;color:#64748b;margin-top:6px;">驱动为单轮原子执行，不可中断；可在看板视图查看任务卡片状态。</div>' : ''}
+  `);
 }
 
 /** HTML 转义，防止任务文本注入标记 */
@@ -259,232 +303,170 @@ function 转义(文本) {
     .replaceAll('>', '&gt;');
 }
 
-/** 初始化模型选择条：拉取池状态 → 供应商下拉 → 拉取模型列表 → 模型下拉 → 切换生效 */
-async function 初始化模型选择() {
+// ============ 实时过程流（智能体循环每步事件） ============
+
+function 启动过程轮询() {
+  停止过程轮询();
+  更新过程状态('运行中');
+  过程轮询器 = setTimeout(过程轮询, 800);
+}
+
+function 停止过程轮询() {
+  if (过程轮询器) {
+    clearTimeout(过程轮询器);
+    过程轮询器 = null;
+  }
+}
+
+function 清空过程流() {
   if (!主容器) return;
-  const 供应商框 = 主容器.querySelector('#llm-provider');
-  const 模型框 = 主容器.querySelector('#llm-model');
-  const 提示 = 主容器.querySelector('#llm-hint');
-  if (!供应商框 || !模型框 || !提示) return;
-  try {
-    const 状态 = await fetch('/api/llm/status').then((响应) => 响应.json());
-    if (!状态.配置 || !状态.供应商 || 状态.供应商.length === 0) {
-      提示.textContent = '未配置 LLM 池（default.toml [llm] 或环境变量）';
-      供应商框.disabled = true;
-      模型框.disabled = true;
-      return;
-    }
-    const 当前 = 状态.当前选择 || null;
-    for (const 供应商 of 状态.供应商) {
-      const 选项 = document.createElement('option');
-      选项.value = 供应商.名称;
-      选项.textContent = `${供应商.名称}（默认 ${供应商.模型 || '—'}）`;
-      供应商框.appendChild(选项);
-    }
-    if (当前 && 当前.供应商) 供应商框.value = 当前.供应商;
-    供应商框.addEventListener('change', () => {
-      提示.textContent = '';
-      刷新模型列表(供应商框, 模型框, 提示, 当前);
-    });
-    模型框.addEventListener('change', () => 应用模型选择(供应商框, 模型框, 提示));
-    await 刷新模型列表(供应商框, 模型框, 提示, 当前);
-  } catch (错误) {
-    console.warn('LLM 状态获取失败', 错误);
-    提示.textContent = '无法获取 LLM 池状态（后端未就绪？）';
+  const 流 = 主容器.querySelector('#process-stream');
+  if (流) 流.innerHTML = '';
+  const 计数 = 主容器.querySelector('#process-count');
+  if (计数) 计数.textContent = '';
+}
+
+function 更新过程状态(文本) {
+  if (!主容器) return;
+  const 状态 = 主容器.querySelector('#process-status');
+  if (状态) {
+    状态.textContent = 文本;
+    状态.className = 'process-status ' + (文本 === '运行中' ? 'running' : 文本 === '已完成' ? 'done' : '');
   }
 }
 
-/** 拉取当前供应商的可用模型列表并填充下拉 */
-async function 刷新模型列表(供应商框, 模型框, 提示, 当前) {
-  模型框.innerHTML = '';
-  const 选中 = 供应商框.value;
-  if (!选中) return;
+async function 过程轮询() {
+  if (!运行中) return;
   try {
-    const 响应 = await fetch('/api/llm/models').then((r) => r.json());
-    const 条目 = (响应.结果 || []).find((r) => r.供应商 === 选中);
-    if (条目 && 条目.模型 && 条目.模型.length > 0) {
-      for (const 模型 of 条目.模型) {
-        const 选项 = document.createElement('option');
-        选项.value = 模型.id;
-        选项.textContent = 模型.id;
-        模型框.appendChild(选项);
+    const 响应 = await fetch(`/api/dev/pilot/process?since=${过程游标}`);
+    const 数据 = await 响应.json();
+    if (数据.运行中 === false && 数据.事件 && 数据.事件.length === 0) {
+      // 驱动器已空闲且无新事件，停止轮询
+      更新过程状态('已完成');
+      return;
+    }
+    if (数据.事件 && 数据.事件.length > 0) {
+      for (const 事件 of 数据.事件) {
+        渲染过程事件(事件);
+        过程游标 = 事件.序号;
       }
-      if (当前 && 当前.供应商 === 选中 && 当前.模型) {
-        const 已存在 = [...模型框.options].some((o) => o.value === 当前.模型);
-        if (已存在) {
-          模型框.value = 当前.模型;
-        } else {
-          const 补充 = document.createElement('option');
-          补充.value = 当前.模型;
-          补充.textContent = `${当前.模型}（当前）`;
-          模型框.appendChild(补充);
-          模型框.value = 当前.模型;
+    }
+    更新过程状态(数据.运行中 ? '运行中' : '已完成');
+  } catch (错误) {
+    // 静默重试，不干扰主轮询
+  }
+  过程轮询器 = setTimeout(过程轮询, 800);
+}
+
+function 渲染过程事件(事件) {
+  if (!主容器) return;
+  const 流 = 主容器.querySelector('#process-stream');
+  if (!流) return;
+  渲染事件行(流, 事件);
+  流.scrollTop = 流.scrollHeight;
+  const 计数 = 主容器.querySelector('#process-count');
+  if (计数) 计数.textContent = `${流.children.length} 条`;
+}
+
+function 渲染事件行(容器, 事件) {
+  const 类型类 = 事件类型类(事件.类型);
+  const 类型图标 = 事件图标(事件.类型);
+  const 角色 = 事件.角色 || '?';
+  const 轮次 = 事件.轮次 != null ? `R${事件.轮次}` : '';
+  const 工具名 = 事件.工具名 ? ` <span class="proc-tool">${转义(事件.工具名)}</span>` : '';
+  const 内容 = 事件.内容 ? `<div class="proc-content">${转义(事件.内容)}</div>` : '';
+  const 项 = document.createElement('div');
+  项.className = `proc-item ${类型类}`;
+  项.innerHTML = `<div class="proc-meta"><span class="proc-icon">${类型图标}</span><span class="proc-role">${转义(角色)}</span><span class="proc-round">${轮次}</span><span class="proc-type">${转义(事件.类型)}</span>${工具名}</div>${内容}`;
+  容器.appendChild(项);
+}
+
+// ============ 历史会话回放 ============
+
+async function 加载会话列表() {
+  if (!主容器) return;
+  try {
+    const 响应 = await fetch('/api/dev/sessions');
+    const 数据 = await 响应.json();
+    const 列表 = 主容器.querySelector('#history-list');
+    if (!列表) return;
+    if (!数据.会话 || 数据.会话.length === 0) {
+      列表.innerHTML = '<div class="history-empty">暂无历史会话（完成一次驱动后出现）</div>';
+      return;
+    }
+    列表.innerHTML = '';
+    for (const 会话 of 数据.会话) 列表.appendChild(渲染会话项(会话));
+  } catch (错误) {
+    // 静默：后端未就绪时不打扰
+  }
+}
+
+function 渲染会话项(会话) {
+  const 行 = document.createElement('div');
+  行.className = 'session-item';
+  const 时间 = new Date(会话.创建时间 * 1000).toLocaleString('zh-CN', { hour12: false });
+  const 结果 = 会话.结果摘要 ? 转义(会话.结果摘要) : '—';
+  const 任务id = (会话.任务id列表 && 会话.任务id列表[0]) || null;
+  const 可操作 = 任务id !== null;
+  行.innerHTML = `
+    <div class="session-meta"><b>#${会话.会话id}</b><span>${转义(会话.发起方式 || '驱动')}</span><span>${时间}</span><span class="session-status">${转义(会话.状态 || '—')}</span><span class="session-count">${会话.事件数} 条</span></div>
+    <div class="session-result">${结果}</div>
+    <div class="session-actions">
+      <button class="btn btn-mini session-act" data-act="resume" ${可操作 ? '' : 'disabled'} title="从该会话断点恢复继续（延续 LLM 上下文）">恢复</button>
+      <button class="btn btn-mini session-act" data-act="fork" ${可操作 ? '' : 'disabled'} title="从该会话分叉一条新的驱动线">分叉</button>
+    </div>`;
+  行.addEventListener('click', () => 回放会话(会话.会话id));
+  行.querySelectorAll('.session-act').forEach((按钮) => {
+    按钮.addEventListener('click', async (事件) => {
+      事件.stopPropagation();
+      if (!任务id) return;
+      const 动作 = 按钮.dataset.act;
+      try {
+        const 响应 = await fetch(`/api/dev/sessions/${会话.会话id}/${动作}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 任务id }),
+        });
+        if (!响应.ok) {
+          const 错误 = await 响应.json().catch(() => null);
+          alert(动作 === 'resume' ? '恢复失败：' + ((错误 && 错误.错误) || '未知') : '分叉失败：' + ((错误 && 错误.错误) || '未知'));
+          return;
         }
+        alert(动作 === 'resume' ? '已发起恢复驱动，正在延续上下文…' : '已发起分叉，新驱动线开始…');
+        加载会话列表();
+      } catch (错误) {
+        alert('请求失败，请稍后重试');
       }
-      提示.textContent = '已从 API 获取可用模型';
-    } else {
-      提示.textContent = '模型列表不可用：' + (条目 ? 条目.错误 || '空列表' : '未知供应商');
-    }
-  } catch (错误) {
-    console.warn('模型列表获取失败', 错误);
-    提示.textContent = '模型列表拉取失败';
-  }
+    });
+  });
+  return 行;
 }
 
-/** 切换模型：POST /api/llm/select 运行时全局生效并落盘 */
-async function 应用模型选择(供应商框, 模型框, 提示) {
-  const 供应商 = 供应商框.value;
-  const 模型 = 模型框.value;
-  if (!供应商 || !模型) return;
+async function 回放会话(会话id) {
+  if (!主容器) return;
   try {
-    const 响应 = await fetch('/api/llm/select', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 供应商, 模型 }),
-    });
-    if (响应.ok) {
-      提示.textContent = `已切换：${供应商} / ${模型}`;
-      记日志('【模型】', 'act', `切换 LLM 选择：${供应商} / ${模型}`);
-    } else {
-      提示.textContent = '切换失败（非法供应商或模型？）';
-    }
-  } catch (错误) {
-    console.warn('模型切换失败', 错误);
-    提示.textContent = '切换失败（后端未就绪？）';
-  }
-}
-
-/** 初始化接入面板：模板 → 填表单 → 获取可用模型 → 接入并选择（dsh「获取可用模型」式向导） */
-async function 初始化接入面板() {
-  const 面板 = 主容器.querySelector('#llm-panel');
-  const 按钮 = 主容器.querySelector('#llm-add');
-  const 模板框 = 主容器.querySelector('#llm-tpl');
-  const 名称框 = 主容器.querySelector('#llm-name');
-  const 地址框 = 主容器.querySelector('#llm-base');
-  const 密钥框 = 主容器.querySelector('#llm-key');
-  const 获取 = 主容器.querySelector('#llm-fetch');
-  const 选择框 = 主容器.querySelector('#llm-pick');
-  const 接入 = 主容器.querySelector('#llm-connect');
-  const 提示 = 主容器.querySelector('#llm-panel-hint');
-  const toml区 = 主容器.querySelector('#llm-toml');
-  if (!面板 || !按钮 || !模板框 || !名称框 || !地址框 || !密钥框 || !获取 || !选择框 || !接入 || !提示 || !toml区) return;
-  let 已获取模型 = [];
-  let 探测来源 = '';
-  按钮.addEventListener('click', () => {
-    面板.style.display = 面板.style.display === 'none' ? 'flex' : 'none';
-  });
-  // 模板下拉（内置目录，无密钥）
-  try {
-    const 响应 = await fetch('/api/llm/templates').then((r) => r.json());
-    (响应.模板 || []).forEach((模板) => {
-      const 选项 = document.createElement('option');
-      选项.value = 模板.名称;
-      选项.textContent = `${模板.显示名}（${模板.地址}）`;
-      模板框.appendChild(选项);
-    });
-  } catch (错误) {
-    console.warn('模板拉取失败', 错误);
-  }
-  // 选模板 → 自动填名称/地址 + 提示 env 变量
-  模板框.addEventListener('change', () => {
-    const 名 = 模板框.value;
-    if (!名) return;
-    const 模板 = (JSON.parse(sessionStorage.getItem('llm-模板缓存') || '[]')).find((t) => t.名称 === 名);
-    if (模板) {
-      名称框.value = 模板.名称;
-      地址框.value = 模板.地址;
-      密钥框.placeholder = 模板.环境变量 ? `密钥，或 env:${模板.环境变量}` : '本地服务无需密钥，留空探测';
-      提示.textContent = 模板.环境变量 ? `模板已填入：密钥建议放 .env 的 ${模板.环境变量}，表单填 env:${模板.环境变量}` : 'Ollama 本地服务：密钥留空即可探测';
-    }
-  });
-  // 缓存模板清单（change 时用）
-  fetch('/api/llm/templates').then((r) => r.json()).then((响应) => {
-    sessionStorage.setItem('llm-模板缓存', JSON.stringify(响应.模板 || []));
-  }).catch(() => {});
-  // 获取可用模型：目录命中零网络；否则探测端点（密钥三级复用）
-  获取.addEventListener('click', async () => {
-    try {
-      获取.disabled = true;
-      提示.textContent = '获取模型中…';
-      选择框.innerHTML = '';
-      已获取模型 = [];
-      const 名称 = 名称框.value.trim();
-      const 地址 = 地址框.value.trim();
-      const 密钥 = 密钥框.value.trim();
-      const 响应 = await fetch('/api/llm/discover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 供应商: 名称 || undefined, 地址: 地址 || undefined, 密钥: 密钥 || undefined }),
-      });
-      const 结果 = await 响应.json();
-      if (结果.错误) {
-        提示.textContent = `获取失败：${结果.错误}`;
-        return;
-      }
-      探测来源 = 结果.来源 || '';
-      已获取模型 = 结果.模型 || [];
-      if (已获取模型.length === 0) {
-        提示.textContent = '未发现可用模型，可手输模型 ID 后接入';
-        return;
-      }
-      for (const 模型 of 已获取模型) {
-        const 选项 = document.createElement('option');
-        选项.value = 模型.id;
-        选项.textContent = 模型.名称 ? `${模型.id}（${模型.名称}）` : 模型.id;
-        选择框.appendChild(选项);
-      }
-      提示.textContent = `已从${探测来源 === '目录' ? '内置目录' : '端点'}获取 ${已获取模型.length} 个模型，选择后点击接入`;
-      if (!名称) 名称框.value = '自定义-' + (地址.match(/[a-z0-9]+/i) || ['svc'])[0];
-      记日志('【模型】', 'act', `获取可用模型：${探测来源 === '目录' ? '目录' : 地址} 共 ${已获取模型.length} 个`);
-    } catch (错误) {
-      console.warn('获取可用模型失败', 错误);
-      提示.textContent = '获取失败（后端未就绪？）';
-    } finally {
-      获取.disabled = false;
-    }
-  });
-  // 接入并选择：注册进池 + 全局选中 + env 引用落盘
-  接入.addEventListener('click', async () => {
-    const 名称 = 名称框.value.trim();
-    const 地址 = 地址框.value.trim();
-    const 密钥 = 密钥框.value.trim();
-    const 模型 = 选择框.value || 选择框.options[0]?.value || '';
-    if (!名称 || !地址 || !模型) {
-      提示.textContent = '请先填写名称/官网并获取模型';
+    const 响应 = await fetch(`/api/dev/sessions/${会话id}`);
+    if (!响应.ok) return;
+    const 详情 = await 响应.json();
+    const 回放容器 = 主容器.querySelector('#history-replay');
+    if (!回放容器) return;
+    const 列表 = 主容器.querySelector('#history-list');
+    if (列表) 列表.querySelectorAll('.session-item').forEach((项) => 项.classList.remove('active'));
+    回放容器.innerHTML = '';
+    const 摘要头 = document.createElement('div');
+    摘要头.className = 'replay-head';
+    摘要头.textContent = `会话 #${详情.会话id} · ${详情.发起方式 || '驱动'} · ${详情.状态 || '—'} · ${(详情.事件 || []).length} 条`;
+    回放容器.appendChild(摘要头);
+    if (!详情.事件 || 详情.事件.length === 0) {
+      回放容器.innerHTML += '<div class="history-empty">该会话暂无过程记录</div>';
       return;
     }
-    try {
-      接入.disabled = true;
-      const 响应 = await fetch('/api/llm/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 名称, 地址, 密钥, 模型 }),
-      });
-      if (响应.status === 404) {
-        提示.textContent = '后端 LLM 池未装配（需 default.toml [llm] 配置或环境密钥），接入不可用';
-        return;
-      }
-      const 结果 = await 响应.json();
-      if (!响应.ok || !结果.成功) {
-        提示.textContent = '接入失败：' + (结果.错误 || '后端拒绝');
-        return;
-      }
-      提示.textContent = `已接入 ${结果.选择.供应商} / ${结果.选择.模型}。${密钥.startsWith('env:') ? 'env 引用已落盘，重启自动恢复。' : '明文密钥仅本次会话有效，重启后需重新接入。'}可把下方 TOML 贴入 default.toml 永久配置。`;
-      if (结果.配置片段) {
-        toml区.textContent = 结果.配置片段;
-        toml区.style.display = 'block';
-      }
-      记日志('【模型】', 'act', `接入供应商：${结果.选择.供应商} / ${结果.选择.模型}`);
-      // 刷新 顶部 供应商下拉（重新走 初始化模型选择）
-      const 条 = 主容器.querySelector('#llm-bar');
-      if (条) 条.innerHTML = '<span style="color:#6b7280;white-space:nowrap;">模型选择</span><select id="llm-provider" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;"></select><select id="llm-model" style="padding:4px 8px;border-radius:8px;border:1px solid #d8d5cc;background:#fff;font-size:13px;min-width:160px;"></select><span id="llm-hint" style="color:#6b7280;font-size:12px;"></span><button class="btn" id="llm-add" style="margin-left:auto;font-size:12px;padding:3px 10px;">＋ 接入供应商</button>';
-      初始化模型选择();
-      初始化接入面板();
-    } catch (错误) {
-      console.warn('接入失败', 错误);
-      提示.textContent = '接入失败（后端未就绪？）';
-    } finally {
-      接入.disabled = false;
-    }
-  });
+    const 事件容器 = document.createElement('div');
+    事件容器.className = 'replay-stream';
+    回放容器.appendChild(事件容器);
+    for (const 事件 of 详情.事件) 渲染事件行(事件容器, 事件);
+    事件容器.scrollTop = 事件容器.scrollHeight;
+  } catch (错误) {
+    // 静默
+  }
 }
