@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洪荒·世界 交互式架构全览图</title>
+<!--
+  ═══════════════════════════════════════════════════════════════
+  洪荒·世界 · 交互式架构全览图
+  形态：纯文档图纸（传承殿知识资产）· 单文件 · 零依赖 · 零外链 · 离线可开
+  数据依据：磁盘目录实扫 + 维护文档 v1.47（2026-09-06，298 测试全绿）
+           + 已定契约 v2.6 + 落地设计/验收报告 7 对 + 36 crate 清单
+  ───────────────────────────────────────────────────────────────
+  长期维护指南（改图三步，皆在此文件内完成）：
+  1. 增删结构 → 编辑下方 LEAVES（每行 = 真实叶子路径，根/域/府/殿/阁/园 用 / 连）。
+     建议直接用扫描命令刷新：在项目根执行后贴回：
+       Get-ChildItem -Recurse -Directory | Where Name -like '*-园' | ... （路径相对根）
+  2. 增改解释 → 编辑 DATA.DOCS，键 = 该节点相对路径（如 "鸿蒙/基础能力-域/数据服务-府"）。
+  3. 增改链接 → 编辑 DATA.LINKS（md 文档节点）或 DOC 内 rel。
+  图例与配色在 DATA.ROOTS / .ROOTS_META；主视图状态由右上按钮控制。
+  ═══════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --bg:#0a0e1a; --bg2:#0f1526; --panel:#0d1322; --line:#1e2a44;
+  --ink:#dce6f5; --ink-dim:#8ea0bd; --ink-deep:#5b6b88;
+  --root:#e8b95b; --docs:#d9b38c; --ok:#3fd49a; --warn:#f6b93d;
+  --wood:#41d6a3; --fire:#ff8a6a; --earth:#f2c14e; --gold:#e8b95b;
+  --water:#5fb6ff; --zen:#a78bfa; --verify:#63c7e8; --fruit:#94a3b8;
+  --legend:#8ea0bd;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:radial-gradient(1200px 700px at 20% -10%, #12203f 0%, var(--bg) 55%), var(--bg);
+  color:var(--ink); font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+a{color:var(--water);text-decoration:none}
+a:hover{text-decoration:underline}
+/* ── 顶栏 ───────────────────────────── */
+header{
+  flex:0 0 auto; padding:10px 18px 8px; display:flex; align-items:center; gap:14px;
+  border-bottom:1px solid var(--line); background:linear-gradient(180deg,#111a30,transparent);
+}
+header h1{font-size:20px; letter-spacing:2px; font-weight:600; white-space:nowrap}
+header h1 small{color:var(--root); font-weight:400; margin-left:8px; letter-spacing:3px}
+#stamp{font-size:11px; color:var(--ink-dim); line-height:1.5; white-space:nowrap}
+#stamp b{color:var(--ok)}
+.toolbar{margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end}
+.toolbar button,.toolbar input,.toolbar label.btn{
+  background:#1a2440; color:var(--ink); border:1px solid #2c3b63; border-radius:7px;
+  padding:5px 10px; font-size:12px; cursor:pointer; transition:.15s;
+}
+.toolbar button:hover,.toolbar label.btn:hover{background:#243259;border-color:#3d538c}
+.toolbar button.on{background:#2c3b63;color:#fff;border-color:#4d67ad;box-shadow:0 0 8px #243a6e inset}
+.toolbar input{width:220px;background:#0c1322}
+/* ── 主体布局 ──────────────────────── */
+main{flex:1 1 auto; display:flex; min-height:0; position:relative}
+#mapbox{flex:1 1 auto; position:relative; min-width:0}
+#legend{
+  flex:0 0 150px; width:150px; padding:12px; overflow:auto; font-size:12px; color:var(--ink-dim);
+  border-left:1px solid var(--line); background:linear-gradient(90deg,transparent,#0d1322);
+}
+/* ── SVG 主图 ─────────────────────── */
+#map{position:absolute;inset:0;cursor:grab;background:
+   radial-gradient(600px 300px at 80% 20%, rgba(70,90,160,.10), transparent 70%)}
+#map:active{cursor:grabbing}
+svg text{user-select:none;pointer-events:none}
+.nodebox{cursor:pointer}
+.nodebox:hover rect.box{stroke:#7fb2ff;stroke-width:2;filter:drop-shadow(0 0 6px #3b66a8)}
+.nodebox.sel rect.box{stroke:#ffd27a;stroke-width:2.4;filter:drop-shadow(0 0 10px #b98a2e)}
+.docmark{opacity:.55}
+/* 徽标文字 */
+.chip{fill:var(--ink-dim);font-size:10px;letter-spacing:1px}
+#emptyHint{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);color:var(--ink-deep);text-align:center}
+/* 缩放控件 */
+#zoomctl{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px;z-index:3}
+#zoomctl button{width:30px;height:30px;background:#1a2440;color:#fff;border:1px solid #2c3b63;border-radius:8px;cursor:pointer}
+#zoomctl button:hover{background:#243259}
+/* ── 说明面板 ─────────────────────── */
+#panel{
+  flex:0 0 390px; width:390px; overflow-y:auto; padding:0;
+  border-left:1px solid var(--line); background:#0d1322; display:flex; flex-direction:column;
+}
+#panel .ph{padding:26px 22px; color:var(--ink-deep); font-size:13px; line-height:2}
+#panel .ph b{display:block; color:var(--ink-dim); font-size:16px; margin-bottom:6px}
+#panel .hd{padding:14px 20px; border-bottom:1px solid var(--line); background:linear-gradient(180deg,#131c33,#0f1628)}
+#panel .hd .bread{font-size:11px;color:var(--ink-dim);margin-bottom:6px;word-break:break-all;line-height:1.6}
+#panel .hd .nm{font-size:22px;font-weight:700;letter-spacing:1px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#panel .hd .nm .crate{font-size:12px;color:var(--root);border:1px solid #4a3c1e;border-radius:6px;padding:2px 8px;font-weight:400}
+#panel .bd{padding:6px 20px 30px;font-size:13px;line-height:1.9;color:#c9d5ea}
+#panel .bd section{margin-top:18px}
+#panel .bd h3{font-size:13px;letter-spacing:2px;color:var(--root);border-left:3px solid var(--root);padding-left:8px;margin-bottom:6px;font-weight:600}
+#panel .bd p{text-align:justify}
+#panel .bd ul{margin:4px 0 4px 18px}
+#panel .bd li{margin:3px 0}
+#panel .bd .st{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:8px;background:#111a2e;color:var(--ink)}
+#panel .bd .st.ok{border-left:3px solid var(--ok)}
+#panel .bd .st.warn{border-left:3px solid var(--warn)}
+.k{display:inline-block;font-size:10px;letter-spacing:1px;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
+.badge{display:inline-block;min-width:22px;text-align:center;font-size:11px;border-radius:6px;padding:2px 6px;color:#fff;margin:1px 6px 1px 0}
+.tag{display:inline-block;font-size:11px;color:var(--ink-dim);background:#17203a;border-radius:5px;padding:1px 7px;margin:2px 6px 2px 0}
+/* 图例 */
+#legend h4{font-size:12px;letter-spacing:2px;color:var(--ink);margin:10px 0 6px;border-bottom:1px dashed var(--line);padding-bottom:4px}
+.lg{display:flex;align-items:center;gap:6px;margin:5px 0}
+.lg i{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}
+.lg i.ring{border-radius:50%}
+#legend .hint{font-size:11px;line-height:1.8;color:var(--ink-deep);margin-top:12px}
+/* 纵向目录视图 */
+#ltree{position:absolute;inset:0;overflow:auto;display:none;padding:18px 26px 60px;font-size:13px}
+#ltree ol{list-style:none;margin-left:0;padding-left:22px;border-left:1px dashed #22304f}
+#ltree > ol{border-left:none;padding-left:0}
+#ltree li{margin:1px 0;line-height:1.75;position:relative}
+#ltree .lrow{display:inline-flex;align-items:center;gap:7px;padding:1px 8px;border-radius:6px;cursor:pointer;max-width:95%;}
+#ltree .lrow:hover{background:#1a2440}
+#ltree .lrow.sel{background:#2c3b63}
+#ltree .tw{width:16px;display:inline-block;text-align:center;color:var(--ink-deep);flex:0 0 auto}
+#ltree .tw.open::before{content:"▾"}
+#ltree .tw.close::before{content:"▸"}
+#ltree .tw.leaf::before{content:"·"}
+#ltree .st2{font-size:10px;color:var(--ink-deep);margin-left:4px;letter-spacing:.5px}
+mark{background:#6b4d1e;color:#ffe7ad;border-radius:2px;padding:0 1px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#243052;border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+/* ── 实现状态诊断 ─────────────────────── */
+.seg{display:inline-flex;border:1px solid #2c3b63;border-radius:7px;overflow:hidden}
+.seg button{background:#1a2440;color:var(--ink);border:none;padding:5px 10px;font-size:12px;cursor:pointer;border-right:1px solid #2c3b63}
+.seg button:last-child{border-right:none}
+.seg button.on{background:#3557d8;color:#fff}
+#statusLegend .lg{cursor:pointer;border-radius:5px;padding:2px 4px}
+#statusLegend .lg:hover{background:#16203a}
+#statusLegend .lg.off{opacity:.32}
+#statusLegend .cnt{margin-left:auto;font-size:10px;color:var(--ink-deep)}
+#issues{
+  flex:0 0 300px; width:300px; overflow-y:auto; padding:12px; font-size:12px; color:var(--ink-dim);
+  border-left:1px solid var(--line); background:#0d1322; display:none;
+}
+#issues h4{font-size:12px;letter-spacing:2px;color:var(--ink);margin:6px 0 10px;border-bottom:1px dashed var(--line);padding-bottom:4px}
+#issues .card{background:#111a2e;border:1px solid #22304f;border-radius:8px;padding:10px 12px;margin:9px 0;cursor:pointer;transition:.15s}
+#issues .card:hover{border-color:#3d538c}
+#issues .card b{color:var(--ink);font-weight:600;display:block;margin:3px 0 5px}
+#issues .card p{color:var(--ink-deep);line-height:1.7;font-size:11px}
+#issues .card .nd{font-size:10px;color:var(--verify);margin-top:5px;line-height:1.7}
+#issues .card .sev{display:inline-block;font-size:10px;border-radius:4px;padding:1px 7px;margin-right:6px;color:#0a0e1a;font-weight:700}
+#issuesBtn.on{background:#3a2b1e;border-color:#8a6a3b}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>洪荒·世界<small>交互式架构全览图</small></h1>
+  <div id="stamp">数据快照：<b>维护文档 v1.47</b> · 298 测试全绿<br>目录实扫 · 36 crate · 2026-09-06</div>
+  <div class="toolbar">
+    <label class="btn" id="viewToggle" title="切换主图形态">▤ 思维导图</label>
+    <button id="fitBtn" title="缩放至适配全图">⌖ 适配</button>
+    <span class="seg" id="depthSeg" title="展开档位：根/府/殿/阁/园">
+      <button data-d="1">根</button>
+      <button data-d="3" class="on">府</button>
+      <button data-d="4">殿</button>
+      <button data-d="5">阁</button>
+      <button data-d="6">园</button>
+    </span>
+    <button id="issuesBtn" title="问题清单：半截 / 占位 / 后续">⚠ 问题</button>
+    <input id="q" type="search" placeholder="搜索节点（名称 / crate / 路径）…">
+    <button id="clearQ" title="清空" style="display:none">✕</button>
+  </div>
+</header>
+
+<main>
+  <div id="mapbox">
+    <div id="map"></div>
+    <div id="ltree"></div>
+    <div id="emptyHint" style="display:none">未匹配到任何节点</div>
+    <div id="zoomctl">
+      <button data-z="1" title="放大">+</button>
+      <button data-z="-1" title="缩小">−</button>
+      <button data-z="0" title="复位">1:1</button>
+    </div>
+  </div>
+
+  <aside id="legend">
+    <h4>九根</h4>
+    <div id="rootLegend"></div>
+    <h4>层级</h4>
+    <div class="lg"><i style="background:#e8b95b"></i>根（维度/世界观）</div>
+    <div class="lg"><i style="background:#4e6195"></i>域（领域分组 ≤3）</div>
+    <div class="lg"><i style="background:#3557d8"></i>府（crate 单元）</div>
+    <div class="lg"><i style="background:#2a5ca8"></i>殿（模块分区）</div>
+    <div class="lg"><i style="background:#234a86"></i>阁（功能分组）</div>
+    <div class="lg"><i style="background:#1c3a68" class="ring"></i>园（实现落点）</div>
+    <div class="lg"><i style="background:#d9b38c"></i>文档节点（传承殿）</div>
+    <h4>实现状态</h4>
+    <div id="statusLegend"></div>
+    <h4>用法</h4>
+    <div class="hint">
+      单击节点 → 右侧解释「是什么/为什么这样设计/如何实现/当前完成情况」。<br>
+      节点旁 ▸/▾ 展开下钻；滚轮缩放、拖拽平移；右上切换纵列树；输入框搜索定位。
+    </div>
+  </aside>
+
+  <aside id="issues">
+    <h4>⚠ 问题清单 · 干了一半 / 占位 / 后续</h4>
+    <div id="issueList"></div>
+  </aside>
+
+  <aside id="panel">
+    <div class="ph" id="panelPh">
+      <b>请点击任意节点</b>
+      主图默认展开至「府」。每个节点会说明：这一设计的定位、它解决的真实问题、为什么采用这样的结构，以及当前的完成与验证情况。传承殿内的蓝图、契约与验收文档也以文档节点入图，便于逐份对照你的原始设想。
+    </div>
+    <div id="panelBody" style="display:none"></div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+/* ═══════════ 一、数据区（维护入口） ═══════════
+ * LEAVES：每行 = 磁盘真实叶子路径（/ 分隔：根/域/府/殿/阁/园）。
+ * 非 -园 的特殊工程目录（src-tauri、演示自检-阁）单独成行以保留层级。
+ * 解析器会按段自动生成完整树，故仅需叶子。
+ */
+const LEAVES = [
+  // ── 五行引擎域 ─────────────────────────────
+  "太初/任务管理-域/任务核心-府/任务仓库-殿/仓库实现-阁/仓库-模块-园",
+  "太初/任务管理-域/任务核心-府/任务看板-殿/看板管理-阁/看板-数据-园",
+  "太初/任务管理-域/任务核心-府/任务看板-殿/任务流转-阁/流转-逻辑-园",
+  "太初/任务管理-域/任务核心-府/任务模型-殿/阶段文档-阁/设计-文档-园",
+  "太初/任务管理-域/任务核心-府/任务模型-殿/阶段文档-阁/实现-文档-园",
+  "太初/任务管理-域/任务核心-府/任务模型-殿/阶段文档-阁/需求-文档-园",
+  "太初/任务管理-域/任务核心-府/任务模型-殿/阶段文档-阁/验收-文档-园",
+  "太初/任务管理-域/任务核心-府/任务模型-殿/任务定义-阁/任务-数据-园",
+  "太初/任务管理-域/任务核心-府/任务模型-殿/任务属性-阁/任务属性-园",
+  "太初/任务管理-域/任务核心-府/任务模型-殿/状态定义-阁/状态-枚举-园",
+  "量劫/迭代管理-域/迭代核心-府/版本定义-殿/版本模型-阁/版本-数据-园",
+  "量劫/迭代管理-域/迭代核心-府/迭代记录-殿/迭代定义-阁/迭代-数据-园",
+  "量劫/迭代管理-域/迭代核心-府/迭代记录-殿/迭代日志-阁/日志-模块-园",
+  "乾坤/记忆管理-域/记忆核心-府/记忆承载-殿/记忆库-阁/库-模块-园",
+  "乾坤/记忆管理-域/记忆核心-府/记忆定义-殿/记忆模型-阁/记忆-数据-园",
+  "道韵/规则管理-域/规则核心-府/规则定义-殿/规则模型-阁/规则-数据-园",
+  "道韵/规则管理-域/规则核心-府/规则收敛-殿/规则库-阁/库-模块-园",
+  "混沌/事件管理-域/事件核心-府/事件定义-殿/事件模型-阁/事件-数据-园",
+  "混沌/事件管理-域/事件核心-府/事件分发-殿/事件总线-阁/总线-模块-园",
+  // ── 乾坤 · 前端（界面呈现域）──────────────
+  "乾坤/界面呈现-域/世界入口-府/框架布局-殿/导航侧栏-阁/侧栏-组件-园",
+  "乾坤/界面呈现-域/世界入口-府/框架布局-殿/属性面板-阁/面板-组件-园",
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/对话交互-阁/对话-视图-园",
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/看板观测-阁/看板-视图-园",
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/认知观测-阁/格位-视图-园",
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/认知观测-阁/图谱-视图-园",
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/日志观测-阁/日志-视图-园",
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/引擎观测-阁/五行-视图-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/路由导航-阁/导航-核心-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/对话-数据-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/格位-数据-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/看板-数据-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/日志-数据-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/图谱-数据-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/引擎-数据-园",
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/状态管理-阁/响应式-核心-园",
+  // ── 鸿蒙 · 基础契约域 ─────────────────────
+  "鸿蒙/基础契约-域/错误定义-府/错误类型-殿/错误枚举-阁/错误-数据-园",
+  "鸿蒙/基础契约-域/核心契约-府/契约定义-殿/组件接口-阁/契约-接口-园",
+  "鸿蒙/基础契约-域/领域契约-府/契约定义-殿/仓储接口-阁/契约-接口-园",
+  "鸿蒙/基础契约-域/内容契约-府/生成契约-殿/生成接口-阁/内容-接口-园",
+  "鸿蒙/基础契约-域/信号契约-府/信号定义-殿/信号模型-阁/信号-数据-园",
+  "鸿蒙/基础契约-域/信号契约-府/总线契约-殿/总线接口-阁/信号-接口-园",
+  "鸿蒙/基础契约-域/执行契约-府/工具契约-殿/工具接口-阁/执行-接口-园",
+  "鸿蒙/基础契约-域/执行契约-府/工具契约-殿/开发执行-阁/开发-契约-园",
+  // ── 鸿蒙 · 基础能力域 ─────────────────────
+  "鸿蒙/基础能力-域/内容生成-府/生成实现-殿/对话生成-阁/池-模块-园",
+  "鸿蒙/基础能力-域/内容生成-府/生成实现-殿/对话生成-阁/生成-模块-园",
+  "鸿蒙/基础能力-域/配置管理-府/配置加载-殿/加载解析-阁/配置-模块-园",
+  "鸿蒙/基础能力-域/配置管理-府/配置加载-殿/默认配置-阁/默认-配置-园",
+  "鸿蒙/基础能力-域/日志管理-府/日志记录-殿/记录输出-阁/日志-模块-园",
+  "鸿蒙/基础能力-域/日志管理-府/日志记录-殿/运行缓冲-阁/缓冲-模块-园",
+  "鸿蒙/基础能力-域/数据服务-府/服务状态-殿/共享状态-阁/状态-数据-园",
+  "鸿蒙/基础能力-域/数据服务-府/接口路由-殿/路由组装-阁/路由-模块-园",
+  "鸿蒙/基础能力-域/数据服务-府/请求处理-殿/开发受理-阁/受理-处理-园",
+  "鸿蒙/基础能力-域/数据服务-府/请求处理-殿/看板查询-阁/看板-处理-园",
+  "鸿蒙/基础能力-域/数据服务-府/请求处理-殿/模型管理-阁/模型-处理-园",
+  "鸿蒙/基础能力-域/数据服务-府/请求处理-殿/驱动处理-阁/驱动-处理-园",
+  "鸿蒙/基础能力-域/数据服务-府/请求处理-殿/认知查询-阁/认知-处理-园",
+  "鸿蒙/基础能力-域/数据服务-府/请求处理-殿/日志查询-阁/日志-处理-园",
+  "鸿蒙/基础能力-域/数据服务-府/请求处理-殿/引擎查询-阁/引擎-处理-园",
+  "鸿蒙/基础能力-域/数据服务-府/执行调度-殿/看板驱动-阁/驱动-调度-园",
+  "鸿蒙/基础能力-域/数据服务-府/执行调度-殿/任务受理-阁/受理-编排-园",
+  "鸿蒙/基础能力-域/数据服务-府/执行调度-殿/执行台-阁/执行-数据-园",
+  "鸿蒙/基础能力-域/项目认知-府/持久化-殿/三态存储-阁/三态-存储-园",
+  "鸿蒙/基础能力-域/项目认知-府/世界模型-殿/扫描-阁/rust-扫描-园",
+  "鸿蒙/基础能力-域/项目认知-府/世界模型-殿/图谱构建-阁/提炼-规则-园",
+  "鸿蒙/基础能力-域/项目认知-府/世界模型-殿/图谱构建-阁/图谱-查询-园",
+  "鸿蒙/基础能力-域/项目认知-府/世界模型-殿/图谱构建-阁/图谱-数据-园",
+  "鸿蒙/基础能力-域/项目认知-府/心智导航-殿/层级角色-阁/角色-数据-园",
+  "鸿蒙/基础能力-域/项目认知-府/心智导航-殿/格位管理-阁/格位-库-园",
+  "鸿蒙/基础能力-域/项目认知-府/心智导航-殿/格位管理-阁/格位-数据-园",
+  "鸿蒙/基础能力-域/项目认知-府/心智导航-殿/认知协作-阁/检索-决策-园",
+  "鸿蒙/基础能力-域/项目认知-府/心智导航-殿/认知协作-阁/纠错-闭环-园",
+  "鸿蒙/基础能力-域/项目认知-府/心智导航-殿/认知协作-阁/注入-装配-园",
+  "鸿蒙/基础能力-域/项目认知-府/执行语境-殿/语境管理-阁/上下文-管理-园",
+  "鸿蒙/基础能力-域/项目认知-府/执行语境-殿/语境管理-阁/上下文-压缩-园",
+  "鸿蒙/基础能力-域/项目认知-府/执行语境-殿/语境管理-阁/语境-数据-园",
+  "鸿蒙/基础能力-域/信号总线-府/总线实现-殿/落盘总线-阁/落盘-模块-园",
+  "鸿蒙/基础能力-域/信号总线-府/总线实现-殿/内存总线-阁/总线-模块-园",
+  "鸿蒙/基础能力-域/信号总线-府/总线实现-殿/异步总线-阁/异步-模块-园",
+  "鸿蒙/基础能力-域/执行工具-府/工具实现-殿/本地执行-阁/执行-模块-园",
+  // ── 鸿蒙 · 系统装配域 ─────────────────────
+  "鸿蒙/系统装配-域/联动装配-府/五行串联-殿/相克桥接-阁/克制-模块-园",
+  "鸿蒙/系统装配-域/联动装配-府/五行串联-殿/相生桥接-阁/桥接-模块-园",
+  "鸿蒙/系统装配-域/联动装配-府/五行串联-殿/演示自检-阁",
+  "鸿蒙/系统装配-域/联动装配-府/五行串联-殿/演示自检-阁/自检演示-阁/演示-模块-园",
+  "鸿蒙/系统装配-域/启动入口-府/装配流程-殿/流程入口-阁/开发-入口-园",
+  "鸿蒙/系统装配-域/启动入口-府/装配流程-殿/流程入口-阁/启动-模块-园",
+  "鸿蒙/系统装配-域/组件容器-府/容器定义-殿/生命周期-阁/容器-模块-园",
+  "鸿蒙/系统装配-域/自主开发-府/接待驱动-殿/澄清对话-阁/接待-模块-园",
+  "鸿蒙/系统装配-域/自主开发-府/协作驱动-殿/五层驱动-阁/驱动-模块-园",
+  "鸿蒙/系统装配-域/自主开发-府/循环驱动-殿/智能循环-阁/认知-注入-园",
+  "鸿蒙/系统装配-域/自主开发-府/循环驱动-殿/智能循环-阁/任务-清单-园",
+  "鸿蒙/系统装配-域/自主开发-府/循环驱动-殿/智能循环-阁/循环-模块-园",
+  "鸿蒙/系统装配-域/桌面封装-府/src-tauri",
+  "鸿蒙/系统装配-域/桌面封装-府/src-tauri/前端-监视-园",
+  // ── 证道 · 验证域 ────────────────────────
+  "证道/基础验证-域/迭代测试-府/迭代校验-殿/迭代测试-阁/迭代-测试-园",
+  "证道/基础验证-域/规则测试-府/规则校验-殿/规则测试-阁/规则-测试-园",
+  "证道/基础验证-域/记忆测试-府/记忆校验-殿/记忆测试-阁/记忆-测试-园",
+  "证道/基础验证-域/联动测试-府/联动校验-殿/联动测试-阁/联动-测试-园",
+  "证道/基础验证-域/内容测试-府/内容校验-殿/内容测试-阁/内容-测试-园",
+  "证道/基础验证-域/配置测试-府/配置校验-殿/配置测试-阁/配置-测试-园",
+  "证道/基础验证-域/认知测试-府/认知校验-殿/认知测试-阁/认知-测试-园",
+  "证道/基础验证-域/任务测试-府/任务校验-殿/任务测试-阁/任务-测试-园",
+  "证道/基础验证-域/事件测试-府/事件校验-殿/事件测试-阁/事件-测试-园",
+  "证道/基础验证-域/数据服务测试-府/数据校验-殿/数据测试-阁/数据-测试-园",
+  "证道/基础验证-域/信号测试-府/信号校验-殿/信号测试-阁/信号-测试-园",
+  "证道/基础验证-域/执行测试-府/工具校验-殿/工具测试-阁/执行-测试-园",
+  "证道/基础验证-域/智能测试-府/循环校验-殿/循环测试-阁/接待-测试-园",
+  "证道/基础验证-域/智能测试-府/循环校验-殿/循环测试-阁/认知-测试-园",
+  "证道/基础验证-域/智能测试-府/循环校验-殿/循环测试-阁/循环-测试-园",
+  // ── 传承殿 · 文档节点（真实文件）──────────
+  "传承殿/维护文档.md",
+  "传承殿/修订记录.md",
+  "传承殿/设计草稿.md",
+  "传承殿/已定契约-域/已定契约.md",
+  "传承殿/落地设计-域/项目骨架与鸿蒙基础设施.md",
+  "传承殿/落地设计-域/项目骨架与鸿蒙基础设施-验收报告.md",
+  "传承殿/落地设计-域/太初任务引擎.md",
+  "传承殿/落地设计-域/太初任务引擎-验收报告.md",
+  "传承殿/落地设计-域/量劫迭代引擎.md",
+  "传承殿/落地设计-域/量劫迭代引擎-验收报告.md",
+  "传承殿/落地设计-域/乾坤记忆引擎.md",
+  "传承殿/落地设计-域/乾坤记忆引擎-验收报告.md",
+  "传承殿/落地设计-域/道韵规则引擎.md",
+  "传承殿/落地设计-域/道韵规则引擎-验收报告.md",
+  "传承殿/落地设计-域/混沌事件引擎.md",
+  "传承殿/落地设计-域/混沌事件引擎-验收报告.md",
+  "传承殿/落地设计-域/五行相生联动.md",
+  "传承殿/落地设计-域/五行相生联动-验收报告.md",
+  "传承殿/设计原则-域/完整架构蓝图.md",
+  "传承殿/设计原则-域/洪荒本体论.md",
+  "传承殿/设计原则-域/核心设计原则.md",
+  "传承殿/设计原则-域/三态认知底座.md",
+  "传承殿/设计原则-域/前端门面技术选型.md",
+  "传承殿/设计原则-域/AI_Agent前沿调查.md",
+  "传承殿/设计原则-域/设计参考-府/E盘洪荒-世界-深度调查报告.md"
+];
+const EXTRA_EMPTY_ROOTS = ["道果"]; // 空根目录（.gitignore 除外），仍以根节点展示
+// 文档文件后缀判断
+const DOC_EXT = [".md", ".html", ".toml"];
+</script>
+<script>
+"use strict";
+/* ═══════════ 二、节点文档（维护入口：键=相对路径，值含四要素）
+ * 字段：p=定位(是什么) · w=解决什么问题(为什么) · h=如何设计 · s=当前完成情况
+ * 键 = 该节点相对路径（不含"传承殿/架构全览图.html"自身）。未列节点由引擎自动回退说明。
+ * ═══════════════════════════════════════════════════════════ */
+const DOCS = {
+  // ── 九根 ──────────────────────────────────────────────
+  "太初": {p:"木·存在层——任务从无到有的诞生地",w:"让 AI 主刀的每一个需求都被转化为可追踪、可流转、可验收的任务。若无此根，需求只会停留在对话里，无法进入协作流水线。",h:"任务引擎 tc-task 单府承载：Task 状态机、TaskStore（持久化）、TaskBoard（看板）与五阶段文档，构成『需求的实体化』。",s:"✅ 已验收；zd-task-test 25 例全绿。"},
+  "量劫": {p:"火·时间层——迭代驱动的转化与重生",w:"没有时间尺度就没有进步：一次开发循环结束必须结算成版本、开启下一次循环，把『经历』沉淀进记忆。",h:"迭代引擎 lj-iteration 单府承载：Version + Iteration + IterationLog，木生火——任务完成信号触发迭代开启/完成记录。",s:"✅ 已验收；zd-iteration-test 8 例全绿。"},
+  "乾坤": {p:"土·空间层——记忆承载 + 世界呈现（人机界面）",w:"承载项目全部经验记忆，同时是唯一向『人』呈现世界的出口（前端驾驶舱）。没有承载，前面生成的一切都会流失。",h:"两个域：记忆管理-域（记忆引擎 qk-memory）+ 界面呈现-域（世界入口-府：零依赖 ESM 前端，六视图驾驶舱 + 侧栏/面板框架）。",s:"✅ 记忆引擎已验收（zd-memory-test 6 例）；前端已交付并接入 hm-http 同源托管。"},
+  "道韵": {p:"金·时间层的对立——规则收敛与规范",w:"约束必须唯一且可评估：防止规则重复与冲突（金克木/火克金——过盛拒绝新增），让 AI 的『该怎么做』有权威出处。",h:"规则引擎 dy-rule 单府承载：Rule + RuleSet，规则收敛唯一 + 评估命中，接收记忆沉淀为规则（土生金）。",s:"✅ 已验收；zd-rule-test 6 例全绿。"},
+  "混沌": {p:"水·可能层——事件流动无定形",w:"承接各处的『发生』并广播出去：任务推进、迭代完成、规则命中、记忆写入、事件发布本身成为新的可能（水生木）。",h:"事件引擎 hd-event 单府承载：Event + EventBus，订阅分发 + 持久化重放；土克水——事件去重防风暴。",s:"✅ 已验收；zd-event-test 6 例全绿。"},
+  "鸿蒙": {p:"跨域共享底层——九之始，契约/能力/装配三域",w:"五行引擎只专注各自领域；凡『跨引擎共用』的契约、能力、装配一律下沉鸿蒙，保证依赖单向无环、引擎彼此可替换。",h:"基础契约-域（6 契约府，trait 定义不依赖引擎）→ 基础能力-域（7 能力府，真实实现）→ 系统装配-域（装配/容器/启动/桌面）。hm-linkage 为唯一汇聚点（Composition Root）。",s:"✅ 全部 17 个 hm crate 已验收（组件契约→运行期注入→相生相克→LLM 池→三态认知→六层协作→桌面壳全链跑通）。"},
+  "证道": {p:"验证与门禁——唯一允许断言的根",w:"没有验证就没有『真的完成』：每个生产 crate 都配一个证道测试府做白盒/集成验证，13 测试府合计 298 例全绿构成交付门禁。",h:"基础验证-域 + 13 个 zd-* 测试府；mock 只出现在证道，生产禁 #[cfg(test)]/硬编码 mock，遵守 13 条门禁后才交付。",s:"✅ 298 测试全绿（v1.47 快照）。"},
+  "道果": {p:"构建物与临时物集中地（九之成）",w:"让编译产物、临时文件有家可归且不进版本库，保持九根结构纯净。",h:"空目录，.gitignore 全忽略；本图不展开其内容。",s:"静态占位（目前为空）。"},
+  "传承殿": {p:"非代码内容——契约、设计、知识与律的传承",w:"代码会变，但『为什么这么设计』必须留存：已定契约锁定对外承诺，落地设计与验收记录每步决策，设计原则回答心智根源，让后来的 AI/人能逐条对照原始想法。",h:"三域：已定契约-域（唯一契约文档）、落地设计-域（7 引擎/子系统设计 + 各自验收报告）、设计原则-域（本体论/蓝图/核心原则/三态认知/技术选型/前沿调查/参考调研）；根目录另存维护文档、修订记录、设计草稿与本文档。",s:"✅ 文档与代码同步更新（本次快照 v1.47 / 修订记录随文档版本推进）。"},
+  // ── 域（13 个） ───────────────────────────────────────
+  "太初/任务管理-域": {p:"太初唯一域：任务全生命周期管理的语义分组",w:"把『任务的诞生→设计→实现→验收→终审→清理』全流程状态与数据收在一处，避免语义散落。",h:"单府：任务核心-府（tc-task），含任务仓库/任务看板/任务模型三殿。",s:"✅ 引擎已验收；域结构稳定。"},
+  "量劫/迭代管理-域": {p:"量劫唯一域：版本与迭代记录的语义分组",w:"版本需要被定义、迭代需要被记录，才能让时间线可回溯。",h:"单府：迭代核心-府（lj-iteration），版本定义/迭代记录两殿。",s:"✅ 引擎已验收；域结构稳定。"},
+  "乾坤/记忆管理-域": {p:"土·记忆：经验沉淀的语义分组",w:"让每次协作『学到的东西』结构化保存并可检索。",h:"单府：记忆核心-府（qk-memory），记忆定义/记忆承载两殿。",s:"✅ 引擎已验收。"},
+  "乾坤/界面呈现-域": {p:"土·呈现：面向人的驾驶舱语义分组",w:"所有后台能力必须有人能看的窗口——六视图驾驶舱。",h:"单府：世界入口-府（前端，零依赖三件套 + ESM 组件树）。",s:"✅ 已交付并同源托管运行。"},
+  "道韵/规则管理-域": {p:"道韵唯一域：规则收敛的语义分组",w:"规则必须权威、唯一、可评估。",h:"单府：规则核心-府（dy-rule），规则定义/规则收敛两殿。",s:"✅ 引擎已验收。"},
+  "混沌/事件管理-域": {p:"混沌唯一域：事件流的语义分组",w:"让所有『发生』可订阅、可持久化、可重放。",h:"单府：事件核心-府（hd-event），事件定义/事件分发两殿。",s:"✅ 引擎已验收。"},
+  "鸿蒙/基础契约-域": {p:"鸿蒙第一域：契约即约束（面向契约编程的源头）",w:"让引擎/能力只见 trait 不见实现：领域契约不依赖引擎，生产注真实、测试注 mock，组件可替换。",h:"6 府全部只写契约与数据模型：错误定义(hm-error)/核心契约(hm-contract)/信号契约(hm-signal)/领域契约(hm-domain-contract)/内容契约(hm-content-contract)/执行契约(hm-execute-contract)。",s:"✅ 六契约府全部验收；契约府不依赖引擎。"},
+  "鸿蒙/基础能力-域": {p:"鸿蒙第二域：契约的真实实现库",w:"把跨域可复用能力做扎实：配置、日志、信号总线、LLM 内容生成、本地执行器、三态认知、HTTP 数据服务。",h:"7 府：配置管理(hm-config)/日志管理(hm-log)/信号总线(hm-signal-bus)/内容生成(hm-content)/执行工具(hm-execute)/项目认知(hm-cognition)/数据服务(hm-http)。",s:"✅ 七能力府全部验收（LLM 池 / 认知 65 例 / http 58 例等）。"},
+  "鸿蒙/系统装配-域": {p:"鸿蒙第三域：把一切装起来（运行期骨架）",w:"能力各自为政不叫系统：需要装配、容器、启动入口、桌面壳与自主开发智能体把它们串成可运行的『世界』。",h:"5 府：联动装配(hm-linkage, Composition Root)/组件容器(hm-container)/启动入口(hm-bootstrap)/自主开发(hm-agent)/桌面封装(hm-desktop, src-tauri)。",s:"✅ 全链已验收并实跑（本图所在仓库即 hm-agent 自主开发产物）。"},
+  "证道/基础验证-域": {p:"证道唯一域：全部验证的语义分组",w:"测试必须与被测对象一一对应，13 个测试府守护 13 个生产面。",h:"13 个 zd-* 测试府（任务/迭代/记忆/规则/事件/联动/内容/信号/执行/智能体/认知/数据服务/配置）；mock 仅入证道。",s:"✅ 298 测试全绿。"},
+  "传承殿/已定契约-域": {p:"传承殿第一域：对外承诺的锁",w:"一份『已定契约』集中记录跨库接口承诺与演进版本，改动须同步版本号，防止悄悄破坏既有约定。",h:"已定契约.md（单一权威文档）。",s:"✅ 版本随每次契约变更同步（v2.6）。"},
+  "传承殿/落地设计-域": {p:"传承殿第二域：每个子系统的设计 + 验收证据",w:"每做一个子系统都要先想清楚再落代码：设计文档回答动机与结构，验收报告留下通过证据，让后人可复判。",h:"7 组『设计 + 验收报告』：项目骨架与鸿蒙基础设施 / 太初任务引擎 / 量劫迭代引擎 / 乾坤记忆引擎 / 道韵规则引擎 / 混沌事件引擎 / 五行相生联动。",s:"✅ 7 设计 + 7 验收全部归档。"},
+  "传承殿/设计原则-域": {p:"传承殿第三域：设计之所以然的智慧层",w:"解决『符合我心里想法』的判据来源：先定本体论与蓝图，再出核心原则与技术选型，AI/人面对新决策时有据可依。",h:"完整架构蓝图/洪荒本体论/核心设计原则/三态认知底座/前端门面技术选型/AI_Agent 前沿调查 + 设计参考-府（E 盘深度调查报告）。",s:"✅ 持续维护；本文档亦属此精神下的知识资产。"},
+  // ── 太初 任务核心-府 ─────────────────────────────────
+  "太初/任务管理-域/任务核心-府": {p:"任务引擎 tc-task——『需求实体化』的中枢",w:"用户一句自然语言不能直接开发：要变成带状态机的任务，经历设计/实现/验收等阶段，才能被六层协作流水线驱动。",h:"三殿：任务仓库-殿（Store，JSONL 落盘持久化）、任务看板-殿（TaskBoard，承载流转/承接/发布/提交，信号自动广播）、任务模型-殿（Task 状态机 + 五阶段文档 + 任务定义/属性/状态定义）。",s:"✅ 已验收；zd-task-test 25 例全绿；TaskBoard 已注入信号总线（任务推进/完成自动发布，驱动五行闭环）。"},
+  // ── 量劫 / 乾坤 / 道韵 / 混沌 单府引擎 ───────────────
+  "量劫/迭代管理-域/迭代核心-府": {p:"迭代引擎 lj-iteration——把时间变成可审计的刻度",w:"『上次开发到哪、这次要开新迭代』必须有权威记录；迭代完成即沉淀记忆、开启新循环（木生火）。",h:"两殿：版本定义-殿（Version）、迭代记录-殿（Iteration + IterationLog，自动记录开启/完成）。",s:"✅ 已验收；zd-iteration-test 8 例全绿。"},
+  "乾坤/记忆管理-域/记忆核心-府": {p:"记忆引擎 qk-memory——土德承载经验的容器",w:"让迭代产出、任务教训、协作结论真正沉淀下来，而不是随会话消失。",h:"两殿：记忆定义-殿（Memory 模型）、记忆承载-殿（MemoryStore，JSON 原子写持久化）；供认知底座读取/写入。",s:"✅ 已验收；zd-memory-test 6 例全绿。"},
+  "乾坤/界面呈现-域/世界入口-府": {p:"世界入口（前端驾驶舱）——人观察与指挥洪荒的窗口",w:"一切能力最终要被人看见、被人在浏览器里操作；同时是『界主』身份所在。",h:"零依赖 ESM 前端：框架布局-殿（侧栏/面板）、视图呈现-殿（对话/看板/格位/图谱/日志/五行 六视图）、运行支撑-殿（hash 路由/数据服务/响应式状态管理）；三件套入口（入口.html/js/css）+ 组件园。",s:"✅ 已交付运行，由 hm-http 同源托管，桌面壳 WebView 复用同一前端。"},
+  "道韵/规则管理-域/规则核心-府": {p:"规则引擎 dy-rule——让『该怎么做』收敛唯一",w:"规则若不唯一就会互相打架：规则库保证收敛（同名/冲突拒绝新增），评估命中输出规则命中事件。",h:"两殿：规则定义-殿（Rule 模型 + 领域规则/技术栈规则常驻种子）、规则收敛-殿（RuleSet：收敛唯一 + 评估命中 + 过盛拒绝火克金）。",s:"✅ 已验收；zd-rule-test 6 例全绿。"},
+  "混沌/事件管理-域/事件核心-府": {p:"事件引擎 hd-event——可能之水的广播站",w:"任务/迭代/记忆/规则各自独立，必须通过事件把它们‘说’给对方听，驱动整条五行闭环。",h:"两殿：事件定义-殿（Event 强类型模型）、事件分发-殿（EventBus 订阅分发 + 持久化重放）；土克水去重防风暴。",s:"✅ 已验收；zd-event-test 6 例全绿。"},
+  // ── 鸿蒙 · 基础契约-域 6 府 ──────────────────────────
+  "鸿蒙/基础契约-域/错误定义-府": {p:"hm-error——全 workspace 统一的错误根",w:"每个 crate 各自造错误会让装配层无法统一处理：需要一个全库共享的 Error/Result 定义。",h:"错误类型-殿/错误枚举-阁：基于 thiserror 定义统一错误枚举与 Result 别名；业务错误用 Result+? 传播，不静默吞错。",s:"✅ 已验收；全库引用的地基 crate。"},
+  "鸿蒙/基础契约-域/核心契约-府": {p:"hm-contract——组件生命周期的公共抽象",w:"装配/容器/启动需要以同一接口驱动所有组件，故定义 Component/Initializable/Shutdown 契约。",h:"契约定义-殿/组件接口-阁：trait 定义组件初始化与关闭，供 hm-container/hm-bootstrap 统一调度。",s:"✅ 已验收。"},
+  "鸿蒙/基础契约-域/信号契约-府": {p:"hm-signal——信号本体与总线契约",w:"五行相生/相克联动需要一个跨引擎的『语言』——信号枚举；总线 trait 屏蔽具体分发实现。",h:"两殿：信号定义-殿（信号模型：任务推进/完成、迭代完成、记忆写入、规则命中、事件发布、迭代放弃…）、总线契约-殿（信号总线 trait：发布/订阅）。",s:"✅ 已验收；五种信号全语义贯通五行闭环。"},
+  "鸿蒙/基础契约-域/领域契约-府": {p:"hm-domain-contract——五引擎对外界的统一接口面",w:"引擎实现可替换的关键：契约府不依赖引擎，用泛型承载领域模型，装配层只见 trait。",h:"契约定义-殿/仓储接口-阁：定义五引擎领域契约（任务/迭代/记忆/规则/事件的读写接口），供 hm-http/hm-linkage 注入。",s:"✅ 已验收；mock 通过证道注入实现测试隔离。"},
+  "鸿蒙/基础契约-域/内容契约-府": {p:"hm-content-contract——LLM 生成与工具对话的契约",w:"内容生成会演进为多供应商、function calling，必须先锁住接口：内容生成器 + 工具对话器两个 trait。",h:"生成契约-殿/生成接口-阁：定义内容生成（chat/completions 风格）与工具对话（function calling 数据模型 + tool_calls 解析）契约。",s:"✅ 已验收；升级后 hm-content 池化多供应商（v1.45）。"},
+  "鸿蒙/基础契约-域/执行契约-府": {p:"hm-execute-contract——『AI 动手』能力的契约面",w:"执行器必须被工具对话器以统一 schema 驱动：契约列出八工具（读/写/运行命令/列目录/按名找文件/搜索内容/精确编辑）+ 开发执行事件。",h:"工具契约-殿/工具接口-阁（执行器 trait）+ 开发执行-阁（开发事件/开发执行契约，供智能体循环驱动）。",s:"✅ 已验收；hm-execute/zd-execute 25 例全绿。"},
+  // ── 鸿蒙 · 基础能力-域 7 府 ──────────────────────────
+  "鸿蒙/基础能力-域/配置管理-府": {p:"hm-config——把魔法值收敛为可配置",w:"端口、超时、模型地址、持久化目录等散落各处就不可维护：统一 TOML 配置 + 默认值 + 覆盖。",h:"配置加载-殿/加载解析-阁（AppConfig 解析）+ 默认配置-阁（default.toml 默认值兜底）。",s:"✅ 已验收；配置全链走默认值+覆盖+兜底。"},
+  "鸿蒙/基础能力-域/日志管理-府": {p:"hm-log——运行期发生了什么要有记录",w:"没有日志就无法排障；且日志要能被前端展示（运行缓冲）。",h:"日志记录-殿/记录输出-阁（日志模块输出）+ 运行缓冲-阁（环形缓冲供 API 读取）。",s:"✅ 已验收。"},
+  "鸿蒙/基础能力-域/信号总线-府": {p:"hm-signal-bus——总线三种实现的工厂",w:"信号契约定了接口，这里实现三种语义：进程内同步分发、落盘可重放、异步并发安全。",h:"总线实现-殿：内存总线（装配层默认）、落盘总线（发布即追加 JSONL + 重放 + 历史）、异步总线（入队 + 后台线程 + 排空/停止）。",s:"✅ 已验收；zd-signal-test 9 例覆盖三种总线。"},
+  "鸿蒙/基础能力-域/内容生成-府": {p:"hm-content——LLM 内容生成的真实实现（商业级池）",w:"对话/设计/实现/验收全要 LLM 出力：做成多供应商 LLM 池，模型故障自动降级，接入向导化。",h:"生成实现-殿/对话生成-阁：池模块（9 家供应商目录 + 模板 + 探测 + 运行时接入）+ 生成模块（对话生成器/工具对话器实现，实现内容契约）。",s:"✅ 已验收；zd-content-test 28 例全绿；v1.46 接入向导落地。"},
+  "鸿蒙/基础能力-域/执行工具-府": {p:"hm-execute——AI 在真实工作区动手的沙箱",w:"让 AI 安全地读写文件/运行命令：工作区沙箱内执行、越界拒绝、命令白名单、超时/输出上限保护。",h:"工具实现-殿/本地执行-阁：本地执行器（八工具：读/写/运行命令/列目录/找文件/搜内容/精确编辑 + 备份 .bak + 白名单拦截）。",s:"✅ 已验收；zd-execute-test 25 例全绿。"},
+  "鸿蒙/基础能力-域/项目认知-府": {p:"hm-cognition——三态认知底座（世界/心智/过程）",w:"AI 要『懂』这个项目：世界态（图谱扫描代码真相）、心智态（36 格位记忆经验）、过程态（上下文库）——没有认知，agent 就是盲人。",h:"五殿：持久化-殿（三态存储 JSON/JSONL 原子写）、世界模型-殿（Rust 扫描器自动建图谱 + 图谱查询）、心智导航-殿（层级角色/格位管理/认知协作检索纠错注入）、执行语境-殿（上下文管理/压缩）、以及检索决策链（检索器/注入器/压缩器/纠错引擎/零 LLM 提炼器）。",s:"✅ 已验收；zd-cognition-test 65 例全绿；v1.40 自 Python 原型移植完成。"},
+  "鸿蒙/基础能力-域/数据服务-府": {p:"hm-http——axum 数据服务（世界与前端的总线入口）",w:"前端六视图、外部工具都要通过 HTTP 与引擎对话：需要统一路由 + 鉴权 + 状态 + 执行调度。",h:"四殿：服务状态-殿（共享状态：任务/迭代/记忆/规则/事件/驱动/道祖接待）、接口路由-殿（路由组装）、请求处理-殿（开发受理/看板查询/模型管理/驱动处理/认知/日志/引擎查询 七阁）、执行调度-殿（看板驱动台 + 任务受理 + 执行台，自动驱动一轮）。",s:"✅ 已验收；zd-http-test 58 例全绿；同源托管前端 + 六视图 API + LLM 池三接口 + 道祖对话接口全通。"},
+  // ── 鸿蒙 · 系统装配-域 5 府 ──────────────────────────
+  "鸿蒙/系统装配-域/联动装配-府": {p:"hm-linkage——五行相生联动装配（Composition Root）",w:"五行引擎不会自己相连：需要一个『装配点』按蓝图把信号总线、各引擎、相生/相克桥接接到一起，并支持注入持久化/扫描。",h:"五行串联-殿：相生桥接-阁（木生火→火生土→土生金→金生水→水生木 自动驱动）、相克桥接-阁（负反馈约束增长）、演示自检-阁（装配后自检闭环，演示与生产隔离）。",s:"✅ 已验收；zd-linkage-test 16 例全绿；启动即装配并完成相生闭环自检。"},
+  "鸿蒙/系统装配-域/组件容器-府": {p:"hm-container——运行期组件容器",w:"装配需要知道『有哪些组件、如何初始化关闭』：容器统一注册/初始化/关闭，Arc<dyn Trait> 解耦，测试可注入 mock。",h:"容器定义-殿/生命周期-阁：组件注册表 + 生命周期管理（≥6 类容器组件）。",s:"✅ 已验收（运行期注入）。"},
+  "鸿蒙/系统装配-域/启动入口-府": {p:"hm-bootstrap——把整个世界拉起来的那根线",w:"桌面/开发/测试三种入口都要能启动整套系统；启动后要自动装配五行 + 扫描建图谱 + 道祖接待加载。",h:"装配流程-殿/流程入口-阁：启动-模块（装配带扫描/装配五行）+ 开发-入口（run_dev_agent 分支，需配置开关开启）。",s:"✅ 已验收；cargo run -p hm-bootstrap 为关键路径。"},
+  "鸿蒙/系统装配-域/自主开发-府": {p:"hm-agent——自主开发智能体（六层协作 + 道祖）",w:"让 AI 真正自主干活：道祖接待需求→看板六层角色流转（圣人设计/大罗实现/准圣验收/道祖终审/太乙清理）→循环驱动工具执行；同时注入三态认知，每轮记忆落盘。",h:"三殿：接待驱动-殿（道祖接待澄清：会话状态机 + 三工具 function calling + 需求摘要 JSON 落盘）、协作驱动-殿（五层驱动→六层驱动器适配看板六状态）、循环驱动-殿（智能循环：LLM 决策→工具→执行器→回填 + 任务清单 + 认知注入装配）。",s:"✅ 已验收；zd-agent-test 39 例全绿；本项目即由此智能体自主开发实跑。"},
+  "鸿蒙/系统装配-域/桌面封装-府": {p:"hm-desktop——Tauri 2.0 桌面壳（src-tauri）",w:"Web 版之外提供真正的桌面应用体验：内嵌 axum 服务 + WebView 加载前端，端上开发与桌面一致。",h:"src-tauri 工程目录（rust 侧 + 前端-监视-园 等）；前端由 hm-http 同源提供，桌面壳负责壳与窗口。",s:"✅ 桌面壳已实跑（WebView 正常加载驾驶舱）。"}
+};
+</script>
+<script>
+"use strict";
+/* ═══════════ 三、渲染与交互引擎 ═══════════ */
+// ── 九根元数据（顺序即布局顺序）─────────────
+const ROOT_ORDER = ["太初","量劫","乾坤","道韵","混沌","鸿蒙","证道","道果","传承殿"];
+const ROOT_COLOR = {
+  "太初":"#3fae6f","量劫":"#e06850","乾坤":"#c9a227","道韵":"#d9b44a",
+  "混沌":"#4f9fd6","鸿蒙":"#8a6ad1","证道":"#3faeae","道果":"#8a94a6","传承殿":"#c08d5f"
+};
+const ROOT_TAG = {"太初":"木·存在","量劫":"火·时间","乾坤":"土·空间","道韵":"金·法则","混沌":"水·可能","鸿蒙":"底层共享","证道":"测试门禁","道果":"构建物+临时","传承殿":"知识传承"};
+// ── crate 名映射（键=府级路径）─────────────
+const CRATES = {
+  "鸿蒙/基础契约-域/错误定义-府":"hm-error",
+  "鸿蒙/基础契约-域/核心契约-府":"hm-contract",
+  "鸿蒙/基础契约-域/信号契约-府":"hm-signal",
+  "鸿蒙/基础契约-域/领域契约-府":"hm-domain-contract",
+  "鸿蒙/基础契约-域/内容契约-府":"hm-content-contract",
+  "鸿蒙/基础契约-域/执行契约-府":"hm-execute-contract",
+  "鸿蒙/基础能力-域/配置管理-府":"hm-config",
+  "鸿蒙/基础能力-域/日志管理-府":"hm-log",
+  "鸿蒙/基础能力-域/信号总线-府":"hm-signal-bus",
+  "鸿蒙/基础能力-域/内容生成-府":"hm-content",
+  "鸿蒙/基础能力-域/执行工具-府":"hm-execute",
+  "鸿蒙/基础能力-域/项目认知-府":"hm-cognition",
+  "鸿蒙/基础能力-域/数据服务-府":"hm-http",
+  "鸿蒙/系统装配-域/联动装配-府":"hm-linkage",
+  "鸿蒙/系统装配-域/组件容器-府":"hm-container",
+  "鸿蒙/系统装配-域/启动入口-府":"hm-bootstrap",
+  "鸿蒙/系统装配-域/自主开发-府":"hm-agent",
+  "鸿蒙/系统装配-域/桌面封装-府":"hm-desktop",
+  "太初/任务管理-域/任务核心-府":"tc-task",
+  "量劫/迭代管理-域/迭代核心-府":"lj-iteration",
+  "乾坤/记忆管理-域/记忆核心-府":"qk-memory",
+  "道韵/规则管理-域/规则核心-府":"dy-rule",
+  "混沌/事件管理-域/事件核心-府":"hd-event"
+};
+const TEST_CRATE = { // 证道测试府 → zd crate
+  "迭代测试":"zd-iteration-test","规则测试":"zd-rule-test","记忆测试":"zd-memory-test",
+  "联动测试":"zd-linkage-test","内容测试":"zd-content-test","配置测试":"zd-config-test",
+  "认知测试":"zd-cognition-test","任务测试":"zd-task-test","事件测试":"zd-event-test",
+  "数据服务测试":"zd-http-test","信号测试":"zd-signal-test","执行测试":"zd-execute-test","智能测试":"zd-agent-test"
+};
+// ── 树构建 ───────────────────────────────
+function kindOf(seg,isRoot){
+  if(isRoot) return "根";
+  if(seg.endsWith("-域")) return "域";
+  if(seg.endsWith("-府")) return "府";
+  if(seg.endsWith("-殿")) return "殿";
+  if(seg.endsWith("-阁")) return "阁";
+  if(seg.endsWith("-园")) return "园";
+  if(seg.includes(".")) return "文档";
+  return "工程"; // 如 src-tauri
+}
+function buildTree(){
+  const nodes = {"" : {name:"洪荒·世界",path:"",kind:"世界",parent:"",children:[],root:""}};
+  const rootOf = {};
+  function ensure(pathParts){
+    let cur = "";
+    for(let i=0;i<pathParts.length;i++){
+      const seg = pathParts[i];
+      const parent = cur;
+      cur = cur ? cur + "/" + seg : seg;
+      if(!nodes[cur]){
+        const isRoot = i===0 && ROOT_ORDER.includes(seg);
+        nodes[cur] = {name:seg,path:cur,kind:kindOf(seg,isRoot),parent,children:[],root:""};
+        nodes[parent].children.push(cur);
+        if(isRoot) rootOf[cur] = cur;
+        else {
+          const pa = nodes[parent];
+          rootOf[cur] = pa.root || (ROOT_ORDER.includes(nodes[parent].name)? nodes[parent].path : rootOf[parent]||"");
+        }
+      }
+    }
+  }
+  LEAVES.forEach(line=>{ if(line.trim()) ensure(line.trim().split("/")); });
+  // 空根（道果）
+  EXTRA_EMPTY_ROOTS.forEach(r=>{
+    if(!nodes[r]){ nodes[r]={name:r,path:r,kind:"根",parent:"",children:[],root:r}; nodes[""].children.push(r);}
+  });
+  // 根层按 ROOT_ORDER 排布，与图例一致
+  const rootPos = {}; ROOT_ORDER.forEach((r,i)=>{rootPos[r]=i;});
+  nodes[""].children.sort((a,b)=>(rootPos[a]??99)-(rootPos[b]??99));
+  return {nodes, rootOf};
+}
+const T = buildTree();
+const NODES = T.nodes, ROOTOF = T.rootOf;
+function crateOf(node){
+  if(node.kind==="府"){
+    if(node.path in CRATES) return CRATES[node.path];
+    const base = node.name.replace("-府","");
+    return TEST_CRATE[base]||"";
+  }
+  return "";
+}
+function childrenOf(p){ return (NODES[p]||{}).children||[]; }
+// 是否文档文件名
+function isDoc(node){ return node.kind==="文档"; }
+// 归属根色
+function rootColor(node){ const r = node.root||ROOTOF[node.path]||""; return ROOT_COLOR[r]||ROOT_COLOR["鸿蒙"]; }
+// 层深（世界=0）
+function depthOf(p){ return p ? p.split("/").length : 0; }
+// ── 视图状态 ──────────────────────────────
+let mode = "map";             // map | list
+const expanded = new Set();   // 记录“折叠”路径（父已展开但本节点不展开子）→ 用 collapsed
+const collapsed = new Set();
+let selected = "";
+let query = "";
+// 默认展开到府：depth<=2 展开；世界与根始终展开根层
+function defaultCollapse(){
+  collapsed.clear();
+  for(const p in NODES){
+    const n=NODES[p];
+    if(!p) continue;
+    const d=depthOf(p);
+    if(n.children.length && d>=3) collapsed.add(p); // 府及以下收起
+    // 传承殿文档展开一级让文档可点（域 depth2 展开；府 depth3 被收起 → 文档节点 depth3 不受影响）
+  }
+  // 但 落地设计-域/…md 与 root 文件 depth2/3 应为可点击叶子；直接展示不影响
+}
+defaultCollapse();
+// ── 文档节点自动摘要（未单独写入 DOCS 时兜底）──
+function docSummary(path,node){
+  const seg=node.name;
+  const parent=node.parent.split("/").pop();
+  if(path.startsWith("传承殿/落地设计-域/")){
+    const isRep=seg.includes("验收报告");
+    const eng=seg.replace("-验收报告","").replace(/\.md$/,"");
+    const engNames={"项目骨架与鸿蒙基础设施":"鸿蒙基础（契约/能力/装配骨架）","太初任务引擎":"任务引擎 tc-task","量劫迭代引擎":"迭代引擎 lj-iteration","乾坤记忆引擎":"记忆引擎 qk-memory","道韵规则引擎":"规则引擎 dy-rule","混沌事件引擎":"事件引擎 hd-event","五行相生联动":"五行相生联动 hm-linkage"};
+    const nm=engNames[eng]||eng;
+    return isRep
+      ? {p:`验收报告——${nm} 的落地验证证据`,w:"证明该设计已按契约实现且测试通过：留下可复判的验收记录（验收项/结果/测试数）。",h:"验收报告.md：与对应「落地设计」成对归档。",s:"✅ 对应引擎均已验收（测试全绿）。"}
+      : {p:`落地设计——${nm} 的设计意图与结构`,w:"记录「解决什么真实问题 + 为什么这样设计 + 结构/模块划分 + 后续演进」，让实现有据可依、后人可对照初心。",h:"落地设计.md：动机/架构/模块/接口/相生相克语义设计。",s:"✅ 已归档；实现与验收均已闭环。"};
+  }
+  const known={
+    "传承殿/设计原则-域/完整架构蓝图.md":["架构蓝图——九根六层与运行链路的总体设计","定义整个洪荒的结构骨架与运行链路（五行信号闭环、三态认知、六层协作），是其他原则与落地设计的总纲。","蓝图.md：九根结构/装配链/运行链/验收标准。","✅ 作为本图的原始依据之一。"],
+    "传承殿/设计原则-域/洪荒本体论.md":["洪荒本体论——为什么是九根六层","用本体论回答「为什么这样命名/分层」：木火土金水五行 + 工程三根，把 AI 原生架构映射到可长期演进的世界观。","本体论.md：根/域/府/殿/阁/园 的语义论证。","✅ 长期原则（本文档维护中）。"],
+    "传承殿/设计原则-域/核心设计原则.md":["核心设计原则——不可动摇的设计信条","收敛 AI 协作与代码组织的核心决策：契约前置、依赖单向、可插拔、配置化、测试门禁等。","核心设计原则.md。","✅ 长期原则。"],
+    "传承殿/设计原则-域/三态认知底座.md":["三态认知底座——世界/心智/过程三态原理","定义 AI 认识项目的方式：世界态图谱 / 心智态 36 格位 / 过程态上下文，构成检索决策链。","认知底座.md（自 Python 原型移植为 Rust hm-cognition）。","✅ v1.40 落地并验收。"],
+    "传承殿/设计原则-域/前端门面技术选型.md":["前端技术选型——为什么零依赖原生三件套","面对多 WebView 环境做技术选型论证：零依赖 ESM 组件化，保证任意环境可用。","技术选型.md。","✅ 前端已按此实现。"],
+    "传承殿/设计原则-域/AI_Agent前沿调查.md":["AI Agent 前沿调查——外部参照系","调研业界 Agent 循环/function calling/多角色编排，为自主开发智能体设计提供外部依据。","调查文档。","✅ 持续维护。"],
+    "传承殿/设计原则-域/设计参考-府/E盘洪荒-世界-深度调查报告.md":["深度调查——项目现状与心智对照","对项目原貌做一次「外科手术式」盘点，作为重构/维护的参考。","调查文档（设计参考-府）。","✅ 归档。"],
+    "传承殿/已定契约-域/已定契约.md":["已定契约——跨库接口承诺的唯一权威","锁定引擎/模块对外接口与语义承诺，任何演进都必须保持兼容并按契约版本化。","契约.md（含版本演进记录）。","✅ v2.6 随变更同步。"],
+    "传承殿/维护文档.md":["维护文档——项目当前状态总账","一份文档维护全项目状态：定位/状态/测试分布/crate 清单/命名规则/后续方向；所有文档同步的枢纽。","维护文档.md（每版本列出本次更新）。","✅ v1.47（2026-09-06，298 测试）。"],
+    "传承殿/修订记录.md":["修订记录——每次开发步骤的审计流水","记录每个功能/修复的完整开发过程（设计与实现细节），与维护文档/契约版本配合还原历史。","修订记录.md（与文档版本同步）。","✅ 持续维护。"],
+    "传承殿/设计草稿.md":["设计草稿——早期构想的原始档案","保留最早的设计草稿，见证架构决策如何一步步收敛。","设计草稿.md。","✅ 归档。"],
+    "传承殿/架构全览图.html":["本图——交互式架构全览（本文件）","把九根六层结构与设计意图固化为可点读的单文件图纸，供人/AI 快速对照全局与「为什么」。","见文件头维护指南。","✅ 随维护文档推进刷新。"]
+  };
+  if(known[path]){const k=known[path];return {p:k[0],w:k[1],h:k[2],s:k[3]};}
+  return {p:`文档——${seg}`,w:"传承殿知识资产，记录设计/契约/验收等非代码内容。",h:"以真实文件形式归档。",s:"见文件内容。"};
+}
+function docOf(path,node){
+  if(DOCS[path]) return DOCS[path];
+  if(node.kind==="文档") return docSummary(path,node);
+  return null;
+}
+// 兜底说明：殿/阁/园 等
+function layerText(node){
+  const cnt=node.children.length;
+  const subs=node.children.map(c=>NODES[c].name).join("、");
+  const parentN = node.parent?NODES[node.parent]:null;
+  switch(node.kind){
+    case "世界": return {p:"洪荒·世界——九根六层的总入口",w:"视图根节点：凝聚 9 个独立根（五行+工程），用于本图总览。",h:"结构隶属树：根→域→府→殿→阁→园，六层不跳层；五行引擎 + 鸿蒙 + 证道 + 传承殿 + 道果。",s:"数据来自维护文档 v1.47 快照。"};
+    case "根": {
+      const r=node.name; const tag=ROOT_TAG[r]||"";
+      return {p:`${tag} · ${r} 根`,w:"（详见该根的 DOM 说明——此节点为根级汇入口。）",h:`域（≤3）：${subs||"（暂无域）"}`,s:""};
+    }
+    case "域": return {p:`域——${node.name}`,w:"语义分组层：把职责相近的府收拢，并受「一根之下域≤3」硬约束，倒逼分类收敛。",h:`府：${subs||"（暂无府）"}；域内各府经模块.rs 汇总对外。`,s:"结构稳定。"};
+    case "府": {const c=crateOf(node);return {p:`府${c?" · crate "+c:""}——${node.name}`,w:"crate 单元层（最小可独立编译/测试边界），负责一个内聚职责。",h:`殿：${subs||"（暂无）"}；府内模块.rs 为 crate 根汇总入口。`,s:c?"详见其 DOCS 说明":"（前端/工程目录，无独立 crate）"};}
+    case "殿": return {p:`殿——${node.name}（模块分区）`,w:"把府的能力按分区组织，容纳 ≤6 阁；每殿有模块.rs 对阁 pub use 汇总。",h:`阁：${subs||"（暂无）"}`,s:"结构性说明（代码级细节见对应府 DOCS）。"};
+    case "阁": return {p:`阁——${node.name}（功能分组）`,w:"在同一分区内按功能/语义分阁，容纳 ≤4 园；代码以模块.rs 汇总。",h:`园：${subs||"（暂无）"}`,s:"结构性说明。"};
+    case "园": return {p:`园——${node.name}（实现落点）`,w:"最小职责单元，也是「一园一实现」原则的物理边界：真正的实现/数据落在这里。",h:"园内为模块文件（能力-*.rs 等）；实现细节见对应府 DOCS 与落地设计。",s:"结构性说明。"};
+    case "工程": return {p:`工程目录——${node.name}`,w:"非「-园」命名的工程/工具目录（如 src-tauri Tauri 工程），保留在树中以示真实落点。",h:subs?`子项：${subs}`:"（见父府说明）",s:""};
+    default: return {p:node.name,w:"",h:"",s:""};
+  }
+}
+// ── 实现状态诊断数据（依据：量化审计 + 维护文档·后续方向，2026-09-06）──
+const STATUS_META = {
+  done:    {label:"已接线",        color:"#3fd49a"},
+  partial: {label:"已实现·未接线", color:"#f6b93d"},
+  thin:    {label:"薄实现/占位",   color:"#ff8a6a"},
+  shell:   {label:"汇总壳/结构",   color:"#8ea0bd"},
+  doc:     {label:"文档/测试",     color:"#63c7e8"},
+};
+const STATUS = {
+  "鸿蒙/基础能力-域/项目认知-府/世界模型-殿/图谱构建-阁/提炼-规则-园": {level:"done", ev:"145行 · 有实现+测试 · 已接线(v1.48)", note:"规则提炼器（零LLM）已接入桥接建图链路，自动提炼 4 格位摘要写入心智地图。"},
+  // 🔶 已实现+测试、但生产零调用（v1.42 非目标遗留；提炼器/检索器已 v1.48 接线）
+  "鸿蒙/基础能力-域/项目认知-府/执行语境-殿/语境管理-阁/上下文-压缩-园": {level:"partial", ev:"179行 · 有实现+测试 · 生产0调用", note:"压缩器三阶段压缩已实现，但未接入智能体运行时（阈值压缩/蒸馏晋升未触发）。"},
+  "鸿蒙/基础能力-域/项目认知-府/心智导航-殿/认知协作-阁/纠错-闭环-园": {level:"partial", ev:"123行 · 有实现+测试 · 生产0调用", note:"纠错引擎七步闭环已实现，但未接入运行时、未联动落盘。"},
+  // ⚠️ 薄实现/占位（前端认知观测与数据层）
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/认知观测-阁/格位-视图-园": {level:"thin", ev:"50行", note:"格位视图仅空态占位，未呈现后端已实现的 36 格位地图。"},
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/认知观测-阁/图谱-视图-园": {level:"thin", ev:"68行", note:"图谱视图仅空态占位，未呈现扫描器建出的项目图谱。"},
+  "乾坤/界面呈现-域/世界入口-府/视图呈现-殿/日志观测-阁/日志-视图-园": {level:"thin", ev:"28行", note:"日志视图较薄。"},
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/格位-数据-园": {level:"thin", ev:"12行", note:"格位数据仅 fetch 壳，未消费返回体。"},
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/图谱-数据-园": {level:"thin", ev:"12行", note:"图谱数据仅 fetch 壳，未消费返回体。"},
+  "乾坤/界面呈现-域/世界入口-府/运行支撑-殿/状态管理-阁/响应式-核心-园": {level:"thin", ev:"28行", note:"响应式核心较薄。"},
+};
+function statusOf(p){
+  const n=NODES[p];
+  if(STATUS[p]){const s=STATUS[p],m=STATUS_META[s.level];return {level:s.level,color:m.color,label:m.label,ev:s.ev,note:s.note};}
+  if(n.kind==="文档") return {level:"doc",color:STATUS_META.doc.color,label:"文档"};
+  if(n.kind==="园"){
+    if(p.includes("证道/")) return {level:"doc",color:STATUS_META.doc.color,label:"测试"};
+    return {level:"done",color:STATUS_META.done.color,label:STATUS_META.done.label};
+  }
+  return {level:"shell",color:STATUS_META.shell.color,label:STATUS_META.shell.label};
+}
+// 展开档位：折叠 depth>=d 的有子节点（d=1根 / 3府 / 4殿 / 5阁 / 6园）
+function collapseFrom(d){
+  for(const p in NODES){ const n=NODES[p]; if(!p||!n.children.length) continue;
+    if(depthOf(p)>=d) collapsed.add(p); else collapsed.delete(p); }
+}
+let statusFilter = ""; // "" | done | partial | thin | shell | doc
+// 问题清单（确证/官方声明，nd 绑定节点 name 用于定位）
+const ISSUES = [
+  {sev:"高", color:"#ff8a6a", t:"认知两大机制未接入运行时", nd:["鸿蒙/基础能力-域/项目认知-府/执行语境-殿/语境管理-阁/上下文-压缩-园","鸿蒙/基础能力-域/项目认知-府/心智导航-殿/认知协作-阁/纠错-闭环-园"], p:"压缩器 / 纠错引擎 均已实现并通过测试，但生产代码零调用——「干了一半」的典型（阶段 0B 待接入）。规则提炼器/检索器已于 v1.48 接线。"},
+  {sev:"中", color:"#f6b93d", t:"前端认知观测视图为薄占位", nd:["乾坤/界面呈现-域/世界入口-府/视图呈现-殿/认知观测-阁/格位-视图-园","乾坤/界面呈现-域/世界入口-府/视图呈现-殿/认知观测-阁/图谱-视图-园"], p:"格位/图谱视图仅空态占位，未呈现后端已实现的 36 格位与扫描器图谱。"},
+  {sev:"中", color:"#f6b93d", t:"前端数据层仅 fetch 壳", nd:["乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/格位-数据-园","乾坤/界面呈现-域/世界入口-府/运行支撑-殿/数据服务-阁/图谱-数据-园"], p:"格位/图谱数据园各 12 行，仅包装 fetch、未消费返回体。"},
+  {sev:"后续", color:"#8ea0bd", t:"内容演化层未做", nd:[], p:"五行目前只结构闭环，未产生真实业务内容（维护文档·后续方向 3）。"},
+  {sev:"后续", color:"#8ea0bd", t:"语言适配器 + LLM 客户端未接", nd:["鸿蒙/基础能力-域/项目认知-府/心智导航-殿/认知协作-阁/检索-决策-园"], p:"检索器已接入智能体链路（v1.48），仅「拉图谱摘要交给 LLM 组装答复」未落地（维护文档·后续方向 1，阶段 0C）。"},
+  {sev:"后续", color:"#8ea0bd", t:"桌面壳三步未完成", nd:["鸿蒙/系统装配-域/桌面封装-府"], p:"tauri build 出包 / 进程分离 / 插件化 未做（维护文档·后续方向 5）。"},
+];
+function findNodePath(path){ return NODES[path] ? path : null; }
+function renderIssues(){
+  const box=document.getElementById("issueList"); if(!box) return;
+  box.innerHTML="";
+  ISSUES.forEach(it=>{
+    const c=document.createElement("div"); c.className="card";
+    const names=it.nd.map(p=>esc(p.split("/").pop()));
+    c.innerHTML=`<span class="sev" style="background:${it.color}">${esc(it.sev)}</span><b>${esc(it.t)}</b><p>${esc(it.p)}</p>${names.length?`<div class="nd">相关节点：${names.join(" · ")}</div>`:""}`;
+    c.onclick=()=>{
+      if(!it.nd.length) return;
+      const target=findNodePath(it.nd[0]);
+      if(target){ selectNode(target,true); if(mode!=="map") showMode("map"); renderMap(); fitView(); }
+    };
+    box.appendChild(c);
+  });
+}
+// ── 说明面板 ───────────────────────────────
+function renderDetail(){
+  const ph=document.getElementById("panelPh"), bd=document.getElementById("panelBody");
+  if(!selected){ ph.style.display=""; bd.style.display="none"; return; }
+  const node=NODES[selected]; if(!node){ ph.style.display=""; bd.style.display="none"; return; }
+  ph.style.display="none"; bd.style.display="block";
+  const doc=docOf(selected,node)||layerText(node);
+  const c=crateOf(node);
+  const bread=node.path||"洪荒·世界";
+  const rc=rootColor(node);
+  let subHtml="";
+  if(node.children.length){
+    const rows=node.children.map(c=>{
+      const cn=NODES[c]; const mark=cn.kind==="文档"?"📄":(cn.kind==="府"?"▦":"·");
+      return `<li><button class="jump" data-p="${esc(c)}">${mark} ${esc(cn.name)}</button></li>`;
+    }).join("");
+    subHtml=`<section><h3>直属下钻</h3><ul>${rows}</ul></section>`;
+  }
+  const kindMap={"世界":"世界","根":"根","域":"域","府":"府(crate)","殿":"殿","阁":"阁","园":"园","文档":"文档","工程":"工程目录"};
+  const st=statusOf(selected);
+  const badge=`<span class="badge" style="background:${rc}">${kindMap[node.kind]||node.kind}</span>`;
+  const stBadge=`<span class="badge" style="background:${st.color}">${esc(st.label)}</span>`;
+  const p1=doc.p||"（待补充）", w1=doc.w||"（待补充）", h1=doc.h||"（待补充）", s1=doc.s||"";
+  bd.innerHTML = `
+   <div class="hd">
+     <div class="bread">${esc(bread)}</div>
+     <div class="nm">${esc(node.name)}${c?`<span class="crate">${esc(c)}</span>`:""}</div>
+     <div style="margin-top:6px">${badge}${stBadge}${node.root?`<span class="tag">归属根：${esc(node.root)}</span>`:""}<span class="tag">层深 L${depthOf(node.path)}</span></div>
+   </div>
+   <div class="bd">
+     <section><h3>实现状态</h3><div class="st ${st.level==="partial"||st.level==="thin"?"warn":"ok"}">${esc(st.label)}${st.ev?`<span style="color:var(--ink-deep)"> · ${esc(st.ev)}</span>`:""}${st.note?`<div style="margin-top:5px;color:var(--ink-dim)">${esc(st.note)}</div>`:""}</div></section>
+     <section><h3>是什么</h3><p>${esc(p1)}</p></section>
+     <section><h3>解决什么问题（为什么）</h3><p>${esc(w1)}</p></section>
+     <section><h3>如何设计</h3><p>${esc(h1)}</p></section>
+     ${s1?`<section><h3>当前完成情况</h3><div class="st ${s1.includes("✅")?"ok":"warn"}">${esc(s1)}</div></section>`:""}
+     ${subHtml}
+   </div>`;
+  bd.querySelectorAll(".jump").forEach(b=>b.onclick=()=>{ selectNode(b.dataset.p,true); });
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+// ── 布局（思维导图）───────────────────────
+const COL_W = 232;           // 每层横向间距
+const ROW_H = 46;            // 每“可见叶子”行高
+function visibleKids(p){ return collapsed.has(p) ? [] : childrenOf(p).filter(c=>!isHiddenByParent(p)); }
+function isVisible(p){
+  // 从根向下检查：若任一祖先 collapsed 则不可见；根 children of "" 特殊
+  if(!p) return true;
+  if(depthOf(p)===1) return true; // 根
+  const parts=p.split("/");
+  let cur="";
+  for(let i=1;i<parts.length;i++){
+    cur=cur?cur+"/"+parts[i]:parts[i];
+    if(collapsed.has(cur)) return false;
+  }
+  return true;
+}
+function countLeaves(p){
+  const n=NODES[p];
+  if(!n.children.length || collapsed.has(p)) return 1;
+  let s=0; n.children.forEach(c=>{ if(isVisible(c)) s+=countLeaves(c); }); return s||1;
+}
+// 近似文本像素宽（与 renderMap 字号规则一致）
+function estTextW(s,fs){let w=0;for(const ch of s){w+=ch.charCodeAt(0)>0x2E7F?fs:fs*0.62;}return w;}
+function layout(){
+  const pos={}; // p -> {x,y,w,h}
+  let leaf=0;
+  function place(p){
+    const n=NODES[p], d=depthOf(p);
+    const kids=n.children.filter(isVisible);
+    // 世界根收窄于首列内，避免压入根列造成连线回绕
+    const W = d===0?180:d===1?120:d===2?100:d===3?150:90;
+    const fs = d<=1?16:(d===3?13:12);
+    if(!kids.length){
+      // 叶子（含长名文档节点如落地设计/验收报告）按文本自适应加宽，防溢出
+      pos[p]={x:d*COL_W,y:leaf*ROW_H,w:Math.max(W,estTextW(n.name,fs)+26),leaf:leaf}; leaf++;
+    }else{
+      kids.forEach(k=>place(k));
+      const y0=pos[kids[0]].y, y1=pos[kids[kids.length-1]].y;
+      pos[p]={x:d*COL_W,y:(y0+y1)/2,w:W};
+    }
+  }
+  place("");
+  return pos;
+}
+// ── SVG 渲染 ──────────────────────────────
+const NS="http://www.w3.org/2000/svg";
+let view={x:0,y:0,w:1200,h:800};
+function svgEl(tag,attr){const e=document.createElementNS(NS,tag);for(const k in attr)e.setAttribute(k,attr[k]);return e;}
+function textWrap(e,str,maxW,fontSize){
+  let line="", y0=fontSize;
+  for(const ch of str){
+    const w=(ch.charCodeAt(0)>0x2E7F?fontSize:fontSize*0.62);
+    if(line && (line.length*((/[^\x00-\xff]/.test(line[line.length-1]))?fontSize:fontSize*0.62)+w>maxW)){
+      const t=svgEl("tspan",{x:0,dy:y0}); t.textContent=line; e.appendChild(t); line=ch; y0=fontSize;
+    } else line+=ch;
+  }
+  if(line){const t=svgEl("tspan",{x:0,dy:line?y0:fontSize});t.textContent=line;e.appendChild(t);}
+}
+function renderMap(){
+  const pos=layout();
+  let maxX=0,maxY=0; Object.values(pos).forEach(v=>{maxX=Math.max(maxX,v.x+v.w+60);maxY=Math.max(maxY,v.y+ROW_H);});
+  const svg=document.getElementById("svg");
+  svg.setAttribute("viewBox",`${view.x} ${view.y} ${view.w} ${view.h}`);
+  svg.innerHTML="";
+  // 边
+  const g1=document.createElementNS(NS,"g"); g1.setAttribute("class","edges");
+  for(const p in NODES){
+    const n=NODES[p]; if(!isVisible(p)) continue;
+    n.children.filter(isVisible).forEach(c=>{
+      const a=pos[p],b=pos[c]; if(!a||!b) return;
+      const x1=a.x+(a.w||0), y1=a.y, x2=b.x, y2=b.y;
+      const d=`M ${x1} ${y1} C ${x1+(x2-x1)*0.5} ${y1}, ${x2-(x2-x1)*0.5} ${y2}, ${x2} ${y2}`;
+      g1.appendChild(svgEl("path",{d,fill:"none",stroke:"#33436e","stroke-width":1.4,opacity:.9}));
+    });
+  }
+  svg.appendChild(g1);
+  // 节点
+  const g2=document.createElementNS(NS,"g"); g2.setAttribute("class","nodes");
+  const order=[];
+  (function walk(p){order.push(p);const n=NODES[p];if(!collapsed.has(p))n.children.filter(isVisible).forEach(walk);})("");
+  for(const p of order){
+    if(!pos[p]) continue;
+    const n=NODES[p], d=depthOf(p);
+    const rc=rootColor(n); const box=pos[p];
+    const rootNode = d<=1;
+    const isSel = p===selected;
+    const st=statusOf(p);
+    const dim = (query && !(n.name.includes(query)||p.includes(query))) || (statusFilter && st.level!==statusFilter);
+    const fill = n.kind==="文档" ? "#2a2418" : n.kind==="工程" ? "#1c2336" :
+       rootNode? "rgba(60,80,150,.25)" : n.kind==="域"?"#1c2c52":(n.kind==="府"?"#1a2f63":"#17223f");
+    const highlight = st.level==="partial"||st.level==="thin";
+    const stroke = isSel?"#ffd27a":(highlight?st.color:(rootNode?rc:n.kind==="府"?rc:"#2e4470"));
+    const gw = box.w, gh = rootNode?46:38;
+    const g=svgEl("g",{class:"nodebox"+(isSel?" sel":""),transform:`translate(${box.x},${box.y-gh/2})`,"data-p":p,"data-st":st.level});
+    if(dim) g.setAttribute("opacity",.22);
+    const dash = (st.level==="shell" && !isSel && !rootNode) ? {"stroke-dasharray":"3 3"} : {};
+    g.appendChild(svgEl("rect",Object.assign({class:"box",x:0,y:0,width:gw,height:gh,rx:rootNode?12:8,fill,stroke,"stroke-width":isSel?2.4:(highlight?2:1.4)},dash)));
+    const t=svgEl("text",{x:10,y:rootNode?18:16,"font-size":rootNode?16:(d===3?13:12),fill:rootNode?"#fff":"#cfd9ef"});
+    t.appendChild(svgEl("tspan",{x:10,dy:0})); t.firstChild.textContent=n.name;
+    g.appendChild(t);
+    const extra = n.kind==="文档"?"·文档":(d===3?crateOf(n):ROOT_TAG[n.name]||n.kind);
+    if(extra && !(rootNode&&n.name==="洪荒·世界")){
+      const t2=svgEl("text",{class:"chip",x:10,y:rootNode?36:gh-7,"font-size":rootNode?11:10});t2.textContent=extra;g.appendChild(t2);
+    }
+    if(!rootNode && n.name!=="洪荒·世界" && n.children.length){
+      const open=!collapsed.has(p);
+      const cx=gw-6, cy=rootNode?40:34;
+      g.appendChild(svgEl("circle",{cx,cy,r:8,fill:"#3c4f80",stroke:"#6f87c4","stroke-width":1,class:"hdl"}));
+      const tt=svgEl("text",{x:cx,y:cy+4,"font-size":11,fill:"#fff","text-anchor":"middle",class:"hdl"});tt.textContent=open?"−":"+";g.appendChild(tt);
+    }
+    g2.appendChild(g);
+  }
+  svg.appendChild(g2);
+}
+// ── 纵向目录视图 ─────────────────────────
+function renderList(){
+  const wrap=document.getElementById("ltree");
+  const q=query.trim();
+  wrap.innerHTML="";
+  const ul=document.createElement("ol");
+  let any=false;
+  function liFor(p){
+    const n=NODES[p]; if(!n) return null;
+    const has=n.children.length>0;
+    const open=has&&!collapsed.has(p);
+    const match=!q||n.name.toLowerCase().includes(q)||p.toLowerCase().includes(q)||crateOf(n).toLowerCase().includes(q);
+    if(!match){ if(q&&has){ n.children.forEach(c=>{const s=liFor(c);if(s)ul.append(s);}); } return null; }
+    any=true;
+    const li=document.createElement("li");
+    const row=document.createElement("span"); row.className="lrow"+(p===selected?" sel":"");
+    const tw=document.createElement("span");
+    tw.className="tw "+(has?(open?"open":"close"):"leaf");
+    row.append(tw);
+    const rc=rootColor(n);
+    const stt=statusOf(p);
+    const dot=document.createElement("i"); dot.style.cssText=`width:8px;height:8px;border-radius:2px;display:inline-block;background:${stt.level==="shell"?rc:stt.color};margin-right:4px;`;
+    row.append(dot);
+    if(statusFilter && stt.level!==statusFilter) row.style.opacity=.28;
+    const sp=document.createElement("b"); sp.style.fontWeight=n.kind==="府"||n.kind==="根"?600:400;
+    sp.textContent=n.name; row.append(sp);
+    const st=document.createElement("span"); st.className="st2";
+    st.textContent = n.kind==="文档"?"文档":(crateOf(n)||ROOT_TAG[n.name]||n.kind);
+    row.append(st);
+    li.append(row);
+    if(has){
+      const ol=document.createElement("ol");
+      n.children.forEach(c=>{const s=liFor(c);if(s)ol.append(s);});
+      li.append(ol);
+      ol.style.display=open?"":"none";
+    }
+    row.onclick=(ev)=>{ ev.stopPropagation();
+      if(has){ collapsed.has(p)?collapsed.delete(p):collapsed.add(p); renderList(); renderDetail(); }
+      else{ selectNode(p,true); }
+    };
+    li.dataset.p=p;
+    if(p===selected) li.scrollIntoView({block:"center",behavior:"smooth"});
+    return li;
+  }
+  // 世界 → 根
+  childrenOf("").forEach(r=>{const s=liFor(r); if(s)ul.append(s);});
+  wrap.appendChild(ul);
+  document.getElementById("emptyHint").style.display=any||!q?"none":"block";
+}
+// ── 选择 ─────────────────────────────────
+function selectNode(p,reveal){
+  selected=p;
+  // reveal：展开其祖先
+  if(reveal && p){
+    const parts=p.split("/");
+    let cur="";
+    for(let i=1;i<parts.length;i++){ cur=cur?cur+"/"+parts[i]:parts[i]; if(collapsed.has(cur)) collapsed.delete(cur); }
+  }
+  if(mode==="map") renderMap(); else renderList();
+  renderDetail();
+  if(mode==="list"){ } 
+}
+// 点 SVG 命中
+function bindMapClicks(){
+  const svg=document.getElementById("svg");
+  svg.addEventListener("click",(ev)=>{
+    let el=ev.target.closest(".nodebox");
+    if(!el){ return; }
+    const p=el.dataset.p; const n=NODES[p];
+    if(ev.target.closest(".hdl")){ // 折叠开关
+      if(n.children.length){ collapsed.has(p)?collapsed.delete(p):collapsed.add(p); renderMap(); renderDetail(); }
+      return;
+    }
+    selected=p; renderMap(); renderDetail();
+  });
+}
+// 平移缩放
+function fitView(){
+  // 计算布局范围（按当前展开）近似
+  const pos=layout();
+  let x0=Infinity,y0=Infinity,x1=0,y1=0;
+  for(const v of Object.values(pos)){x0=Math.min(x0,v.x);y0=Math.min(y0,v.y-24);x1=Math.max(x1,v.x+v.w);y1=Math.max(y1,v.y+30);}
+  const svg=document.getElementById("svg");
+  const W=svg.clientWidth,H=svg.clientHeight;
+  if(x0>x1||W<=0||H<=0){view={x:0,y:0,w:1200,h:900};return;}
+  const w=x1-x0+80,h=y1-y0+80, s=Math.min(W/w,H/h); let vw=W/s,vh=H/s;
+  const cx=(x0+x1)/2, cy=(y0+y1)/2;
+  view={x:cx-vw/2,y:cy-vh/2,w:vw,h:vh};
+  renderMap();
+}
+function setupSvg(){
+  const svg=svgEl("svg",{id:"svg"}); document.getElementById("map").appendChild(svg);
+  bindMapClicks();
+  // drag pan
+  let down=false,px=0,py=0;
+  const m=document.getElementById("map");
+  m.addEventListener("mousedown",e=>{if(e.button===0){down=true;px=e.clientX;py=e.clientY;}});
+  window.addEventListener("mousemove",e=>{if(!down)return;const dx=e.clientX-px,dy=e.clientY-py;px=e.clientX;py=e.clientY;
+    const mw=m.clientWidth||1, mh=m.clientHeight||1;
+    view.x-=dx*view.w/mw; view.y-=dy*view.h/mh; renderMap();});
+  window.addEventListener("mouseup",()=>down=false);
+  m.addEventListener("wheel",e=>{e.preventDefault();
+    const s=e.deltaY>0?1.15:0.87; const nw=view.w*s,nh=view.h*s;
+    const rect=m.getBoundingClientRect();
+    const fx=(e.clientX-rect.left)/rect.width, fy=(e.clientY-rect.top)/rect.height;
+    view.x += (view.x+fx*view.w)-(view.x+fx*nw);
+    view.y += (view.y+fy*view.h)-(view.y+fy*nh);
+    view.w=nw; view.h=nh; renderMap();},{passive:false});
+  document.getElementById("zoomctl").addEventListener("click",ev=>{
+    const z=ev.target.dataset.z; const s=z==="1"?0.8:(z==="-1"?1.25:1);
+    if(z==="0"){fitView();return;}
+    view.w*=s;view.h*=s;renderMap();
+  });
+  document.getElementById("fitBtn").onclick=fitView;
+}
+// ── 视图切换 ──────────────────────────────
+function showMode(md){
+  mode=md;
+  document.getElementById("map").style.display = md==="map"?"":"none";
+  document.getElementById("ltree").style.display = md==="list"?"block":"none";
+  const tv=document.getElementById("viewToggle");
+  tv.textContent = md==="map"?"☰ 纵向目录":"▤ 思维导图";
+  tv.classList.toggle("on",md==="list");
+  if(md==="list"){ renderList(); }
+  else { setupSvgOnce(); renderMap(); fitView(); }
+}
+let svgReady=false;
+function setupSvgOnce(){ if(svgReady) return; svgReady=true; setupSvg(); }
+// ── 工具栏 ────────────────────────────────
+document.getElementById("viewToggle").onclick=()=> showMode(mode==="map"?"list":"map");
+// 展开档位（根/府/殿/阁/园）
+const depthSeg=document.getElementById("depthSeg");
+depthSeg.addEventListener("click",ev=>{
+  const b=ev.target.closest("button"); if(!b) return;
+  const d=parseInt(b.dataset.d,10);
+  depthSeg.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+  collapseFrom(d); refresh(); if(mode==="map") fitView();
+});
+document.getElementById("issuesBtn").onclick=()=>{
+  const el=document.getElementById("issues");
+  const show=el.style.display!=="block";
+  el.style.display=show?"block":"none";
+  document.getElementById("issuesBtn").classList.toggle("on",show);
+};
+document.getElementById("clearQ").onclick=()=>{ document.getElementById("q").value=""; applyQuery(""); };
+function applyQuery(q){ query=q.trim().toLowerCase(); document.getElementById("clearQ").style.display=query?"":"none";
+  if(query){
+    // reveal 匹配项祖先链，选中第一个
+    const hits=[];
+    for(const p in NODES){ const n=NODES[p]; if(n.name.toLowerCase().includes(query)||p.includes(query)||crateOf(n).toLowerCase().includes(query)) hits.push(p);}
+    hits.sort((a,b)=>depthOf(a)-depthOf(b));
+    const first=hits[0]||"";
+    // expand ancestors of first
+    if(first){const parts=first.split("/");let cur="";for(let i=1;i<parts.length;i++){cur=cur?cur+"/"+parts[i]:parts[i];collapsed.delete(cur);}
+      selected=first;}
+  }
+  refresh();
+  if(mode==="map"){ fitView(); }
+  else document.getElementById("emptyHint").style.display="none";
+}
+document.getElementById("q").addEventListener("input",e=>applyQuery(e.target.value));
+function refresh(){ if(mode==="map"){ if(svgReady) renderMap(); else { setupSvgOnce(); fitView(); } } else renderList(); renderDetail(); }
+// 图例
+(function(){ const lg=document.getElementById("rootLegend");
+  ROOT_ORDER.forEach(r=>{const d=document.createElement("div");d.className="lg";
+    d.innerHTML=`<i style="background:${ROOT_COLOR[r]}"></i>${r}<span style="color:var(--ink-deep);font-size:11px">· ${ROOT_TAG[r]}</span>`;lg.appendChild(d);});
+})();
+// 实现状态图例（可点击筛选）
+(function(){ const lg=document.getElementById("statusLegend");
+  ["done","partial","thin","shell","doc"].forEach(level=>{
+    const m=STATUS_META[level]; let cnt=0;
+    for(const p in NODES){ if(p && statusOf(p).level===level) cnt++; }
+    const d=document.createElement("div"); d.className="lg"; d.dataset.st=level;
+    d.innerHTML=`<i style="background:${m.color}"></i>${m.label}<span class="cnt">${cnt}</span>`;
+    d.onclick=()=>{
+      statusFilter = (statusFilter===level)? "" : level;
+      document.querySelectorAll("#statusLegend .lg").forEach(x=>x.classList.toggle("off", !!statusFilter && x.dataset.st!==statusFilter));
+      refresh(); if(mode==="map") fitView();
+    };
+    lg.appendChild(d);
+  });
+})();
+renderIssues();
+// 初始化
+window.addEventListener("load",()=>{
+  setupSvgOnce();
+  if(mode==="map") fitView();
+  showMode("map");
+});
+</script>
+</body>
+</html>
