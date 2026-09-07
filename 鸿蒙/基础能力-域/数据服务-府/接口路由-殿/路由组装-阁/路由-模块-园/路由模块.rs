@@ -4,10 +4,11 @@ use tower_http::services::ServeDir;
 use crate::{
     数据服务状态,
     任务列表, 查询任务, 创建任务, 迭代列表, 当前版本, 记忆列表, 规则列表, 事件列表,
-    图谱查询, 格位查询, 语境查询, 日志列表, 记日志,
-    看板列表, 看板查询, 看板发布, 看板承接, 看板提交, 看板清理,
+    图谱查询, 格位查询, 语境查询, 认知检索接口, 日志列表, 记日志,
+    看板列表, 看板查询, 看板发布, 看板承接, 看板提交, 看板清理, 看板定向回退, 看板扫尾检查, 看板澄清,
     受理开发任务接口, 事件查询, 停止执行, 更新工作区, 道祖对话接口, 道祖确认接口,
-    看板驱动接口, 看板驱动到空闲接口, 看板驱动状态接口, 看板驱动事件接口,
+    看板驱动接口, 看板驱动到空闲接口, 看板驱动状态接口, 看板驱动事件接口, 看板驱动过程接口,
+    会话清单接口, 会话回放接口, 会话恢复接口, 会话分叉接口,
     模型状态接口, 模型列表接口, 模型选择接口,
     模型模板接口, 模型探测接口, 模型接入接口,
 };
@@ -27,12 +28,16 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/cognition/graph", get(图谱查询))
         .route("/api/cognition/cells", get(格位查询))
         .route("/api/cognition/context", get(语境查询))
+        .route("/api/cognition/search", get(认知检索接口))
         .route("/api/logs", get(日志列表).post(记日志))
         .route("/api/board", get(看板列表).post(看板发布))
         .route("/api/board/{id}", get(看板查询))
         .route("/api/board/{id}/accept", post(看板承接))
         .route("/api/board/{id}/submit", post(看板提交))
         .route("/api/board/{id}/clean", post(看板清理))
+        .route("/api/board/{id}/rollback", post(看板定向回退))
+        .route("/api/board/{id}/sweep", post(看板扫尾检查))
+        .route("/api/board/{id}/clarify", post(看板澄清))
         .route("/api/dev/agent", post(受理开发任务接口))
         .route("/api/dev/agent/stop", post(停止执行))
         .route("/api/dev/chat", post(道祖对话接口))
@@ -43,6 +48,11 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/dev/pilot/drain", post(看板驱动到空闲接口))
         .route("/api/dev/pilot/status", get(看板驱动状态接口))
         .route("/api/dev/pilot/events", get(看板驱动事件接口))
+        .route("/api/dev/pilot/process", get(看板驱动过程接口))
+        .route("/api/dev/sessions", get(会话清单接口))
+        .route("/api/dev/sessions/{id}", get(会话回放接口))
+        .route("/api/dev/sessions/{id}/resume", post(会话恢复接口))
+        .route("/api/dev/sessions/{id}/fork", post(会话分叉接口))
         .route("/api/llm/status", get(模型状态接口))
         .route("/api/llm/models", get(模型列表接口))
         .route("/api/llm/select", post(模型选择接口))

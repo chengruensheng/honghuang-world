@@ -55,7 +55,9 @@ impl 异步信号总线 {
     pub fn 停止(&self) {
         let _ = self.发送端.send(消息::停止);
         if let Some(句柄) = self.句柄.lock().expect("异步总线句柄锁中毒").take() {
-            let _ = 句柄.join();
+            if 句柄.join().is_err() {
+                tracing::warn!("异步总线后台线程 join 失败（线程可能 panic）");
+            }
         }
     }
 }

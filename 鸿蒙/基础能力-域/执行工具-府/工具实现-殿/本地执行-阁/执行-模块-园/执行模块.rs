@@ -36,13 +36,22 @@ pub struct 本地执行器 {
 impl 本地执行器 {
     /// 以指定工作区根构造本地执行器（采用写死默认值：超时 30 秒、最大输出 64 KiB）。
     /// 配置化场景请改用 `new_with_limits` 或链式 `设置命令超时` / `设置最大输出`。
+    /// 构造时自动创建工作区目录，确保命令执行与文件操作有有效目录（P0 修复：目录不存在导致全部工具调用失败）。
     pub fn new(工作区: impl Into<PathBuf>) -> Self {
-        本地执行器 { 工作区: 工作区.into(), 命令超时秒: 默认命令超时秒, 最大输出字节: 默认最大输出字节 }
+        let 路径 = 工作区.into();
+        if let Err(e) = std::fs::create_dir_all(&路径) {
+            eprintln!("警告：无法创建工作区目录 {}: {}", 路径.display(), e);
+        }
+        本地执行器 { 工作区: 路径, 命令超时秒: 默认命令超时秒, 最大输出字节: 默认最大输出字节 }
     }
 
     /// 以指定工作区根与显式上限构造本地执行器（从配置注入超时与输出上限，替代写死默认值）
     pub fn new_with_limits(工作区: impl Into<PathBuf>, 命令超时秒: u64, 最大输出字节: u64) -> Self {
-        本地执行器 { 工作区: 工作区.into(), 命令超时秒, 最大输出字节 }
+        let 路径 = 工作区.into();
+        if let Err(e) = std::fs::create_dir_all(&路径) {
+            eprintln!("警告：无法创建工作区目录 {}: {}", 路径.display(), e);
+        }
+        本地执行器 { 工作区: 路径, 命令超时秒, 最大输出字节 }
     }
 
     /// 设置命令超时（秒），链式构造
@@ -78,10 +87,15 @@ impl 本地执行器 {
                     if 开始.elapsed() >= Duration::from_secs(self.命令超时秒) {
                         // 终止整个进程树（cmd 及其子进程），避免残留孤儿进程
                         let 进程号 = 子进程.id();
-                        let _ = Command::new("taskkill")
+                        if let Err(失败) = Command::new("taskkill")
                             .args(["/F", "/T", "/PID", &进程号.to_string()])
-                            .output();
-                        let _ = 子进程.wait();
+                            .output()
+                        {
+                            tracing::warn!("终止超时进程树失败: {失败}");
+                        }
+                        if let Err(失败) = 子进程.wait() {
+                            tracing::warn!("等待超时进程退出失败: {失败}");
+                        }
                         return Err(Error::命令超时(命令.to_string()));
                     }
                     std::thread::sleep(Duration::from_millis(50));
@@ -307,7 +321,7 @@ fn 命令不在白名单(命令: &str) -> bool {
     false
 }
 
-/// 从命令名中提取文件名部分并去掉 .exe 扩展名（如 `C:\path\cargo.exe` → `cargo`）
+/// 从命令名中提取文件名部分并去掉 .exe 扩展名（如 `cargo.exe` → `cargo`）
 fn 去路径去扩展名(命令名: &str) -> String {
     let 文件名 = match Path::new(命令名).file_name() {
         Some(n) => n.to_string_lossy().to_string(),
@@ -330,6 +344,8 @@ fn 收集输出(标准输出: Option<ChildStdout>, 标准错误: Option<ChildStd
 /// 读取流内容并截断到上限字节（尽力读取，读取失败仅返回已读部分）
 fn 读流<R: Read>(流: R, 上限: u64) -> String {
     let mut 缓冲 = Vec::new();
-    let _ = 流.take(上限).read_to_end(&mut 缓冲);
+    if let Err(失败) = 流.take(上限).read_to_end(&mut 缓冲) {
+        tracing::warn!("读取子进程输出失败: {失败}");
+    }
     String::from_utf8_lossy(&缓冲).to_string()
 }

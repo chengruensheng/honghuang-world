@@ -189,6 +189,11 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                         }
                     }
                 };
+                // 驱动会话落盘目录：persistence.dir/驱动会话（空=纯内存，重启丢失）
+                let 驱动会话目录 = match &持久化目录 {
+                    Some(d) => format!("{d}/驱动会话"),
+                    None => String::new(),
+                };
                 match 装配看板驱动台(
                     &数据状态.看板驱动台,
                     任务看板.clone(),
@@ -197,8 +202,9 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     config.app.dev_max_rounds,
                     config.app.executor_timeout_secs,
                     config.app.executor_max_output_bytes,
-                    Some(认知注入),
+                    Some(认知注入.clone()),
                     llm池.clone(),
+                    &驱动会话目录,
                 ) {
                     Ok(()) => tracing::info!("看板驱动已上线（HTTP 驱动模式）"),
                     Err(e) => tracing::warn!("看板驱动装配失败，驱动接口不可用（不影响启动）: {e}"),
@@ -210,11 +216,25 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 };
                 match 道祖接待::加载(llm池.clone().expect("LLM 池已装配"), 道祖路径) {
                     Ok(接待) => {
+                        let 接待 = 接待.装配认知(认知注入.clone());
                         数据状态.道祖接待 = Some(Arc::new(Mutex::new(接待)));
-                        tracing::info!("道祖接待已上线（主控澄清模式）");
+                        tracing::info!("道祖接待已上线（主控澄清模式，认知装配已对齐）");
                     }
                     Err(e) => tracing::warn!("道祖接待装配失败，对话澄清不可用（不影响启动）: {e}"),
                 }
+                // 三态认知注入注入数据服务状态：认知问答接口据此提供检索决策与 LLM 组装答复（阶段 0C）
+                数据状态.认知注入 = Some(认知注入.clone());
+                // 扫尾执行者装配：太乙金仙清理后的交付证据核验（sweep 接口就绪）
+                let 扫尾执行器 = Arc::new(hm_execute::本地执行器::new_with_limits(
+                    &config.app.dev_workspace,
+                    config.app.executor_timeout_secs,
+                    config.app.executor_max_output_bytes,
+                ));
+                数据状态.扫尾执行者 = Some(Arc::new(hm_http::扫尾执行者::新(
+                    扫尾执行器,
+                    任务看板.clone(),
+                )));
+                tracing::info!("扫尾执行者已上线（sweep 核验接口就绪）");
             }
             Err(e) => tracing::warn!("智能体装配失败，HTTP 受理不可用（不影响启动）: {e}"),
         }

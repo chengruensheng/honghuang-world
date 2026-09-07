@@ -128,6 +128,11 @@ pub struct LlmProvider {
     /// 是否启用（false = 池内跳过，不参与选择与故障转移）
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// 是否启用 JSON 输出模式（请求体追加 response_format: json_object）。
+    /// 仅 OpenAI 兼容 /chat/completions 支持；tools 与 json_object 冲突，带工具的「对话」路径不生效。
+    /// 默认 false（向后兼容：未开启供应商的请求体与旧版逐字节一致）。
+    #[serde(default)]
+    pub json_mode: bool,
 }
 
 fn default_llm_state_file() -> String { "llm-选择.json".into() } // 运行时选择文件（相对 persistence.dir）

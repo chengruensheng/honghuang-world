@@ -6,6 +6,8 @@ use hm_error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::认知注入;
+
 /// 道祖意图工具名（function calling 的 function.name）
 const 工具_闲聊: &str = "闲聊";
 const 工具_追问澄清: &str = "追问澄清";
@@ -78,6 +80,8 @@ pub struct 道祖接待 {
     对话器: Arc<dyn 工具对话器>,
     会话: Mutex<会话状态>,
     存储路径: Option<PathBuf>,
+    /// 项目认知注入（可选）：装配后接待时把推/拉认知记忆拼入系统提示，对齐看板驱动通道
+    认知: Option<认知注入>,
 }
 
 impl 道祖接待 {
@@ -91,12 +95,19 @@ impl 道祖接待 {
                 待确认需求: None,
             }),
             存储路径: None,
+            认知: None,
         }
     }
 
     /// 设置持久化路径（下次 保存 起落盘）
     pub fn 设置存储路径(&mut self, 路径: impl Into<PathBuf>) {
         self.存储路径 = Some(路径.into());
+    }
+
+    /// 装配项目认知注入：接待时把推/拉认知记忆拼入系统提示（对齐看板驱动通道的认知装配）
+    pub fn 装配认知(mut self, 认知: 认知注入) -> Self {
+        self.认知 = Some(认知);
+        self
     }
 
     /// 接待用户消息：LLM 判断意图，更新会话，持久化，返回回应
@@ -126,7 +137,9 @@ impl 道祖接待 {
         }
         drop(会话);
         if 需求.is_some() {
-            let _ = self.保存();
+            if let Err(失败) = self.保存() {
+                tracing::warn!("道祖接待保存失败: {失败}");
+            }
         }
         需求
     }
@@ -165,6 +178,7 @@ impl 道祖接待 {
                     待确认需求: None,
                 }),
                 存储路径: Some(路径),
+                认知: None,
             });
         }
         let 文本 = std::fs::read_to_string(&路径).map_err(Error::Io)?;
@@ -178,12 +192,23 @@ impl 道祖接待 {
                 待确认需求: 快照.待确认需求,
             }),
             存储路径: Some(路径),
+            认知: None,
         })
     }
 
-    /// 组装对话消息：系统提示 + 历史 + 新用户消息
+    /// 组装对话消息：系统提示（含认知记忆）+ 历史 + 新用户消息
     fn 组装对话消息(&self, 文案: &str) -> Vec<对话消息> {
-        let mut 消息 = vec![对话消息::系统(系统提示.to_string())];
+        let 提示 = if let Some(认知) = &self.认知 {
+            let 记忆 = 认知.初始注入(文案);
+            if 记忆.is_empty() {
+                系统提示.to_string()
+            } else {
+                format!("{系统提示}\n\n【项目认知记忆】\n{记忆}")
+            }
+        } else {
+            系统提示.to_string()
+        };
+        let mut 消息 = vec![对话消息::系统(提示)];
         let 会话 = self.会话.lock().expect("道祖接待锁中毒");
         for 条 in &会话.历史 {
             消息.push(按角色转消息(条));

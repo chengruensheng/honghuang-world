@@ -16,7 +16,8 @@ level = "info"
 bind = "127.0.0.1"
 port = 8321
 static_dir = "乾坤/界面呈现-域/世界入口-府"
-hot_reload = false
+# 前端热更新：开发期开启（前端文件变化自动刷新桌面窗口，改代码即时生效）；生产请置 false
+hot_reload = true
 auth_token = ""
 
 [persistence]
@@ -44,4 +45,6 @@ state_file = "llm-选择.json"
 # model = "abab6.5s-chat"
 # timeout_secs = 30
 # retry = 2
-# enabled = true""
+# enabled = true
+# json_mode = false  # 是否开启 JSON 输出模式（请求体追加 response_format: json_object）
+#                    # 仅 OpenAI 兼容 /chat/completions 支持；带工具「对话」路径不生效；默认 false（未开启请求体与旧版一致）

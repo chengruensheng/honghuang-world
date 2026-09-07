@@ -2,10 +2,9 @@ use std::sync::{Arc, Mutex};
 use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
 use hm_cognition::{图谱, 心智地图, 过程上下文};
 use hm_content::LLM池;
-use hm_agent::道祖接待;
+use hm_agent::{道祖接待, 认知注入};
 use hm_log::运行日志记录器;
-use crate::开发执行台;
-use crate::看板驱动台;
+use crate::{开发执行台, 看板驱动台, 扫尾执行者};
 use tc_task::{Task, TaskStatus, TaskBoard};
 use lj_iteration::{Iteration, Version};
 use qk_memory::Memory;
@@ -33,10 +32,14 @@ pub struct 数据服务状态 {
     pub 看板驱动台: Arc<看板驱动台>,
     /// 道祖接待器（主控澄清会话，未装配时 None，对话接口返回未上线）
     pub 道祖接待: Option<Arc<Mutex<道祖接待>>>,
+    /// 三态认知注入（未装配时 None，认知问答接口返回未装配；装配后供检索决策/答复注入）
+    pub 认知注入: Option<认知注入>,
     /// 商业级 LLM 池（未配置/未装配时 None，LLM 相关接口返回 未配置）
     pub llm池: Option<Arc<LLM池>>,
     pub 鉴权令牌: Option<String>,
     pub 重装配工作区: Option<重装配回调>,
+    /// 扫尾执行者（太乙金仙清理后交付证据链的机器核验；未装配时 sweep 接口 503）
+    pub 扫尾执行者: Option<Arc<扫尾执行者>>,
 }
 
 impl 数据服务状态 {
@@ -70,9 +73,17 @@ impl 数据服务状态 {
             开发执行台,
             看板驱动台,
             道祖接待: None,
+            认知注入: None,
             llm池,
             鉴权令牌,
             重装配工作区: None,
+            扫尾执行者: None,
         }
+    }
+
+    /// 链式注入扫尾执行者（启动装配调用；测试/未装配时保持 None）
+    pub fn 设置扫尾执行者(mut self, 执行者: Arc<扫尾执行者>) -> Self {
+        self.扫尾执行者 = Some(执行者);
+        self
     }
 }

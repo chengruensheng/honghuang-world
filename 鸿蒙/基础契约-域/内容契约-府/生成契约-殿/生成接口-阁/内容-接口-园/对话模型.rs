@@ -1,8 +1,10 @@
 use hm_contract::Component;
 use hm_error::Result;
+use serde::{Deserialize, Serialize};
 
 /// 消息角色：function calling 多轮对话的角色标记
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum 消息角色 {
     System,
     User,
@@ -23,7 +25,7 @@ impl 消息角色 {
 }
 
 /// 工具调用：模型返回的一次工具调用意图
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct 工具调用 {
     pub id: String,
     pub 名称: String,
@@ -31,7 +33,7 @@ pub struct 工具调用 {
 }
 
 /// 对话消息：多轮 function calling 的一条消息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct 对话消息 {
     pub 角色: 消息角色,
     pub 内容: Option<String>,
@@ -59,7 +61,7 @@ impl 对话消息 {
 }
 
 /// 模型响应：文本内容与工具调用
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct 模型响应 {
     pub 内容: Option<String>,
     pub 工具调用: Vec<工具调用>,

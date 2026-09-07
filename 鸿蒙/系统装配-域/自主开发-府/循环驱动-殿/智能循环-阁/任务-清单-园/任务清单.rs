@@ -1,4 +1,5 @@
 use hm_error::{Error, Result};
+use serde::{Deserialize, Serialize};
 
 /// 任务清单项的载荷键常量（与工具 schema 的 property 名一致，中文为规范键）
 pub const 清单项键_内容: &str = "内容";
@@ -8,15 +9,16 @@ pub const 状态_待办: &str = "待办";
 pub const 状态_进行中: &str = "进行中";
 pub const 状态_已完成: &str = "已完成";
 
-/// 任务清单项：LLM 规划的多步任务条目（仅内存态，不落盘）
-#[derive(Clone, Debug, PartialEq)]
+/// 任务清单项：LLM 规划的多步任务条目（检查点快照可落盘）
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct 任务项 {
     pub 内容: String,
     pub 状态: 任务状态,
 }
 
 /// 任务项状态：待办 / 进行中 / 已完成
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum 任务状态 {
     待办,
     进行中,

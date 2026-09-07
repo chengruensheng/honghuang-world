@@ -1,6 +1,6 @@
-use axum::{Json, extract::{Query, State}, http::StatusCode};
+use axum::{Json, extract::{Path, Query, State}, http::StatusCode};
 use serde::{Deserialize, Serialize};
-use crate::{数据服务状态, 看板驱动状态, 事件游标, 受理错误响应};
+use crate::{数据服务状态, 看板驱动状态, 事件游标, 受理错误响应, 会话清单响应, 驱动会话详情};
 
 /// 驱动受理响应体
 #[derive(Debug, Serialize)]
@@ -41,7 +41,7 @@ pub async fn 看板驱动接口(
 ) -> Result<Json<驱动受理响应>, (StatusCode, Json<受理错误响应>)> {
     let 台 = &状态.看板驱动台;
     检查并预占(台)?;
-    台.启动执行一轮();
+    台.启动执行一轮("手动驱动");
     Ok(Json(驱动受理响应 { 受理: true }))
 }
 
@@ -56,7 +56,7 @@ pub async fn 看板驱动到空闲接口(
     let 台 = &状态.看板驱动台;
     检查并预占(台)?;
     let 上限 = 请求.上限.unwrap_or(10);
-    台.启动执行到空闲(上限);
+    台.启动执行到空闲(上限, "手动到空闲");
     Ok(Json(驱动受理响应 { 受理: true }))
 }
 
@@ -86,4 +86,123 @@ pub async fn 看板驱动事件接口(
 /// GET /api/dev/pilot/status：看板驱动台状态（就绪/运行中/最近阶段/最近结果）
 pub async fn 看板驱动状态接口(状态: State<数据服务状态>) -> Json<看板驱动状态> {
     Json(状态.看板驱动台.当前状态())
+}
+
+/// 驱动过程事件响应体
+#[derive(Debug, Serialize)]
+pub struct 驱动过程响应 {
+    pub 就绪: bool,
+    pub 运行中: bool,
+    pub 事件: Vec<crate::驱动过程事件>,
+}
+
+/// GET /api/dev/pilot/process?since=N：驱动过程事件增量（智能体循环每步：思考/工具调用/工具结果/答复）
+pub async fn 看板驱动过程接口(
+    状态: State<数据服务状态>,
+    Query(游标): Query<事件游标>,
+) -> Json<驱动过程响应> {
+    let 台 = &状态.看板驱动台;
+    Json(驱动过程响应 {
+        就绪: 台.就绪(),
+        运行中: 台.运行中(),
+        事件: 台.过程事件增量(游标.since.unwrap_or(0)),
+    })
+}
+
+/// GET /api/dev/sessions：历史会话清单（按创建时间倒序）
+pub async fn 会话清单接口(状态: State<数据服务状态>) -> Json<会话清单响应> {
+    Json(会话清单响应 {
+        会话: 状态.看板驱动台.会话清单(),
+    })
+}
+
+/// GET /api/dev/sessions/{id}：会话回放（元数据 + 全程过程事件）
+pub async fn 会话回放接口(
+    状态: State<数据服务状态>,
+    Path(会话id): Path<u64>,
+) -> Result<Json<驱动会话详情>, (StatusCode, Json<受理错误响应>)> {
+    match 状态.看板驱动台.会话回放(会话id) {
+        Some(详情) => Ok(Json(详情)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(受理错误响应 { 错误: "会话不存在".into() }),
+        )),
+    }
+}
+
+/// 定向驱动请求体（Resume/Fork 共用：目标任务 id）
+#[derive(Debug, Deserialize)]
+pub struct 会话定向请求 {
+    pub 任务id: u64,
+}
+
+/// 分叉请求体：可指定是否继承源会话检查点消息（缺省继承）
+#[derive(Debug, Deserialize)]
+pub struct 会话分叉请求 {
+    pub 任务id: u64,
+    #[serde(default = "默认继承")]
+    pub 继承消息: bool,
+}
+
+/// 分叉请求缺省继承源会话检查点消息
+fn 默认继承() -> bool {
+    true
+}
+
+/// 分叉响应体：返回新会话 id
+#[derive(Debug, Serialize)]
+pub struct 分叉响应 {
+    pub 会话id: u64,
+}
+
+/// 把 启动定向驱动 的字符串错误映射为 HTTP 状态码/响应体
+fn 映射驱动错误(错误: String) -> (StatusCode, Json<受理错误响应>) {
+    if 错误.contains("未就绪") {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(受理错误响应 { 错误: 错误.into() }),
+        );
+    }
+    if 错误.contains("执行中") {
+        return (
+            StatusCode::CONFLICT,
+            Json(受理错误响应 { 错误: 错误.into() }),
+        );
+    }
+    (
+        StatusCode::BAD_REQUEST,
+        Json(受理错误响应 { 错误: 错误.into() }),
+    )
+}
+
+/// POST /api/dev/sessions/{id}/resume：定向恢复驱动（携带源会话检查点消息续跑）
+pub async fn 会话恢复接口(
+    状态: State<数据服务状态>,
+    Path(会话id): Path<u64>,
+    Json(请求): Json<会话定向请求>,
+) -> Result<Json<驱动受理响应>, (StatusCode, Json<受理错误响应>)> {
+    let 台 = &状态.看板驱动台;
+    if 台.读取检查点(会话id, 请求.任务id).is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(受理错误响应 { 错误: "无可恢复检查点（该会话未落盘该任务的运行断点）".into() }),
+        ));
+    }
+    match 台.启动定向驱动(会话id, 请求.任务id, true, "恢复") {
+        Ok(_会话id) => Ok(Json(驱动受理响应 { 受理: true })),
+        Err(e) => Err(映射驱动错误(e)),
+    }
+}
+
+/// POST /api/dev/sessions/{id}/fork：从源会话分叉一条新驱动线（默认继承源断点消息），返回新会话 id
+pub async fn 会话分叉接口(
+    状态: State<数据服务状态>,
+    Path(会话id): Path<u64>,
+    Json(请求): Json<会话分叉请求>,
+) -> Result<Json<分叉响应>, (StatusCode, Json<受理错误响应>)> {
+    let 台 = &状态.看板驱动台;
+    match 台.启动定向驱动(会话id, 请求.任务id, 请求.继承消息, "分叉") {
+        Ok(新会话id) => Ok(Json(分叉响应 { 会话id: 新会话id })),
+        Err(e) => Err(映射驱动错误(e)),
+    }
 }

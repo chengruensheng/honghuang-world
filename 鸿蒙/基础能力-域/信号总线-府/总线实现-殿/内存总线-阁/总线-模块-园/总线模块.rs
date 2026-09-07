@@ -39,7 +39,7 @@ impl 信号总线 for 内存信号总线 {
     fn 订阅(&self, 类型: &str, 处理器: Arc<dyn Fn(&信号) + Send + Sync>) {
         self.subscribers
             .lock()
-            .unwrap()
+            .expect("总线订阅锁中毒")
             .push((类型.to_string(), 处理器));
     }
 }

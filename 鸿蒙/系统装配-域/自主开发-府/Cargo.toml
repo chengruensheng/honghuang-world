@@ -16,3 +16,4 @@ tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }

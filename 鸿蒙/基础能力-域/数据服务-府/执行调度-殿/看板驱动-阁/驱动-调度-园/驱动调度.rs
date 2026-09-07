@@ -1,59 +1,14 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use serde::Serialize;
-use hm_agent::{五层协作驱动器, 驱动结果};
-use tc_task::TaskStatus;
-
+use hm_agent::{五层协作驱动器, 驱动结果, 任务项};
+use hm_content_contract::对话消息;
+use tc_task::{TaskStatus, 状态层级标签};
+use crate::{驱动会话存储, 驱动会话详情, 运行检查点, 驱动阶段事件, 驱动阶段摘要, 驱动过程事件, 看板驱动状态};
 /// 驱动事件流环形上限：超限丢弃最旧记录，序号仍单调递增
 const 驱动事件流上限: usize = 500;
-
-/// 一条驱动阶段事件记录（事件接口可查询；预留新一轮时清空）
-#[derive(Debug, Clone, Serialize)]
-pub struct 驱动阶段事件 {
-    /// 本次驱动会话内单调序号（从 1 起，预留时重置）
-    pub 序号: u64,
-    /// 空闲 / 阶段完成 / 错误
-    pub 类型: String,
-    /// 被推进的任务 id（空闲/错误为 None）
-    pub 任务id: Option<u64>,
-    /// 承接角色显示名
-    pub 角色: Option<String>,
-    /// 提交后的新状态显示名
-    pub 新状态: Option<String>,
-    /// 补充消息（错误详情等）
-    pub 消息: Option<String>,
-    /// 事件发生秒级时间戳
-    pub 时间: u64,
-}
-
-/// 一次驱动的结果摘要（状态接口可查询）
-#[derive(Debug, Clone, Serialize)]
-pub struct 驱动阶段摘要 {
-    /// 空闲 / 阶段完成 / 错误
-    pub 类型: String,
-    /// 被推进的任务 id（空闲/错误为 None）
-    pub 任务id: Option<u64>,
-    /// 承接角色显示名（道祖/圣人/大罗金仙/准圣）
-    pub 角色: Option<String>,
-    /// 提交后的新状态显示名
-    pub 新状态: Option<String>,
-    /// 补充消息（错误详情等）
-    pub 消息: Option<String>,
-}
-
-/// 看板驱动台状态汇总（状态接口返回体）
-#[derive(Debug, Serialize)]
-pub struct 看板驱动状态 {
-    /// 五层协作驱动器是否已装配
-    pub 就绪: bool,
-    /// 是否有一轮驱动执行中
-    pub 运行中: bool,
-    /// 最近一次驱动结果摘要
-    pub 最近阶段: Option<驱动阶段摘要>,
-    /// 最近一次驱动的结果说明
-    pub 最近结果: Option<String>,
-}
+/// 过程事件流环形上限：智能体循环每步事件，超限丢弃最旧
+const 过程事件流上限: usize = 1000;
 
 /// 驱动模式：一轮（发布/受理联动）或 到空闲（循环到无可驱动任务/上限/错误）
 enum 驱动模式 {
@@ -72,6 +27,10 @@ pub struct 看板驱动台 {
     最近结果: Mutex<Option<String>>,
     事件流: Mutex<Vec<驱动阶段事件>>,
     事件序号: AtomicU64,
+    过程事件流: Mutex<Vec<驱动过程事件>>,
+    过程事件序号: AtomicU64,
+    会话存储: 驱动会话存储,
+    当前会话id: Mutex<Option<u64>>,
 }
 
 impl 看板驱动台 {
@@ -83,12 +42,26 @@ impl 看板驱动台 {
             最近结果: Mutex::new(None),
             事件流: Mutex::new(Vec::new()),
             事件序号: AtomicU64::new(0),
+            过程事件流: Mutex::new(Vec::new()),
+            过程事件序号: AtomicU64::new(0),
+            会话存储: 驱动会话存储::新(None),
+            当前会话id: Mutex::new(None),
         }
     }
 
     /// 装配五层协作驱动器；装配后驱动接口就绪
     pub fn 装配(&self, 驱动器: Arc<五层协作驱动器>) {
         *self.驱动器.lock().expect("看板驱动台装配锁中毒") = Some(驱动器);
+    }
+
+    /// 装配会话存储目录：None=纯内存（重启丢失），Some=落盘持久化（重启可回看）
+    pub fn 装配会话存储(&self, 目录: &str) {
+        let 目录 = if 目录.trim().is_empty() {
+            None
+        } else {
+            Some(目录.to_string())
+        };
+        self.会话存储.设置目录(目录);
     }
 
     /// 驱动器是否已装配
@@ -109,6 +82,8 @@ impl 看板驱动台 {
         *self.最近结果.lock().expect("最近结果清空锁中毒") = None;
         self.事件流.lock().expect("事件流清空锁中毒").clear();
         self.事件序号.store(0, Ordering::SeqCst);
+        self.过程事件流.lock().expect("过程事件流清空锁中毒").clear();
+        self.过程事件序号.store(0, Ordering::SeqCst);
         true
     }
 
@@ -126,24 +101,24 @@ impl 看板驱动台 {
         if !self.预留() {
             return false;
         }
-        self.启动执行一轮();
+        self.启动执行一轮("发布自动");
         true
     }
 
     /// 启动后台驱动一轮；结束（含 panic）后复位运行中并写入摘要。
     /// 开头强制置位运行中：即使调用方未先预留（如测试直调），等待完成/并发互斥依然成立。
-    pub fn 启动执行一轮(self: &Arc<Self>) {
-        self.启动驱动(驱动模式::一轮);
+    pub fn 启动执行一轮(self: &Arc<Self>, 发起方式: &str) {
+        self.启动驱动(驱动模式::一轮, 发起方式);
     }
 
     /// 启动后台驱动到空闲：循环执行一轮直到 无可驱动任务 / 达到上限 / 出错，
     /// 已推进的轮次结果保留（每轮推进更新最近摘要）。结束（含 panic）后复位运行中。
-    pub fn 启动执行到空闲(self: &Arc<Self>, 上限: usize) {
-        self.启动驱动(驱动模式::到空闲(上限));
+    pub fn 启动执行到空闲(self: &Arc<Self>, 上限: usize, 发起方式: &str) {
+        self.启动驱动(驱动模式::到空闲(上限), 发起方式);
     }
 
     /// 统一驱动启动：一轮 = 上限 1；到空闲 = 上限 N。失败保留已推进轮次计数。
-    fn 启动驱动(self: &Arc<Self>, 模式: 驱动模式) {
+    fn 启动驱动(self: &Arc<Self>, 模式: 驱动模式, 发起方式: &str) {
         self.运行中.store(true, Ordering::SeqCst);
         let 驱动器 = {
             let 守卫 = self.驱动器.lock().expect("看板驱动台锁中毒");
@@ -156,6 +131,9 @@ impl 看板驱动台 {
                 }
             }
         };
+        // 创建会话：本次「发布→驱动」固化为可回放的会话（发起方式：发布自动/手动驱动/手动到空闲）
+        let 会话id = self.会话存储.创建会话(发起方式);
+        *self.当前会话id.lock().expect("当前会话id锁中毒") = Some(会话id);
         let 驱动台 = self.clone();
         std::thread::spawn(move || {
             let 上限 = match 模式 {
@@ -165,7 +143,7 @@ impl 看板驱动台 {
             let mut 轮次数: usize = 0;
             let mut 失败: Option<hm_error::Error> = None;
             let mut 空闲: bool = false;
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 for _ in 0..上限 {
                     match 驱动器.执行一轮() {
                         Ok(驱动结果::空闲) => {
@@ -176,11 +154,13 @@ impl 看板驱动台 {
                             轮次数 += 1;
                             let 角色名 = 角色.名称().to_string();
                             let 新状态名 = 状态名(&新状态).to_string();
+                            let 层级 = 状态层级标签(新状态).名().to_string();
                             驱动台.写最近阶段(驱动阶段摘要 {
                                 类型: "阶段完成".into(),
                                 任务id: Some(任务id),
                                 角色: Some(角色名.clone()),
                                 新状态: Some(新状态名.clone()),
+                                层级: Some(层级.clone()),
                                 消息: None,
                             });
                             驱动台.记录驱动事件(&驱动阶段事件 {
@@ -189,6 +169,7 @@ impl 看板驱动台 {
                                 任务id: Some(任务id),
                                 角色: Some(角色名),
                                 新状态: Some(新状态名),
+                                层级: Some(层级),
                                 消息: None,
                                 时间: hm_contract::当前时间戳(),
                             });
@@ -211,6 +192,7 @@ impl 看板驱动台 {
                         任务id: None,
                         角色: None,
                         新状态: None,
+                        层级: None,
                         消息: Some(e.to_string()),
                     });
                     *驱动台.最近结果.lock().expect("最近结果锁中毒") = Some(if 轮次数 > 0 {
@@ -224,6 +206,7 @@ impl 看板驱动台 {
                         任务id: None,
                         角色: None,
                         新状态: None,
+                        层级: None,
                         消息: Some(e.to_string()),
                         时间: hm_contract::当前时间戳(),
                     });
@@ -234,6 +217,7 @@ impl 看板驱动台 {
                         任务id: None,
                         角色: None,
                         新状态: None,
+                        层级: None,
                         消息: None,
                     });
                     *驱动台.最近结果.lock().expect("最近结果锁中毒") =
@@ -244,6 +228,7 @@ impl 看板驱动台 {
                         任务id: None,
                         角色: None,
                         新状态: None,
+                        层级: None,
                         消息: None,
                         时间: hm_contract::当前时间戳(),
                     });
@@ -256,6 +241,7 @@ impl 看板驱动台 {
                         任务id: None,
                         角色: None,
                         新状态: None,
+                        层级: None,
                         消息: None,
                         时间: hm_contract::当前时间戳(),
                     });
@@ -274,6 +260,17 @@ impl 看板驱动台 {
                 }
             }
             驱动台.运行中.store(false, Ordering::SeqCst);
+            // 会话收尾：以最近阶段/最近结果 决定状态（错误=失败 / 空闲=空闲 / 其余=已完成）与摘要
+            if let Some(会话id) = 驱动台.当前会话id.lock().expect("当前会话id锁中毒").clone() {
+                let 阶段 = 驱动台.最近阶段.lock().expect("最近阶段锁中毒").clone();
+                let 结果 = 驱动台.最近结果.lock().expect("最近结果锁中毒").clone();
+                let 状态 = match &阶段 {
+                    Some(驱动阶段摘要 { 类型, .. }) if 类型 == "错误" => "失败",
+                    Some(驱动阶段摘要 { 类型, .. }) if 类型 == "空闲" => "空闲",
+                    _ => "已完成",
+                };
+                驱动台.会话存储.结束会话(会话id, 状态, 结果);
+            }
         });
     }
 
@@ -325,6 +322,172 @@ impl 看板驱动台 {
         let 流 = self.事件流.lock().expect("驱动事件增量锁中毒");
         流.iter().filter(|记录| 记录.序号 > since).cloned().collect()
     }
+
+    /// 记录一条驱动过程事件（环形上限，序号单调递增；并转录到当前会话落盘供历史回放）
+    pub fn 记录过程事件(&self, 事件: &驱动过程事件) {
+        let 序号 = self.过程事件序号.fetch_add(1, Ordering::SeqCst) + 1;
+        let 记录 = 驱动过程事件 { 序号, ..事件.clone() };
+        {
+            let mut 流 = self.过程事件流.lock().expect("过程事件流锁中毒");
+            if 流.len() >= 过程事件流上限 {
+                流.remove(0);
+            }
+            流.push(记录.clone());
+        }
+        // 会话双写：把事件转录到当前会话（落盘），供 /api/dev/sessions/{id} 回放
+        if let Some(会话id) = self.当前会话id.lock().expect("当前会话id锁中毒").clone() {
+            self.会话存储.追加事件(会话id, &记录);
+        }
+    }
+
+    /// 返回序号大于 since 的过程事件增量
+    pub fn 过程事件增量(&self, since: u64) -> Vec<驱动过程事件> {
+        let 流 = self.过程事件流.lock().expect("过程事件增量锁中毒");
+        流.iter().filter(|记录| 记录.序号 > since).cloned().collect()
+    }
+
+    /// 会话清单（历史回放入口，按创建时间倒序）
+    pub fn 会话清单(&self) -> Vec<crate::驱动会话摘要> {
+        self.会话存储.清单()
+    }
+
+    /// 会话回放：返回某会话元数据 + 全程事件；会话不存在时返回 None
+    pub fn 会话回放(&self, 会话id: u64) -> Option<驱动会话详情> {
+        self.会话存储.回放(会话id)
+    }
+
+    /// 写入当前会话下某任务某阶段的运行检查点（结合当前会话id；供 Resume/Fork 断点续跑）
+    pub fn 写入检查点(&self, 任务id: u64, 角色名: &str, 轮次: usize, 阶段提示: &str, 消息: Vec<对话消息>, 清单: Vec<任务项>) {
+        if let Some(会话id) = self.当前会话id.lock().expect("当前会话id锁中毒").clone() {
+            let 检查点 = 运行检查点 {
+                会话id,
+                任务id,
+                角色: 角色名.to_string(),
+                阶段提示: 阶段提示.to_string(),
+                消息,
+                任务清单: 清单,
+                轮次,
+                时间: hm_contract::当前时间戳(),
+            };
+            self.会话存储.保存检查点(&检查点);
+        }
+    }
+
+    /// 读取某会话某任务的运行检查点（供 Resume/Fork 恢复）
+    pub fn 读取检查点(&self, 会话id: u64, 任务id: u64) -> Option<运行检查点> {
+        self.会话存储.读取检查点(会话id, 任务id)
+    }
+
+    /// 定向恢复/分叉驱动：基于源会话检查点消息推进指定任务（`继承消息`=true 时携带源断点上下文）。
+    /// 返回 Ok(新会话id) 受理成功；Err(原因) 未受理（未就绪/互斥）。
+    pub fn 启动定向驱动(self: &Arc<Self>, 源会话id: u64, 任务id: u64, 继承消息: bool, 发起方式: &str) -> Result<u64, String> {
+        if !self.就绪() {
+            return Err("看板驱动未就绪：需配置 LLM_API_KEY 并开启 run_dev_agent 后重启".into());
+        }
+        // Resume 前置：读检查点做两件事——404（无断点）与闸门（该阶段已推进则 400 无需恢复）
+        let 检查点 = self.会话存储.读取检查点(源会话id, 任务id);
+        if 发起方式 == "恢复" {
+            let 断点 = 检查点
+                .as_ref()
+                .ok_or_else(|| "无可恢复检查点（该会话未落盘该任务的运行断点）".to_string())?;
+            if let Some(器) = self.驱动器.lock().expect("驱动器锁中毒").as_ref() {
+                器.恢复闸门(任务id, &断点.角色)?;
+            }
+        }
+        if !self.预留() {
+            return Err("已有驱动执行中，请等待完成后再驱动".into());
+        }
+        let 已存消息 = if 继承消息 {
+            检查点.map(|c| c.消息).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let 发起方式标记 = format!("{发起方式}:{源会话id}");
+        let 会话id = self.会话存储.创建会话(&发起方式标记);
+        *self.当前会话id.lock().expect("当前会话id锁中毒") = Some(会话id);
+        let 驱动台 = self.clone();
+        std::thread::spawn(move || {
+            let 驱动器 = match 驱动台.驱动器.lock().expect("驱动器锁中毒").as_ref() {
+                Some(器) => 器.clone(),
+                None => {
+                    *驱动台.最近结果.lock().expect("最近结果锁中毒") = Some("驱动器未装配".into());
+                    驱动台.运行中.store(false, Ordering::SeqCst);
+                    驱动台.会话存储.结束会话(会话id, "失败", Some("驱动器未装配".into()));
+                    return;
+                }
+            };
+            let 结果 = 驱动器.执行一轮_恢复(Some((任务id, 已存消息)));
+            驱动台.收尾定向驱动(会话id, 结果);
+        });
+        Ok(会话id)
+    }
+
+    /// 定向驱动结果收尾（失败/空闲/阶段完成 → 摘要+事件+会话状态）；复用与 启动驱动 相同口径
+    fn 收尾定向驱动(&self, 会话id: u64, 结果: hm_error::Result<驱动结果>) {
+        let (状态, 结果说明): (&str, String) = match &结果 {
+            Ok(驱动结果::阶段完成 { 任务id, 角色, 新状态 }) => {
+                let 角色名 = 角色.名称().to_string();
+                let 新状态名 = 状态名(新状态).to_string();
+                let 层级 = 状态层级标签(*新状态).名().to_string();
+                self.写最近阶段(驱动阶段摘要 {
+                    类型: "阶段完成".into(),
+                    任务id: Some(*任务id),
+                    角色: Some(角色名.clone()),
+                    新状态: Some(新状态名.clone()),
+                    层级: Some(层级.clone()),
+                    消息: None,
+                });
+                self.记录驱动事件(&驱动阶段事件 {
+                    序号: 0,
+                    类型: "阶段完成".into(),
+                    任务id: Some(*任务id),
+                    角色: Some(角色名.clone()),
+                    新状态: Some(新状态名),
+                    层级: Some(层级),
+                    消息: None,
+                    时间: hm_contract::当前时间戳(),
+                });
+                ("已完成", format!("任务 {任务id} 已推进（{角色名}）"))
+            }
+            Ok(驱动结果::空闲) => {
+                self.记录驱动事件(&驱动阶段事件 {
+                    序号: 0,
+                    类型: "空闲".into(),
+                    任务id: None,
+                    角色: None,
+                    新状态: None,
+                    层级: None,
+                    消息: None,
+                    时间: hm_contract::当前时间戳(),
+                });
+                ("空闲", "看板无可驱动任务（空闲）".into())
+            }
+            Err(e) => {
+                self.写最近阶段(驱动阶段摘要 {
+                    类型: "错误".into(),
+                    任务id: None,
+                    角色: None,
+                    新状态: None,
+                    层级: None,
+                    消息: Some(e.to_string()),
+                });
+                self.记录驱动事件(&驱动阶段事件 {
+                    序号: 0,
+                    类型: "错误".into(),
+                    任务id: None,
+                    角色: None,
+                    新状态: None,
+                    层级: None,
+                    消息: Some(e.to_string()),
+                    时间: hm_contract::当前时间戳(),
+                });
+                ("失败", format!("驱动失败: {e}"))
+            }
+        };
+        *self.最近结果.lock().expect("最近结果锁中毒") = Some(结果说明.clone());
+        self.运行中.store(false, Ordering::SeqCst);
+        self.会话存储.结束会话(会话id, 状态, Some(结果说明));
+    }
 }
 
 /// TaskStatus 显示名（驱动摘要用）
@@ -346,5 +509,11 @@ fn 状态名(状态: &TaskStatus) -> &'static str {
         TaskStatus::待清理 => "待清理",
         TaskStatus::清理中 => "清理中",
         TaskStatus::清理完成 => "清理完成",
+        TaskStatus::待道祖澄清 => "待道祖澄清",
+        TaskStatus::道祖澄清中 => "道祖澄清中",
+        TaskStatus::待重新设计 => "待重新设计",
+        TaskStatus::待重新实现 => "待重新实现",
+        TaskStatus::待重新验收 => "待重新验收",
+        TaskStatus::待重新清理 => "待重新清理",
     }
 }

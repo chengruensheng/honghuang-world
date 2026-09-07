@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::{依赖边, 符号, 符号种类, 模块, 图谱};
+use crate::{依赖边, 模块, 图谱, 树扫描器};
 use hm_error::{Error, Result};
 
 /// 应跳过的目录：构建产物、版本控制、依赖缓存、IDE
@@ -14,7 +14,7 @@ const 清单文件: &str = "Cargo.toml";
 
 /// Rust workspace 扫描器：启动装配期全量扫描项目根，构建「世界态」图谱。
 ///
-/// 对齐 Python 原型 `F:\临时工作区\项目认知底座\rust_扫描器.py` 的通用化策略：
+/// 对齐 Python 原型 `rust_扫描器.py`（临时工作区/项目认知底座）的通用化策略：
 /// - 不硬编码目录命名约定（「-域/府/殿」、src/、crates/ 均可）
 /// - 优先读顶层 Cargo.toml `[workspace] members`；回退 rglob 找子 Cargo.toml；再回退单 crate 模式
 /// - 只提取**顶层 pub 符号**（fn/struct/enum/trait/const/static），impl 方法与私有项不提取
@@ -110,11 +110,15 @@ impl Rust扫描器 {
             }
         }
 
-        // 递归收集 .rs 叶子文件，提取顶层 pub 符号
+        // 递归收集 .rs 叶子文件，用 tree-sitter 提取顶层 pub 符号（携带真实签名）
         let mut 文件集: Vec<std::path::PathBuf> = Vec::new();
         收集rs文件(member, &mut 文件集);
+        let mut 树扫描 = 树扫描器::新();
         for 文件 in 文件集 {
-            提取符号(图谱, &包名, &文件);
+            let Ok(源码) = std::fs::read(&文件) else { continue };
+            for 符号 in 树扫描.提取符号(&源码, &包名) {
+                图谱.添加符号(符号);
+            }
         }
     }
 }
@@ -278,131 +282,4 @@ fn 收集rs文件(目录: &Path, 输出: &mut Vec<std::path::PathBuf>) {
             输出.push(路径);
         }
     }
-}
-
-/// 提取文件内顶层 pub 符号（行级状态机：跳过注释/字符串内误匹配）
-fn 提取符号(图谱: &mut 图谱, 包名: &str, 文件: &Path) {
-    let Ok(文本) = std::fs::read_to_string(文件) else { return };
-    for 行 in 文本.lines() {
-        let 去注释 = 去行注释(行).trim();
-        // 顶层 pub 符号：pub 开头（含 pub(crate)/pub(super) 等可见性形式）
-        if !去注释.starts_with("pub ") && !去注释.starts_with("pub(") {
-            continue;
-        }
-        let 余 = if let Some(后) = 去注释.strip_prefix("pub ") {
-            后.trim_start()
-        } else if let Some(后) = 去注释.strip_prefix("pub(") {
-            // pub(crate) fn ...：吃掉括号内可见性
-            match 后.find(')') {
-                Some(闭) => 后[闭 + 1..].trim_start(),
-                None => 后,
-            }
-        } else {
-            continue;
-        };
-        if 余.is_empty() {
-            continue;
-        }
-        let Some((种类, 名称, 签名)) = 解析符号(余) else {
-            continue;
-        };
-        图谱.添加符号(符号 {
-            名称,
-            种类,
-            所属模块: 包名.to_string(),
-            签名,
-        });
-    }
-}
-
-/// 解析 `[修饰] fn 名称...` / `struct 名称` / `const 名称` ...；返回 (种类, 名称, 签名)
-fn 解析符号(余: &str) -> Option<(符号种类, String, Option<String>)> {
-    let 词集: Vec<&str> = 余.split_whitespace().collect();
-    let mut i = 0;
-    let mut 是常量 = false;
-    while i < 词集.len() {
-        match 词集[i] {
-            "async" | "unsafe" | "default" => i += 1,
-            "extern" => i += 2, // extern "C" fn
-            "const" | "static" if 词集.get(i + 1).copied() == Some("fn") => i += 1, // const fn
-            "const" | "static" => {
-                是常量 = true;
-                i += 1;
-            }
-            _ => break,
-        }
-    }
-    // 常量：const 名 = 值 / static 名: 类型（i 已停在名称词）
-    if 是常量 {
-        let 名称 = 词集
-            .get(i)
-            .map(|名| {
-                名.trim_start_matches("r#")
-                    .split(|c| c == '(' || c == '<' || c == ':' || c == ';' || c == '{')
-                    .next()
-                    .unwrap_or("") // 名称取词失败降级为空串，由下方 is_empty 守卫
-                    .trim()
-                    .to_string()
-            })
-            .unwrap_or_default();
-        if 名称.is_empty() {
-            return None;
-        }
-        return Some((符号种类::常量, 名称, Some(余.to_string())));
-    }
-    let Some(&种类词) = 词集.get(i) else { return None };
-    // 名称截断到 `(`/`<`/`:`/`;`/`{`：`运行(任务: &str)` → `运行`；`阈值: usize` → `阈值`
-    let 名称 = 词集
-        .get(i + 1)
-        .map(|名| {
-            名.trim_start_matches("r#")
-                .split(|c| c == '(' || c == '<' || c == ':' || c == ';' || c == '{')
-                .next()
-                .unwrap_or("") // 名称取词失败降级为空串，由下方 is_empty 守卫
-                .trim()
-                .to_string()
-        })?;
-    if 名称.is_empty() {
-        return None;
-    }
-    let 种类 = match 种类词 {
-        "fn" | "trait" => 符号种类::函数,
-        "struct" | "enum" | "type" => 符号种类::类型,
-        "const" | "static" => 符号种类::常量,
-        _ => return None, // pub mod / pub use / pub(crate) use 等不提取
-    };
-    // 签名：函数取 名称 后到行尾（截断 120 字符，去尾分号），保留参数与返回
-    let 签名 = if 种类词 == "fn" {
-        let 头部 = 余.replace("pub ", "").replace("pub(crate) ", "");
-        let 截断: String = 头部.chars().take(120).collect();
-        Some(截断.trim_end_matches(';').trim().to_string())
-    } else {
-        None
-    };
-    Some((种类, 名称, 签名))
-}
-
-/// 去行注释：不在字符串字面量内的 `//` 之后全部去掉（块注释内部不处理，避免过度复杂）
-fn 去行注释(行: &str) -> &str {
-    let 字节 = 行.as_bytes();
-    let mut 在字符串 = false;
-    let mut 转义 = false;
-    for (i, &b) in 字节.iter().enumerate() {
-        if 在字符串 {
-            if 转义 {
-                转义 = false;
-            } else if b == b'\\' {
-                转义 = true;
-            } else if b == b'"' {
-                在字符串 = false;
-            }
-            continue;
-        }
-        match b {
-            b'"' => 在字符串 = true,
-            b'/' if i + 1 < 字节.len() && 字节[i + 1] == b'/' => return &行[..i],
-            _ => {}
-        }
-    }
-    行
 }

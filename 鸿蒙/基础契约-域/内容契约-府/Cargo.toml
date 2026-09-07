@@ -9,4 +9,5 @@ path = "模块.rs"
 [dependencies]
 hm-error = { path = "../错误定义-府" }
 hm-contract = { path = "../核心契约-府" }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
