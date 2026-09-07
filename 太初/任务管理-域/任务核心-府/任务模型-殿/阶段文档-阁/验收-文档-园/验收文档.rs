@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// 准圣验收文档：多轮验收 + 最终结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerificationDoc {
     #[serde(default)]
     pub 轮次: Vec<VerificationRound>,
@@ -26,6 +27,7 @@ pub struct VerificationRound {
 
 /// 道祖终审文档：最终验收（需求满足度/可维护性/代码质量/风险）
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FinalAcceptanceDoc {
     pub 通过: bool,
     pub 需求满足度: u8,

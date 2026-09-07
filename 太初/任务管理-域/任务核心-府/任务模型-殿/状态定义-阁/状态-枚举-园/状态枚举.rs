@@ -25,6 +25,14 @@ pub enum TaskStatus {
     待清理,
     清理中,
     清理完成,
+    // 新增：定向回退到木层级（需求偏差/回退次数超限）由道祖澄清后重新进入设计
+    待道祖澄清,
+    道祖澄清中,
+    // 新增：召回状态（触发任务回退后，受影响任务被召回暂停，待触发任务完成后由召回器解除恢复）
+    待重新设计,
+    待重新实现,
+    待重新验收,
+    待重新清理,
 }
 
 impl TaskStatus {
@@ -53,6 +61,10 @@ impl TaskStatus {
                 // 太乙金仙清理流转
                 | (TaskStatus::待清理, TaskStatus::清理中)
                 | (TaskStatus::清理中, TaskStatus::清理完成)
+                // 道祖澄清流转（定向回退到木层级后）
+                | (TaskStatus::待道祖澄清, TaskStatus::道祖澄清中)
+                | (TaskStatus::道祖澄清中, TaskStatus::待圣人设计)
+                | (TaskStatus::道祖澄清中, TaskStatus::已取消)
         )
     }
 }

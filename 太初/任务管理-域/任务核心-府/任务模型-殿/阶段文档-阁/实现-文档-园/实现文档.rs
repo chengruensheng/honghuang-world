@@ -3,6 +3,7 @@ use hm_cognition::ToolCallRecord;
 
 /// 大罗金仙实现文档：代码变更清单 + 工具调用记录 + 自检结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImplementationDoc {
     #[serde(default)]
     pub 代码变更: Vec<CodeChange>,

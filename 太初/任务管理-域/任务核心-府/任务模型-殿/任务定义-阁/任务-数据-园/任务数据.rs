@@ -3,6 +3,7 @@ use hm_cognition::AgentRole;
 use crate::任务模型_殿::{
     TaskStatus, TaskScene, TaskPriority, StatusChange,
     RequirementDoc, DesignDoc, ImplementationDoc, VerificationDoc, FinalAcceptanceDoc,
+    任务标识, 层级记录, 回退记录, 五行层级, 扫尾记录, 澄清记录,
 };
 
 /// 任务：太初之木，从无到有的存在。
@@ -47,6 +48,23 @@ pub struct Task {
     pub 修复轮次: u32,
     #[serde(default)]
     pub updated_at: u64,
+    // 新增：任务标识驱动（唯一可追溯：UUID + 时间戳 + 层级历史 + 产物 + 召回）
+    #[serde(default)]
+    pub 任务标识: 任务标识,
+    #[serde(default)]
+    pub 层级历史: Vec<层级记录>,
+    #[serde(default)]
+    pub 回退来源: Option<回退记录>,
+    #[serde(default)]
+    pub 召回标记: bool,
+    #[serde(default)]
+    pub 当前层级: 五行层级,
+    // 新增：扫尾记录（太乙金仙清理后交付证据链的机器核验结论，None=未检查）
+    #[serde(default)]
+    pub 扫尾记录: Option<扫尾记录>,
+    // 新增：澄清记录（回退到木层后道祖的需求纠偏结论，None=未澄清）
+    #[serde(default)]
+    pub 澄清记录: Option<澄清记录>,
 }
 
 impl Task {
@@ -71,6 +89,13 @@ impl Task {
             总令牌: 0,
             修复轮次: 0,
             updated_at: created_at,
+            任务标识: 任务标识::default(),
+            层级历史: Vec::new(),
+            回退来源: None,
+            召回标记: false,
+            当前层级: 五行层级::木,
+            扫尾记录: None,
+            澄清记录: None,
         }
     }
 }

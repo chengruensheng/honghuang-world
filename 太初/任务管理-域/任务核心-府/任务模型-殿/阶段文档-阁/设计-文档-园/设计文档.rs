@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 /// 圣人设计文档：边界契约设计（边界/安全区域/契约/文件清单/依赖）
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DesignDoc {
     #[serde(default)]
     pub 边界定义: HashMap<String, String>,
@@ -16,6 +17,7 @@ pub struct DesignDoc {
     pub 新建文件: Vec<String>,
     #[serde(default)]
     pub 依赖: Vec<DependencyDef>,
+    #[serde(default)]
     pub created_at: u64,
 }
 
