@@ -1,4 +1,12 @@
-use axum::{Json, extract::{Path, Query, State}, http::StatusCode};
+use std::convert::Infallible;
+use std::time::Duration;
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
+};
+use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 use crate::{数据服务状态, 看板驱动状态, 事件游标, 受理错误响应, 会话清单响应, 驱动会话详情};
 
@@ -205,4 +213,92 @@ pub async fn 会话分叉接口(
         Ok(新会话id) => Ok(Json(分叉响应 { 会话id: 新会话id })),
         Err(e) => Err(映射驱动错误(e)),
     }
+}
+
+/// GET /api/dev/stream?since=N：驱动过程事件 SSE 流（增量推送，15s 心跳保活）
+pub async fn 看板驱动过程流接口(
+    状态: State<数据服务状态>,
+    Query(游标): Query<事件游标>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let 台 = 状态.看板驱动台.clone();
+    let mut 游标 = 游标.since.unwrap_or(0);
+    let 流 = async_stream::stream! {
+        loop {
+            for 事件 in 台.过程事件增量(游标) {
+                游标 = 事件.序号;
+                let 载荷 = serde_json::to_string(&事件).unwrap_or_else(|_| "{}".into());
+                yield Ok(Event::default().data(载荷));
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+    };
+    Sse::new(流).keep_alive(KeepAlive::default())
+}
+
+/// GET /api/dev/stream/state?since=N：驱动阶段事件 SSE 流（增量推送，15s 心跳保活）
+pub async fn 看板驱动阶段流接口(
+    状态: State<数据服务状态>,
+    Query(游标): Query<事件游标>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let 台 = 状态.看板驱动台.clone();
+    let mut 游标 = 游标.since.unwrap_or(0);
+    let 流 = async_stream::stream! {
+        loop {
+            for 事件 in 台.驱动事件增量(游标) {
+                游标 = 事件.序号;
+                let 载荷 = serde_json::to_string(&事件).unwrap_or_else(|_| "{}".into());
+                yield Ok(Event::default().data(载荷));
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+    };
+    Sse::new(流).keep_alive(KeepAlive::default())
+}
+
+/// GET /api/dev/stream/agui?since=N：驱动过程事件 → AG-UI 标准事件 SSE 流（适配器映射，15s 心跳保活）
+pub async fn 看板驱动过程流_agui接口(
+    状态: State<数据服务状态>,
+    Query(游标): Query<事件游标>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let 台 = 状态.看板驱动台.clone();
+    let mut 游标 = 游标.since.unwrap_or(0);
+    let mut 适配器 = crate::协议适配器::新();
+    let 流 = async_stream::stream! {
+        loop {
+            let 会话id = 台.当前会话id().unwrap_or(0);
+            for 事件 in 台.过程事件增量(游标) {
+                游标 = 事件.序号;
+                for 协议事件 in 适配器.过程事件(&事件, 会话id) {
+                    let 载荷 = serde_json::to_string(&协议事件).unwrap_or_else(|_| "{}".into());
+                    yield Ok(Event::default().data(载荷));
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+    };
+    Sse::new(流).keep_alive(KeepAlive::default())
+}
+
+/// GET /api/dev/stream/agui/state?since=N：驱动阶段事件 → AG-UI 标准事件 SSE 流（适配器映射）
+pub async fn 看板驱动阶段流_agui接口(
+    状态: State<数据服务状态>,
+    Query(游标): Query<事件游标>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let 台 = 状态.看板驱动台.clone();
+    let mut 游标 = 游标.since.unwrap_or(0);
+    let 适配器 = crate::协议适配器::新();
+    let 流 = async_stream::stream! {
+        loop {
+            let 会话id = 台.当前会话id().unwrap_or(0);
+            for 事件 in 台.驱动事件增量(游标) {
+                游标 = 事件.序号;
+                for 协议事件 in 适配器.阶段事件(&事件, 会话id) {
+                    let 载荷 = serde_json::to_string(&协议事件).unwrap_or_else(|_| "{}".into());
+                    yield Ok(Event::default().data(载荷));
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+    };
+    Sse::new(流).keep_alive(KeepAlive::default())
 }

@@ -1,16 +1,21 @@
 use axum::{Router, middleware::{self, Next}, extract::{Request, State}, response::{Redirect, Response}, routing::{get, post}};
 use axum::http::StatusCode;
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use crate::{
     数据服务状态,
     任务列表, 查询任务, 创建任务, 迭代列表, 当前版本, 记忆列表, 规则列表, 事件列表,
     图谱查询, 格位查询, 语境查询, 认知检索接口, 日志列表, 记日志,
     看板列表, 看板查询, 看板发布, 看板承接, 看板提交, 看板清理, 看板定向回退, 看板扫尾检查, 看板澄清,
-    受理开发任务接口, 事件查询, 停止执行, 更新工作区, 道祖对话接口, 道祖确认接口,
+    受理开发任务接口, 事件查询, 停止执行, 更新工作区, 道祖对话接口, 道祖对话流式接口, 道祖确认接口,
     看板驱动接口, 看板驱动到空闲接口, 看板驱动状态接口, 看板驱动事件接口, 看板驱动过程接口,
+    看板驱动过程流接口, 看板驱动阶段流接口,
+    看板驱动过程流_agui接口, 看板驱动阶段流_agui接口,
     会话清单接口, 会话回放接口, 会话恢复接口, 会话分叉接口,
     模型状态接口, 模型列表接口, 模型选择接口,
     模型模板接口, 模型探测接口, 模型接入接口,
+    文件清单接口, 文件内容接口,
+    工作区查询, 工作区设置,
 };
 
 /// 构建 axum 路由：只读 API + 同源托管前端静态文件 + 写接口鉴权中间件
@@ -41,6 +46,7 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/dev/agent", post(受理开发任务接口))
         .route("/api/dev/agent/stop", post(停止执行))
         .route("/api/dev/chat", post(道祖对话接口))
+        .route("/api/dev/chat/stream", post(道祖对话流式接口))
         .route("/api/dev/chat/confirm", post(道祖确认接口))
         .route("/api/dev/workspace", post(更新工作区))
         .route("/api/dev/events", get(事件查询))
@@ -49,6 +55,10 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/dev/pilot/status", get(看板驱动状态接口))
         .route("/api/dev/pilot/events", get(看板驱动事件接口))
         .route("/api/dev/pilot/process", get(看板驱动过程接口))
+        .route("/api/dev/stream", get(看板驱动过程流接口))
+        .route("/api/dev/stream/state", get(看板驱动阶段流接口))
+        .route("/api/dev/stream/agui", get(看板驱动过程流_agui接口))
+        .route("/api/dev/stream/agui/state", get(看板驱动阶段流_agui接口))
         .route("/api/dev/sessions", get(会话清单接口))
         .route("/api/dev/sessions/{id}", get(会话回放接口))
         .route("/api/dev/sessions/{id}/resume", post(会话恢复接口))
@@ -59,14 +69,18 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/llm/templates", get(模型模板接口))
         .route("/api/llm/discover", post(模型探测接口))
         .route("/api/llm/connect", post(模型接入接口))
+        .route("/api/files", get(文件清单接口))
+        .route("/api/files/content", get(文件内容接口))
+        .route("/api/workspace", get(工作区查询).post(工作区设置))
         .fallback_service(ServeDir::new(静态目录))
+        .layer(CorsLayer::permissive())
         .layer(middleware::from_fn_with_state(鉴权令牌, 鉴权层))
         .with_state(状态)
 }
 
 /// 根路径重定向到前端入口页
 async fn 重定向入口() -> Redirect {
-    Redirect::permanent("/入口.html")
+    Redirect::permanent("/index.html")
 }
 
 /// 写接口鉴权中间件：GET 请求放行；非 GET 需携带 Authorization: Bearer <令牌>

@@ -294,6 +294,11 @@ impl 看板驱动台 {
         }
     }
 
+    /// 当前运行会话 id（无运行中会话时为 None；供协议适配器生成 runId/threadId）
+    pub fn 当前会话id(&self) -> Option<u64> {
+        *self.当前会话id.lock().expect("当前会话id锁中毒")
+    }
+
     /// 轮询等待驱动完成（测试用）
     pub fn 等待完成(&self, 超时毫秒: u64) -> bool {
         let 开始 = Instant::now();

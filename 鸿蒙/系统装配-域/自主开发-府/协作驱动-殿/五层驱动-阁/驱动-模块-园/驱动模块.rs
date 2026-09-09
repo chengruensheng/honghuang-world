@@ -477,14 +477,39 @@ fn 解析并构造带重试(
     }
 }
 
-/// 提取答复中的 JSON 对象子串（第一个 { 到最后一个 }，容忍前后解释文字）
+/// 提取答复中的 JSON 对象子串（括号配平，容忍前后解释文字与尾部杂质）
+///
+/// 逐字符扫描：首个 `{` 入栈，配平到栈空为止。忽略字符串内与转义序列中的括号，
+/// 避免 LLM 在 JSON 后追加解释/代码块标记导致 rfind 取错闭合符。
 fn 提取json(文本: &str) -> Option<String> {
     let 开始 = 文本.find('{')?;
-    let 结束 = 文本.rfind('}')?;
-    if 结束 <= 开始 {
-        return None;
+    let mut 深度 = 0i32;
+    let mut 在字符串 = false;
+    let mut 转义 = false;
+    for (i, ch) in 文本[开始..].char_indices() {
+        if 在字符串 {
+            if 转义 {
+                转义 = false;
+            } else if ch == '\\' {
+                转义 = true;
+            } else if ch == '"' {
+                在字符串 = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => 在字符串 = true,
+            '{' => 深度 += 1,
+            '}' => {
+                深度 -= 1;
+                if 深度 == 0 {
+                    return Some(文本[开始..=开始 + i].to_string());
+                }
+            }
+            _ => {}
+        }
     }
-    Some(文本[开始..=结束].to_string())
+    None
 }
 
 fn 截断(文本: &str, 上限: usize) -> String {
@@ -493,6 +518,52 @@ fn 截断(文本: &str, 上限: usize) -> String {
     } else {
         let 头部: String = 文本.chars().take(上限).collect();
         format!("{头部}…")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::提取json;
+
+    #[test]
+    fn 提取json_无杂质_原样返回() {
+        let 输入 = r#"{"a":1}"#;
+        assert_eq!(提取json(输入).as_deref(), Some(r#"{"a":1}"#));
+    }
+
+    #[test]
+    fn 提取json_后附代码块标记_正确截断() {
+        let 输入 = "以下是设计文档：\n```json\n{\"边界定义\":{\"输入\":\"n\"},\"输出\":{}}\n```\n完毕";
+        let 提取 = 提取json(输入).expect("应提取到 JSON");
+        // 截取到配平的 }，不含尾随 ``` 标记
+        assert_eq!(提取, r#"{"边界定义":{"输入":"n"},"输出":{}}"#);
+    }
+
+    #[test]
+    fn 提取json_字符串内含括号_不误判() {
+        // 字符串值里含 { 与 }，括号配平应跳过字符串内容
+        let 输入 = r#"{"描述":"斐波那契 F(n) 用 {} 表示边界","值":1}"#;
+        assert_eq!(
+            提取json(输入).as_deref(),
+            Some(r#"{"描述":"斐波那契 F(n) 用 {} 表示边界","值":1}"#)
+        );
+    }
+
+    #[test]
+    fn 提取json_嵌套对象_取最外层() {
+        let 输入 = r#"{"轮次":[{"通过":true,"问题":["a","b"]}],"最终结果":true}"#;
+        let 提取 = 提取json(输入).expect("应提取到嵌套 JSON");
+        assert_eq!(提取, r#"{"轮次":[{"通过":true,"问题":["a","b"]}],"最终结果":true}"#);
+    }
+
+    #[test]
+    fn 提取json_无括号_返回空() {
+        assert!(提取json("没有 JSON 内容").is_none());
+    }
+
+    #[test]
+    fn 提取json_只有左括号未闭合_返回空() {
+        assert!(提取json("内容 { 未闭合").is_none());
     }
 }
 

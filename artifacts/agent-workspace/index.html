@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>洪荒 · IDE 工作台</title>
+<meta name="description" content="IDE 一体化 · 对话主导 · 路径/Diff 收于右侧" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@600;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body class="ide">
+
+<!-- ============== 顶栏 ============== -->
+<header class="id-top" role="banner">
+  <div class="id-top__l">
+    <div class="id-logo" title="洪荒">
+      <svg viewBox="0 0 24 24"><path d="M12 3l3 5 5 1-4 4 1 6-5-3-5 3 1-6-4-4 5-1z"/></svg>
+      <span>洪荒</span>
+    </div>
+    <span class="id-sep"></span>
+    <button class="id-crumb" title="workspace"><i class="dot dot-fire"></i>workspace<i class="caret"></i></button>
+    <span class="id-sep"></span>
+    <nav class="id-menu">
+      <button>文件</button><button>编辑</button><button>视图</button><button>运行</button><button>终端</button><button>帮助</button>
+    </nav>
+  </div>
+  <div class="id-top__c">
+    <div class="id-search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input placeholder="搜索文件、命令、符号  ⌘P" />
+    </div>
+  </div>
+  <div class="id-top__r">
+    <span class="id-branch"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="6" r="2.4"/><path d="M6 8v8"/><path d="M6 12c6 0 6-6 12-6"/></svg>main<i class="caret"></i></span>
+    <button class="id-pill"><span class="ring"></span>先审后写</button>
+    <span class="id-model" id="model-top"><i class="dot dot-fire"></i>DeepSeek-V3</span>
+    <button class="id-cmd" id="cmd-btn"><kbd>⌘K</kbd></button>
+    <div class="id-user"><span class="avatar">九五</span></div>
+  </div>
+</header>
+
+<!-- ============== 主体：左图标轨 / 中对话 / 右图标轨+面板 ============== -->
+<main class="id-shell">
+
+  <!-- 左 56px 图标轨（折叠态默认） -->
+  <aside class="id-lrail" aria-label="主导航">
+    <button class="id-rail is-on" data-pane="chat" title="对话">
+      <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      <em>对话</em>
+    </button>
+    <button class="id-rail" data-pane="agents" title="智能体 · 独立模型配置">
+      <svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4M8 4h8"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 16.5h6"/></svg>
+      <em>智能体</em>
+    </button>
+    <button class="id-rail" data-pane="memory" title="记忆引擎 · 乾坤（土）">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="2.5"/><path d="M4 5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5"/><path d="M4 11v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/></svg>
+      <em>记忆</em>
+    </button>
+    <button class="id-rail" data-pane="hall" title="传承殿 · 文档资料（文件变体）">
+      <svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6M9 11h.01M15 11h.01"/></svg>
+      <em>传承殿</em>
+    </button>
+    <button class="id-rail" data-pane="gate" title="门禁 · 证道（验证与守门）">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4.5"/></svg>
+      <em>门禁</em>
+    </button>
+    <button class="id-rail" data-pane="arch" title="架构 · 九根六层">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/><circle cx="12" cy="19" r="2.2"/><path d="M12 7.2v3M7 13.5L10 17M17 13.5L14 17M10.5 5H7M13.5 5H17"/></svg>
+      <em>架构</em>
+    </button>
+    <button class="id-rail" data-pane="graph" title="图谱 · 三态认知（世界态）">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7.6 7.6L11 16M16.4 7.6L13 16"/></svg>
+      <em>图谱</em>
+    </button>
+    <span class="id-spacer"></span>
+    <button class="id-rail" data-pane="settings" title="设置">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <em>设置</em>
+    </button>
+  </aside>
+
+  <!-- 左抽屉：智能体(模型配置) / 记忆引擎 / 传承殿 / 门禁 / 架构 -->
+  <aside class="id-ldrawer" id="ldrawer" hidden>
+    <header class="ld-head">
+      <b id="ld-title">智能体</b>
+      <span class="ld-sub" id="ld-sub"></span>
+      <span class="spacer"></span>
+      <button class="ico" id="ld-close" title="收起" aria-label="收起抽屉">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+
+    <!-- ═══ 智能体 = 独立模型配置（LLM 接入）═══ -->
+    <div class="ld-body" data-body="agents" hidden>
+      <div class="ld-note">智能体仅用于配置独立使用的模型 · 密钥不入库，推荐 <code>env:变量名</code></div>
+
+      <div class="llm-cur">
+        <span class="dot dot-fire"></span>
+        <div class="llm-cur__t"><b id="llm-cur-name">DeepSeek-V3</b><span id="llm-cur-vendor">DeepSeek · 已接入</span></div>
+        <span class="llm-cur__tag">当前</span>
+      </div>
+
+      <div class="ld-sect">供应商（内置模板）</div>
+      <div class="llm-list" id="llm-list">
+        <button class="llm-row is-cur" data-vendor="DeepSeek"><i class="st on"></i>DeepSeek<span>deepseek-chat / reasoner</span></button>
+        <button class="llm-row" data-vendor="智谱 GLM"><i class="st"></i>智谱 GLM<span>glm-4 / glm-4-flash</span></button>
+        <button class="llm-row" data-vendor="通义 Qwen"><i class="st"></i>通义 Qwen<span>qwen-max / plus</span></button>
+        <button class="llm-row" data-vendor="Kimi"><i class="st"></i>Kimi<span>moonshot-v1</span></button>
+        <button class="llm-row" data-vendor="MiniMax"><i class="st"></i>MiniMax<span>abab6.5 / MiniMax-M3</span></button>
+        <button class="llm-row" data-vendor="火山方舟"><i class="st"></i>火山方舟<span>doubao-pro</span></button>
+        <button class="llm-row" data-vendor="OpenAI"><i class="st"></i>OpenAI<span>gpt-4o / o3</span></button>
+        <button class="llm-row" data-vendor="OpenRouter"><i class="st"></i>OpenRouter<span>聚合路由</span></button>
+        <button class="llm-row" data-vendor="Ollama"><i class="st"></i>Ollama<span>本地模型 · 零网络</span></button>
+      </div>
+
+      <button class="ld-summon" id="llm-connect-btn">＋ 接入供应商</button>
+      <div class="llm-form" id="llm-form" hidden>
+        <label>模板<select id="llm-f-tpl"><option>DeepSeek</option><option>智谱 GLM</option><option>通义 Qwen</option><option>Kimi</option><option>MiniMax</option><option>火山方舟</option><option>OpenAI</option><option>OpenRouter</option><option>Ollama</option><option>自定义</option></select></label>
+        <label>官网 / BaseURL<input placeholder="https://api.example.com" /></label>
+        <label>API Key<input placeholder="env:DEEP_SEEK_API_KEY" /></label>
+        <div class="llm-form__btns"><button class="ghost">获取可用模型</button><button class="primary">接入</button></div>
+      </div>
+    </div>
+
+    <!-- ═══ 记忆 = 乾坤记忆引擎（土）═══ -->
+    <div class="ld-body" data-body="memory" hidden>
+      <div class="ld-note"><b>乾坤 · 记忆引擎</b>（土 · 承载稳定）· 火生土：迭代完成写入记忆 · 土生金：记忆写入添加规则</div>
+      <div class="mem-stat"><span>共 <b>6</b> 条</span><span>归档标注 <b>1</b>（木克土 · 过盛）</span><span>事件去重 <b>2</b>（土克水）</span></div>
+
+      <div class="ld-search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="mem-search" placeholder="检索记忆…" />
+      </div>
+
+      <div class="mem-list">
+        <div class="mem-item"><b>五行相生联动契约 v2.6</b><p>木→火→土→金→水相生信号与相克拒止上限，含严格数量上限。</p><span>今天 · 来源：迭代 v1.55 完成（火生土）</span></div>
+        <div class="mem-item"><b>清理门禁语义</b><p>清理前强制扫尾；未兑现/多余/自检不过 → 400 拒清理，任务保持待清理。</p><span>昨天 · 来源：任务「清理门禁与验收包」</span></div>
+        <div class="mem-item"><b>驱动会话回放结构</b><p>元数据 + 全程过程事件；支持 resume 断点续跑与 fork 分叉。</p><span>09-06 · 来源：任务「驱动会话回放」</span></div>
+        <div class="mem-item"><b>三态认知底座</b><p>图谱（世界态）/ 格位（心智态 36 格）/ 临时（过程态，可压缩）。</p><span>09-06 · 来源：任务「三态认知底座机制落地」</span></div>
+        <div class="mem-item"><b>看板五阶段口径 v1.62</b><p>设计 → 实现 → 验收 → 终审 → 清理，按此统计与流转。</p><span>09-06 · 来源：迭代 v1.62（火生土）</span></div>
+        <div class="mem-item arc"><b>旧版四阶段统计口径</b><p>已被 v1.62 五阶段取代，仅保留溯源。</p><span>09-05 · 木克土：记忆过盛 → 标注归档</span></div>
+      </div>
+    </div>
+
+    <!-- ═══ 传承殿 = 文件变体 · 只放文档资料 ═══ -->
+    <div class="ld-body" data-body="hall" hidden>
+      <div class="fv-note" data-fv="hall">
+        <span class="fv-rule">过滤规则：只显示文档资料（传承殿/ 全部文件）</span>
+        <span class="fv-count"><b>0</b> 份 · 点击阅读</span>
+      </div>
+      <div class="fv-tree" data-fv="hall">
+        <div class="fv-group">传承殿 /</div>
+
+        <div class="fv-dir">已定契约-域</div>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/已定契约-域/已定契约.md" data-title="已定契约.md"><i></i><b>已定契约.md</b><em>v2.6</em></button>
+
+        <div class="fv-dir">落地设计-域</div>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/太初任务引擎.md" data-title="太初任务引擎.md"><i></i><b>太初任务引擎.md</b><em>设计</em></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/落地设计-域/太初任务引擎-验收报告.md" data-title="太初任务引擎-验收报告.md"><i></i><b>太初任务引擎-验收报告.md</b><em>验收</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/量劫迭代引擎.md" data-title="量劫迭代引擎.md"><i></i><b>量劫迭代引擎.md</b><em>设计</em></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/落地设计-域/量劫迭代引擎-验收报告.md" data-title="量劫迭代引擎-验收报告.md"><i></i><b>量劫迭代引擎-验收报告.md</b><em>验收</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/乾坤记忆引擎.md" data-title="乾坤记忆引擎.md"><i></i><b>乾坤记忆引擎.md</b><em>设计</em></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/落地设计-域/乾坤记忆引擎-验收报告.md" data-title="乾坤记忆引擎-验收报告.md"><i></i><b>乾坤记忆引擎-验收报告.md</b><em>验收</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/道韵规则引擎.md" data-title="道韵规则引擎.md"><i></i><b>道韵规则引擎.md</b><em>设计</em></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/落地设计-域/道韵规则引擎-验收报告.md" data-title="道韵规则引擎-验收报告.md"><i></i><b>道韵规则引擎-验收报告.md</b><em>验收</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/混沌事件引擎.md" data-title="混沌事件引擎.md"><i></i><b>混沌事件引擎.md</b><em>设计</em></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/落地设计-域/混沌事件引擎-验收报告.md" data-title="混沌事件引擎-验收报告.md"><i></i><b>混沌事件引擎-验收报告.md</b><em>验收</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/五行相生联动.md" data-title="五行相生联动.md"><i></i><b>五行相生联动.md</b><em>设计</em></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/落地设计-域/五行相生联动-验收报告.md" data-title="五行相生联动-验收报告.md"><i></i><b>五行相生联动-验收报告.md</b><em>验收</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/项目骨架与鸿蒙基础设施.md" data-title="项目骨架与鸿蒙基础设施.md"><i></i><b>项目骨架与鸿蒙基础设施.md</b><em>设计</em></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/落地设计-域/项目骨架与鸿蒙基础设施-验收报告.md" data-title="项目骨架与鸿蒙基础设施-验收报告.md"><i></i><b>项目骨架与鸿蒙基础设施-验收报告.md</b><em>验收</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/落地设计-域/缺陷修复规划.md" data-title="缺陷修复规划.md"><i></i><b>缺陷修复规划.md</b><em>规划</em></button>
+
+        <div class="fv-dir">设计原则-域</div>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计原则-域/核心设计原则.md" data-title="核心设计原则.md"><i></i><b>核心设计原则.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计原则-域/洪荒本体论.md" data-title="洪荒本体论.md"><i></i><b>洪荒本体论.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计原则-域/完整架构蓝图.md" data-title="完整架构蓝图.md"><i></i><b>完整架构蓝图.md</b><em>蓝图</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计原则-域/三态认知底座.md" data-title="三态认知底座.md"><i></i><b>三态认知底座.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计原则-域/前端门面技术选型.md" data-title="前端门面技术选型.md"><i></i><b>前端门面技术选型.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计原则-域/AI_Agent前沿调查.md" data-title="AI_Agent前沿调查.md"><i></i><b>AI_Agent前沿调查.md</b></button>
+        <div class="fv-dir lv2">设计参考-府</div>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/设计原则-域/设计参考-府/对标应用界面调研与专业体验设计方案.md" data-title="对标应用界面调研与专业体验设计方案.md"><i></i><b>对标应用界面调研与专业体验设计方案.md</b></button>
+        <button class="fv-leaf lv2" data-kind="md" data-src="传承殿/设计原则-域/设计参考-府/E盘洪荒-世界-深度调查报告.md" data-title="E盘洪荒-世界-深度调查报告.md"><i></i><b>E盘洪荒-世界-深度调查报告.md</b></button>
+
+        <div class="fv-dir">治理量劫 v1.55</div>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/治理量劫-v1.55-任务提示词.md" data-title="治理量劫-v1.55-任务提示词.md"><i></i><b>治理量劫-v1.55-任务提示词.md</b><em>提示词</em></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/治理量劫-v1.55-执行提示词-P0.md" data-title="治理量劫-v1.55-执行提示词-P0.md"><i></i><b>治理量劫-v1.55-执行提示词-P0.md</b><em>P0</em></button>
+
+        <div class="fv-dir">散篇</div>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/修订记录.md" data-title="修订记录.md"><i></i><b>修订记录.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/缺陷清单.md" data-title="缺陷清单.md"><i></i><b>缺陷清单.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/维护文档.md" data-title="维护文档.md"><i></i><b>维护文档.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计草稿.md" data-title="设计草稿.md"><i></i><b>设计草稿.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/前端设计-资料清单.md" data-title="前端设计-资料清单.md"><i></i><b>前端设计-资料清单.md</b></button>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/后续实施提示词-2026-09-07.md" data-title="后续实施提示词-2026-09-07.md"><i></i><b>后续实施提示词-2026-09-07.md</b></button>
+        <button class="fv-leaf" data-kind="iframe" data-src="传承殿/架构全览图.html" data-title="架构全览图.html"><i></i><b>架构全览图.html</b><em>图</em></button>
+        <button class="fv-leaf" data-kind="code" data-src="传承殿/端到端基准.ps1" data-title="端到端基准.ps1"><i></i><b>端到端基准.ps1</b><em>脚本</em></button>
+      </div>
+    </div>
+
+    <!-- ═══ 门禁 = 文件变体 · 只放门禁代码 ═══ -->
+    <div class="ld-body" data-body="gate" hidden>
+      <div class="fv-note" data-fv="gate">
+        <span class="fv-rule">过滤规则：只显示门禁代码（扫尾 / 澄清 / 校验类 .rs）</span>
+        <span class="fv-count"><b>0</b> 个 · 点击查看源码</span>
+      </div>
+      <div class="fv-legend">
+        <span class="fv-tag gate">闸门</span><span class="fv-tag clar">澄清</span><span class="fv-tag rec">记录</span><span class="fv-tag exec">执行</span><span class="fv-tag test">测试</span><span class="fv-tag api">接口</span>
+      </div>
+      <div class="fv-tree" data-fv="gate">
+        <div class="fv-group">太初 · 任务核心-府</div>
+        <button class="fv-leaf" data-kind="code" data-src="太初/任务管理-域/任务核心-府/任务看板-殿/扫尾治理-阁/扫尾-检查-园/扫尾检查.rs" data-title="扫尾检查.rs"><i></i><b>扫尾检查.rs</b><span class="fv-tag gate">闸门</span><em>看板-殿·治理-阁</em></button>
+        <button class="fv-leaf" data-kind="code" data-src="太初/任务管理-域/任务核心-府/任务模型-殿/任务标识-阁/标识-数据-园/扫尾记录.rs" data-title="扫尾记录.rs"><i></i><b>扫尾记录.rs</b><span class="fv-tag rec">记录</span><em>模型-殿·标识-阁</em></button>
+        <button class="fv-leaf" data-kind="code" data-src="太初/任务管理-域/任务核心-府/任务模型-殿/任务标识-阁/标识-数据-园/澄清记录.rs" data-title="澄清记录.rs"><i></i><b>澄清记录.rs</b><span class="fv-tag clar">澄清</span><em>模型-殿·标识-阁</em></button>
+
+        <div class="fv-group">鸿蒙 · 数据服务-府</div>
+        <button class="fv-leaf" data-kind="code" data-src="鸿蒙/基础能力-域/数据服务-府/执行调度-殿/扫尾执行-阁/扫尾-执行-园/扫尾执行.rs" data-title="扫尾执行.rs"><i></i><b>扫尾执行.rs</b><span class="fv-tag exec">执行</span><em>调度-殿·执行-阁</em></button>
+        <button class="fv-leaf" data-kind="code" data-src="鸿蒙/基础能力-域/数据服务-府/请求处理-殿/看板查询-阁/看板-处理-园/看板处理.rs" data-title="看板处理.rs"><i></i><b>看板处理.rs</b><span class="fv-tag api">接口</span><em>请求-殿·查询-阁</em></button>
+
+        <div class="fv-group">证道 · 基础验证-域</div>
+        <button class="fv-leaf" data-kind="code" data-src="证道/基础验证-域/任务测试-府/任务校验-殿/任务测试-阁/任务-测试-园/扫尾测试.rs" data-title="扫尾测试.rs"><i></i><b>扫尾测试.rs</b><span class="fv-tag test">测试</span><em>任务-府·校验-殿</em></button>
+        <button class="fv-leaf" data-kind="code" data-src="证道/基础验证-域/数据服务测试-府/数据校验-殿/数据测试-阁/数据-测试-园/扫尾执行-测试.rs" data-title="扫尾执行-测试.rs"><i></i><b>扫尾执行-测试.rs</b><span class="fv-tag test">测试</span><em>数据-府·校验-殿</em></button>
+      </div>
+      <div class="fv-empty-note">过滤口径：文件名/内容命中 扫尾·澄清·门禁 语义的代码文件 · 新门禁代码落园后自动纳入</div>
+    </div>
+
+    <!-- ═══ 架构 = 文件变体 · 只放架构图相关 ═══ -->
+    <div class="ld-body" data-body="arch" hidden>
+      <div class="fv-note" data-fv="arch">
+        <span class="fv-rule">过滤规则：只显示架构图相关（交互图 HTML · 蓝图 MD）</span>
+        <span class="fv-count"><b>0</b> 份 · 点击预览</span>
+      </div>
+      <div class="fv-tree" data-fv="arch">
+        <div class="fv-group">交互图 · HTML</div>
+        <button class="fv-leaf" data-kind="iframe" data-src="传承殿/架构全览图.html" data-title="架构全览图.html"><i></i><b>架构全览图.html</b><em>传承殿/</em></button>
+
+        <div class="fv-group">蓝图 · MD</div>
+        <button class="fv-leaf" data-kind="md" data-src="传承殿/设计原则-域/完整架构蓝图.md" data-title="完整架构蓝图.md"><i></i><b>完整架构蓝图.md</b><em>设计原则-域/</em></button>
+      </div>
+      <div class="fv-empty-note">全仓当前登记 2 份架构图 · 新图落库后自动纳入此变体</div>
+    </div>
+  </aside>
+  <section class="id-mid" aria-label="对话流">
+    <div class="id-mid__title">
+      <span class="tag tag-fire">火·加速</span>
+      <h1>清理门禁与验收包</h1>
+      <span class="meta">#2026-09-07 · 决策者：道祖 · 执行者：DeepSeek-V3</span>
+      <span class="state is-run" id="task-state"><i></i>运行中 · 步骤 4/7</span>
+      <span class="spacer"></span>
+      <button class="ico" title="停止"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+      <button class="ico" title="回滚"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
+    </div>
+
+    <div class="id-chat" id="chat-scroll">
+      <div class="msg sys"><span class="time">14:01:02</span><p>决策者发起任务 · 目标：落地清理门禁——清理前强制扫尾，未过即拒 · 模式：<b>先审后写</b> · 模型：<b>DeepSeek-V3</b></p></div>
+
+      <div class="msg user">
+        <div class="who"><span class="avatar sm">九五</span><b>道祖</b><span class="when">14:01:08</span></div>
+        <div class="bubble">
+          按任务设计表实施：<b>清理前强制扫尾</b>——存在未兑现承诺、多余产物或自检未过时，清理接口返回 400 并保持任务待清理。先在证道域定位切入点，再动手。
+        </div>
+      </div>
+
+      <div class="msg ai">
+        <div class="who">
+          <span class="avatar sm agent"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4M8 4h8"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 16.5h6"/></svg></span>
+          <b>DeepSeek-V3 · 智能体</b>
+          <span class="when">14:01:11</span>
+          <span class="pill pill-fire">火</span>
+        </div>
+        <div class="bubble">
+          <p>已理解。先调用 <b>代码库检索</b> 定位证道域的清理流转链路，再读取关键府确认现状。</p>
+
+          <div class="tool">
+            <header><i class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></i><b>代码库检索</b><span class="ok">完成</span><span class="ms">0.84s</span></header>
+            <pre><code>$ hh search "清理 流转 sweep"
+→ 证道/清理门禁-园/sweep_gate.rs
+→ 量劫/看板-阁/transition.rs:88
+→ .codeartsdoer/tasks/2026-09-07-清理门禁与验收包-设计表.md</code></pre>
+          </div>
+
+          <div class="tool">
+            <header><i class="ico"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg></i><b>读取文件</b><span class="ok">完成</span><span class="ms">0.12s</span></header>
+            <pre><code>// 量劫/看板-阁/transition.rs:88
+async fn to_clean(task) {
+    sweeper.sweep(task).await?;   // 扫尾结果未校验
+    Ok(Status::Cleaning)          // ← 直接放行
+}</code></pre>
+          </div>
+
+          <p>根因：流转到清理时<b>未校验扫尾结论</b>。按设计表改为闸门校验，扫尾未过返回 400。准备修改并加测试。是否继续？</p>
+        </div>
+      </div>
+
+      <div class="msg user">
+        <div class="who"><span class="avatar sm">九五</span><b>道祖</b><span class="when">14:02:21</span></div>
+        <div class="bubble">继续，扫尾未过的原因也要写进 400 响应，方便排查。</div>
+      </div>
+
+      <div class="msg ai">
+        <div class="who">
+          <span class="avatar sm agent"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4M8 4h8"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 16.5h6"/></svg></span>
+          <b>DeepSeek-V3 · 智能体</b>
+          <span class="when">14:02:24</span>
+          <span class="pill pill-fire">火</span>
+        </div>
+        <div class="bubble">
+          <div class="tool running">
+            <header><i class="ico"><svg viewBox="0 0 24 24"><path d="M3 3l18 18M21 3L3 21"/></svg></i><b>编辑文件</b><span class="run"><i class="spin"></i>运行中</span><span class="ms">transition.rs</span></header>
+            <pre><code>- sweeper.sweep(task).await?;
+- Ok(Status::Cleaning)
++ let report = sweeper.sweep(task).await?;
++ if !report.passed {
++     return Err(GateDenied {          // 扫尾未过 → 400
++         unfulfilled: report.unfulfilled,
++         redundant:   report.redundant,
++         selfcheck:   report.selfcheck,
++     });
++ }
++ Ok(Status::Cleaning)</code></pre>
+          </div>
+
+          <div class="tool wait">
+            <header><i class="ico"><svg viewBox="0 0 24 24"><path d="M4 17l6-6 4 4 6-8"/></svg></i><b>运行测试</b><span class="wait">排队</span><span class="ms">cargo test -p 证道</span></header>
+            <ul class="tests">
+              <li><i></i>证道::sweep_gate <em>5 项</em></li>
+              <li><i></i>量劫::transition <em>4 项</em></li>
+              <li><i></i>道韵::律校验 <em>3 项</em></li>
+            </ul>
+          </div>
+
+          <div class="approve" id="approve-1">
+            <header><i class="warn">!</i><b>需要决策者确认</b><span>Diff 在右侧呈现</span></header>
+            <p>代码已就绪 · 12 行新增 / 3 行删除 · 等待批准后启动测试与提交。</p>
+            <div class="btns">
+              <button class="ok" data-ok>批准执行</button>
+              <button class="no" data-no>驳回</button>
+              <button class="gh">查看 Diff →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 输入条 -->
+    <div class="id-input">
+      <div class="row">
+        <button class="ico" title="附件"><svg viewBox="0 0 24 24"><path d="M21 11l-9 9a5 5 0 1 1-7-7l10-10a3.5 3.5 0 0 1 5 5L10 18"/></svg></button>
+        <button class="ico" title="工具"><svg viewBox="0 0 24 24"><path d="M14 3l7 7-4 4-7-7zM3 21l8-4-4-4z"/></svg></button>
+        <button class="ico" title="引用"><svg viewBox="0 0 24 24"><path d="M7 7h4v4H7zM13 7h4v4h-4zM7 13h4v4H7zM13 13h4v4h-4z"/></svg></button>
+        <span class="ctx"><i class="dot dot-fire"></i>上下文：3 文件 · 12 契约<i class="caret"></i></span>
+        <span class="spacer"></span>
+        <button class="mini is-on"><i class="ring"></i>先审后写</button>
+        <button class="mini">自动测试</button>
+        <button class="mini">自动提交</button>
+      </div>
+      <textarea rows="2" placeholder="描述你的需求 · Enter 发送 · Shift+Enter 换行"></textarea>
+      <div class="row bot">
+        <span class="hint">⌘↵ 发送 · Esc 取消</span>
+        <span class="spacer"></span>
+        <button class="send">发送<svg viewBox="0 0 24 24"><path d="M3 12l18-9-6 18-3-7z"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 右图标轨：控制右面板内容 -->
+  <aside class="id-rrail" aria-label="右面板切换">
+    <button class="id-rbtn is-on" data-pane="diff" title="Diff（默认）">
+      <svg viewBox="0 0 24 24"><path d="M8 4l-4 8 4 8M16 4l4 8-4 8"/><path d="M14 4l-4 16"/></svg>
+      <em>Diff</em>
+    </button>
+    <button class="id-rbtn" data-pane="files" title="文件路径">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      <em>文件</em>
+    </button>
+    <button class="id-rbtn" data-pane="term" title="终端">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg>
+      <em>终端</em>
+    </button>
+    <button class="id-rbtn" data-pane="graph" title="图谱">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7.6 7.6L11 16M16.4 7.6L13 16"/></svg>
+      <em>图谱</em>
+    </button>
+    <span class="id-spacer"></span>
+    <button class="id-rbtn" data-pane="settings" title="设置">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <em>设置</em>
+    </button>
+  </aside>
+
+  <!-- 右面板 -->
+  <section class="id-rpanel" aria-label="右面板">
+    <!-- Diff 面板（默认） -->
+    <div class="rpane is-on" data-pane="diff">
+      <header class="rpane-head">
+        <div class="tabs">
+          <button class="is-on">transition.rs <em>+12 −3</em></button>
+          <button>sweep_gate.rs <em>+2 −0</em></button>
+          <button>gate_test.rs <em>+5 −1</em></button>
+          <button class="more">+</button>
+        </div>
+        <div class="opts">
+          <button class="ico" title="并排"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16"/><rect x="13" y="4" width="8" height="16"/></svg></button>
+          <button class="ico" title="折叠"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h16"/></svg></button>
+          <button class="ico" title="复制"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
+        </div>
+      </header>
+      <div class="rpane-body">
+        <div class="diff-meta">
+          <span class="path">量劫 / 看板-阁 / <b>transition.rs</b></span>
+          <span class="stat"><i class="a"></i>+12</span>
+          <span class="stat"><i class="d"></i>−3</span>
+        </div>
+        <div class="diff-code">
+          <div class="hunk">@@ <span>85</span>,<span>7</span> @@</div>
+          <div class="ln ctx"><span class="no">85</span><span class="c">/// 流转到清理：先过扫尾闸门</span></div>
+          <div class="ln del"><span class="no">86</span><span class="m">−</span><span class="c">sweeper.sweep(task).await?;</span></div>
+          <div class="ln del"><span class="no">87</span><span class="m">−</span><span class="c">Ok(Status::Cleaning)</span></div>
+          <div class="ln add"><span class="no">88</span><span class="m">+</span><span class="c">let report = sweeper.sweep(task).await?;</span></div>
+          <div class="ln add"><span class="no">89</span><span class="m">+</span><span class="c">if !report.passed {</span></div>
+          <div class="ln add"><span class="no">90</span><span class="m">+</span><span class="c">    return Err(GateDenied {   // 400 + 原因明细</span></div>
+          <div class="ln add"><span class="no">91</span><span class="m">+</span><span class="c">        unfulfilled: report.unfulfilled,</span></div>
+          <div class="ln ctx"><span class="no">92</span><span class="c">        redundant: report.redundant,</span></div>
+          <div class="ln ctx"><span class="no">93</span><span class="c">        selfcheck: report.selfcheck });</span></div>
+          <div class="ln add"><span class="no">94</span><span class="m">+</span><span class="c">}</span></div>
+          <div class="ln add"><span class="no">95</span><span class="m">+</span><span class="c">Ok(Status::Cleaning)</span></div>
+
+          <div class="hunk">@@ <span>120</span>,<span>5</span> @@</div>
+          <div class="ln ctx"><span class="no">120</span><span class="c">impl From&lt;GateDenied&gt; for ApiResponse {</span></div>
+          <div class="ln add"><span class="no">121</span><span class="m">+</span><span class="c">  fn from(e: GateDenied) -&gt; Self {</span></div>
+          <div class="ln add"><span class="no">122</span><span class="m">+</span><span class="c">    ApiResponse::bad_request(e.reason())</span></div>
+          <div class="ln ctx"><span class="no">123</span><span class="c">}</span></div>
+          <div class="ln ctx"><span class="no">124</span><span class="c">}</span></div>
+        </div>
+      </div>
+      <footer class="rpane-foot">
+        <div class="rev">
+          <button class="rj" title="驳回此 hunk"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          <button class="ac" title="接受此 hunk"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></button>
+          <div class="bar"><i style="width:42%"></i></div>
+          <span class="cnt">3 / 7 hunk 已审</span>
+        </div>
+        <div class="act">
+          <button class="ghost">全部驳回</button>
+          <button class="primary">全部接受 <kbd>⌘↵</kbd></button>
+        </div>
+      </footer>
+    </div>
+
+    <!-- 文件路径面板 -->
+    <div class="rpane" data-pane="files">
+      <header class="rpane-head">
+        <div class="title">资源管理器</div>
+        <div class="opts"><button class="ico" title="刷新"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button></div>
+      </header>
+      <div class="rpane-body tree">
+        <div class="tree-note">仅代码与产物 · 文献资料见「传承殿」</div>
+        <div class="t-folder open">▾ 证道</div>
+        <div class="t-folder open" style="padding-left:18px">▾ 清理门禁-园</div>
+        <div class="t-file mod" style="padding-left:36px"><i></i>sweep_gate.rs <em>+2 −0</em></div>
+        <div class="t-file mod" style="padding-left:36px"><i></i>gate_test.rs <em>+5 −1</em></div>
+        <div class="t-folder open" style="padding-left:18px">▾ 扫尾者-园</div>
+        <div class="t-file" style="padding-left:36px"><i></i>sweeper.rs</div>
+        <div class="t-folder open">▾ 量劫</div>
+        <div class="t-folder open" style="padding-left:18px">▾ 看板-阁</div>
+        <div class="t-file mod" style="padding-left:36px"><i></i>transition.rs <em>+12 −3</em></div>
+        <div class="t-file" style="padding-left:18px"><i></i>Cargo.toml</div>
+        <div class="t-folder">▸ 道果</div>
+        <div class="t-folder">▸ 工作区</div>
+      </div>
+    </div>
+
+    <!-- 终端面板 -->
+    <div class="rpane" data-pane="term">
+      <header class="rpane-head">
+        <div class="tabs">
+          <button class="is-on">auth-fix <span class="x">×</span></button>
+          <button class="more">+</button>
+        </div>
+        <div class="opts"><button class="ico" title="清屏"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>
+      </header>
+      <div class="rpane-body term" id="term-body">
+        <div class="tline"><span class="t">14:02:31</span> cargo test -p 证道</div>
+        <div class="tline"><span class="t">14:02:38</span> pass 证道::sweep_gate <span class="ok">✓</span></div>
+        <div class="tline"><span class="t">14:02:40</span> <span class="ok">3/12 通过</span> · 1 个失败：<span class="hl">扫尾未过仍放行</span></div>
+        <div class="tline"><span class="t">14:02:47</span> retry 1 · <span class="hl">fixing…</span></div>
+        <div class="tline"><span class="t">14:03:02</span> pass 量劫::transition <span class="ok">✓</span></div>
+        <div class="tline"><span class="t">14:03:15</span> <span class="ok">12/12 通过</span></div>
+        <div class="tline"><span class="t">14:03:16</span> 律校验 <span class="ok">无违例</span> · <span class="ok">门禁放行</span></div>
+        <div class="tline" id="term-prompt"><span class="cur">$</span> <span class="tcaret">▌</span></div>
+      </div>
+    </div>
+
+    <!-- 图谱面板 -->
+    <div class="rpane" data-pane="graph">
+      <header class="rpane-head">
+        <div class="title">认知图谱</div>
+        <div class="opts"><button class="ico" title="居中"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+      </header>
+      <div class="rpane-body graph">
+        <svg viewBox="0 0 320 460" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+          <defs>
+            <radialGradient id="g1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#6fd3c2" stop-opacity=".5"/><stop offset="100%" stop-color="#6fd3c2" stop-opacity="0"/></radialGradient>
+          </defs>
+          <g stroke="#313647" stroke-width="1">
+            <line x1="160" y1="80" x2="80" y2="160"/><line x1="160" y1="80" x2="240" y2="160"/>
+            <line x1="80" y1="160" x2="50" y2="260"/><line x1="80" y1="160" x2="120" y2="280"/>
+            <line x1="240" y1="160" x2="200" y2="280"/><line x1="240" y1="160" x2="280" y2="260"/>
+            <line x1="160" y1="80" x2="160" y2="200"/><line x1="160" y1="200" x2="80" y2="340"/><line x1="160" y1="200" x2="240" y2="340"/>
+          </g>
+          <g>
+            <circle cx="160" cy="80" r="22" fill="url(#g1)"/><circle cx="160" cy="80" r="10" fill="#e8a64a"/>
+            <circle cx="80" cy="160" r="7" fill="#6fbf73"/><circle cx="240" cy="160" r="7" fill="#6fb0d3"/>
+            <circle cx="50" cy="260" r="6" fill="#5e6275"/><circle cx="120" cy="280" r="6" fill="#5e6275"/>
+            <circle cx="200" cy="280" r="6" fill="#5e6275"/><circle cx="280" cy="260" r="6" fill="#5e6275"/>
+            <circle cx="160" cy="200" r="9" fill="#c8a768"/>
+            <circle cx="80" cy="340" r="6" fill="#5e6275"/><circle cx="240" cy="340" r="6" fill="#5e6275"/>
+          </g>
+          <g font-family="JetBrains Mono" font-size="9" fill="#8b8fa1">
+            <text x="170" y="84">transition.rs</text>
+            <text x="55" y="178">sweep_gate</text>
+            <text x="245" y="178">sweeper</text>
+            <text x="35" y="278">gate_test</text>
+            <text x="105" y="298">道韵</text>
+            <text x="180" y="298">乾坤</text>
+            <text x="170" y="204">看板-阁</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 设置面板 -->
+    <div class="rpane" data-pane="settings">
+      <header class="rpane-head"><div class="title">设置</div></header>
+      <div class="rpane-body set">
+        <section><h5>模型</h5>
+          <select id="model-select"><option>DeepSeek-V3</option><option>MiniMax M3</option><option>GPT-4o</option><option>Claude Sonnet 4</option></select>
+        </section>
+        <section><h5>工具权限</h5>
+          <label><span>代码库读写</span><i class="sw on"></i></label>
+          <label><span>终端执行</span><i class="sw on"></i></label>
+          <label><span>运行测试</span><i class="sw on"></i></label>
+          <label><span>自动提交 PR</span><i class="sw"></i></label>
+        </section>
+        <section><h5>温度</h5>
+          <input type="range" min="0" max="1" step="0.1" value="0.7">
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- 底部状态栏 -->
+  <footer class="id-bot">
+    <span class="ok"><i class="pulse"></i>主引擎在线</span>
+    <span class="sep"></span>
+    <span>事件总线 <b>稳定</b></span>
+    <span>记忆库 <b>1.2M</b></span>
+    <span>图谱 <b>340 节点</b></span>
+    <span class="spacer"></span>
+    <span>Token <b>42,180</b> / 128k</span>
+    <span>耗时 <b id="bot-elapsed">04:12</b></span>
+    <span class="model" id="model-bot"><i class="dot dot-fire"></i>DeepSeek-V3</span>
+    <span class="ver">v1.55 · 量劫</span>
+  </footer>
+
+</main>
+
+<!-- 阅读覆盖层：传承殿文献 / 架构图预览 -->
+<div class="reader" id="reader" hidden>
+  <div class="reader__panel" role="dialog" aria-label="阅读器">
+    <header class="reader__head">
+      <b id="reader-title">文献</b>
+      <span class="reader__path" id="reader-path"></span>
+      <span class="spacer"></span>
+      <button class="reader__close" id="reader-close" title="关闭" aria-label="关闭阅读器">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="reader__body" id="reader-body"></div>
+  </div>
+</div>
+
+<!-- 命令面板 -->
+<div class="cmdbg" id="cmdbg" hidden>
+  <div class="cmdpanel" role="dialog" aria-label="命令面板">
+    <div class="cmdinput">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="text" placeholder="输入命令、文件或符号…" />
+      <kbd>esc</kbd>
+      <button class="cmdclose" id="cmd-close" title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg>
+      </button>
+    </div>
+    <ul class="cmdlist">
+      <li><b>新建任务</b><span>task.new</span></li>
+      <li><b>切换模型</b><span>model.switch</span></li>
+      <li><b>打开图谱</b><span>graph.open</span></li>
+      <li><b>召唤记忆</b><span>memory.recall</span></li>
+      <li><b>运行测试</b><span>test.run</span></li>
+      <li><b>接受所有 Diff</b><span>diff.accept.all</span></li>
+    </ul>
+  </div>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>

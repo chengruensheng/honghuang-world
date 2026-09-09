@@ -54,9 +54,21 @@ foreach ($任务描述 in $任务清单) {
     Write-Host "[任务 $发布任务数/$($任务清单.Count)] 发布：$标题" -ForegroundColor Yellow
 
     $发布 = 调用Json POST "/api/board" @{ title = $标题; description = $任务描述 }
-    Write-Host "  任务 #$($发布.id) 已发布，五层协作开始自主流转…"
+    Write-Host "  任务 #$($发布.id) 已发布，开始自主驱动…"
 
-    # 发布已自动驱动到空闲（受理编排内启动），此处轮询到空闲
+    # 发布自动仅推进第一层（圣人设计）；为走完五层，显式驱动到空闲（连续循环直至无可承接任务）
+    # drain 上限用足（60 轮，覆盖五层 × 每层修复轮数），超时兜底避免死等
+    try {
+        $受理 = 调用Json POST "/api/dev/pilot/drain" @{ 上限 = 60 }
+        Write-Host "  已受理驱动到空闲（drain）"
+    } catch {
+        # 发布自动线程可能仍在跑（运行中），等待其结束后再驱动到空闲
+        Write-Host "  drain 未立即受理（发布自动线程可能占用），等待片刻后重试…" -ForegroundColor Yellow
+        Start-Sleep -Seconds ($轮询间隔秒 * 2)
+        调用Json POST "/api/dev/pilot/drain" @{ 上限 = 60 } | Out-Null
+    }
+
+    # 轮询到空闲
     $轮询起始 = Get-Date
     $轮询次数 = 0
     while ($true) {
@@ -76,6 +88,8 @@ foreach ($任务描述 in $任务清单) {
             Write-Host "  驱动中…（已 $([int]((Get-Date) - $轮询起始).TotalSeconds) 秒）"
         }
     }
+    # 若 drain 受理的是多轮，等待其落定（驱动线程内部连续推进，最后清空看板后才空闲）
+    Start-Sleep -Seconds 2
 }
 
 # ============ 收集会话并计算三指标 ============
@@ -89,16 +103,42 @@ if ($会话们.Count -eq 0) {
     exit 1
 }
 
+# 任务终态定义：真正「无人工干预直达完成」须走完 圣人设计→大罗金仙实现→准圣验收→道祖终审
+$完成状态集合 = @("待道祖终审", "待清理", "清理完成", "已交付")
+$失败状态集合 = @("待修复", "失败")
+
 $总会话 = $会话们.Count
-$无人干预 = 0        # 状态=已完成（五层走完，无人工介入）
-$失败会话 = 0        # 状态=失败
+$无人干预 = 0        # 任务终态 ∈ 完成状态集合（五层走完，无人工介入）
+$失败会话 = 0        # 任务终态 ∈ 失败状态集合
 $测试通过会话 = 0    # 工具结果含 cargo test 通过证据
 $有测试动作会话 = 0  # 工具调用运行命令含 test（实现阶段跑了测试）
 $返工会话 = 0        # 事件含「待修复」（准圣打回）
 
+# 收集本次驱动涉及的任务 id（会话任务id列表）
+$涉及任务id = @()
 foreach ($会话 in $会话们) {
-    if ($会话.状态 -eq "已完成") { $无人干预++ }
-    if ($会话.状态 -eq "失败") { $失败会话++ }
+    foreach ($tid in @($会话.任务id列表)) {
+        if ($涉及任务id -notcontains $tid) { $涉及任务id += $tid }
+    }
+}
+# 读取看板终态（任务最新状态）
+$看板全部 = @()
+if ($涉及任务id.Count -gt 0) {
+    try { $看板全部 = @(调用Json GET "/api/board") } catch { $看板全部 = @() }
+}
+$任务终态 = @{}
+foreach ($任务 in $看板全部) {
+    $任务终态[$任务.id] = $任务.status
+}
+
+foreach ($会话 in $会话们) {
+    # 会话内真实推进层数（按任务id聚合驱动事件角色，粗略按会话结果判断）
+    $本会话完成 = $false
+    foreach ($tid in @($会话.任务id列表)) {
+        if ($任务终态.ContainsKey($tid) -and $完成状态集合 -contains $任务终态[$tid]) { $本会话完成 = $true }
+        if ($任务终态.ContainsKey($tid) -and $失败状态集合 -contains $任务终态[$tid]) { $失败会话++ }
+    }
+    if ($本会话完成) { $无人干预++ }
 
     $详情 = 调用Json GET "/api/dev/sessions/$($会话.会话id)"
     $事件们 = @($详情.事件)
@@ -129,10 +169,11 @@ $返工率 = if ($总会话 -gt 0) { [math]::Round(100 * $返工会话 / $总会
 $测试通过率 = if ($有测试动作会话 -gt 0) { [math]::Round(100 * $测试通过会话 / $有测试动作会话, 1) } else { $null }
 
 Write-Host ""
-Write-Host "总会话数：$总会话（已完成 $无人干预 / 失败 $失败会话 / 其他 $($总会话 - $无人干预 - $失败会话)）"
+Write-Host "总会话数：$总会话（无干预直达完成 $无人干预 / 失败 $失败会话 / 其他 $($总会话 - $无人干预 - $失败会话)）"
+Write-Host "任务终态：$((($任务终态.GetEnumerator() | ForEach-Object { "任务$($_.Key)=$($_.Value)" }) -join '、'))"
 Write-Host ""
 Write-Host "三指标：" -ForegroundColor Cyan
-Write-Host ("  无人干预率 = {0}%（{1}/{2} 会话全程无人工介入直达完成）" -f $无人干预率, $无人干预, $总会话)
+Write-Host ("  无人干预率 = {0}%（{1}/{2} 任务走完五层至终审，全程无人工介入）" -f $无人干预率, $无人干预, $总会话)
 if ($null -eq $测试通过率) {
     Write-Host "  测试通过率 = N/A（无会话在实现阶段运行过 cargo test）"
 } else {

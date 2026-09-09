@@ -5,7 +5,7 @@ run_self_test = false
 run_dev_agent = false
 dev_workspace = "./工作区"
 dev_task = ""
-dev_max_rounds = 20
+dev_max_rounds = 60
 executor_timeout_secs = 30
 executor_max_output_bytes = 65536
 
@@ -15,7 +15,7 @@ level = "info"
 [http]
 bind = "127.0.0.1"
 port = 8321
-static_dir = "乾坤/界面呈现-域/世界入口-府"
+static_dir = "artifacts/agent-workspace"
 # 前端热更新：开发期开启（前端文件变化自动刷新桌面窗口，改代码即时生效）；生产请置 false
 hot_reload = true
 auth_token = ""
@@ -26,25 +26,39 @@ dir = ""
 [llm]
 # 商业级 LLM 池：多供应商配置（配置顺序即故障转移优先级）。
 # selected_provider / selected_model 留空 = 自动选择第一个启用供应商。
-# api_key 推荐写 env:环境变量名（密钥不入库）；开发期可写明文。
+# api_key 推荐写 env:环境变量名（密钥不入库，项目根 .env 由后端 dotenvy 自动加载）；开发期可写明文。
 # models_url 留空时推导为 {base_url}/models（供应商 list 端点不同时请显式配置）。
 # 快捷接入：前端对话页「＋ 接入供应商」可选内置模板（DeepSeek/智谱GLM/通义Qwen/Kimi/
 # MiniMax/火山方舟/OpenAI/OpenRouter/Ollama）或自定义供应商——填官网+密钥 → 获取可用模型
 # → 接入并选择；api_key 写 env:变量名 会记入 llm-接入.json，重启自动恢复；明文仅会话内有效。
-selected_provider = ""
-selected_model = ""
+selected_provider = "minimax"
+selected_model = "MiniMax-M3"
 state_file = "llm-选择.json"
 
-# 示例（取消注释即启用，可配置任意数量）：
-# [[llm.providers]]
-# name = "minimax"
-# kind = "openai"
-# base_url = "https://api.minimax.chat/v1/text/chatcompletion_v2"
-# models_url = "https://api.minimax.chat/v1/models"
-# api_key = "env:LLM_API_KEY"
-# model = "abab6.5s-chat"
-# timeout_secs = 30
-# retry = 2
-# enabled = true
-# json_mode = false  # 是否开启 JSON 输出模式（请求体追加 response_format: json_object）
-#                    # 仅 OpenAI 兼容 /chat/completions 支持；带工具「对话」路径不生效；默认 false（未开启请求体与旧版一致）
+# 主供应商：MiniMax（OpenAI 兼容，endpoint 为 {base_url} 即 /v1/chat/completions）。
+# 密钥走项目根 .env 的 LLM_API_KEY（后端启动时 dotenvy 自动加载）。
+# ⚠️ base_url/model 只接受字面量（不支持 env: 前缀），请与真实网关核对后再改。
+[[llm.providers]]
+name = "minimax"
+kind = "openai"
+base_url = "https://api.minimaxi.com/v1/chat/completions"
+models_url = "https://api.minimaxi.com/v1/models"
+api_key = "env:LLM_API_KEY"
+model = "MiniMax-M3"
+timeout_secs = 60
+retry = 2
+enabled = true
+json_mode = false
+
+# 备用：a6api 网关（主供应商失败时自动故障转移）
+[[llm.providers]]
+name = "a6api"
+kind = "openai"
+base_url = "https://api.a6api.com/v1/chat/completions"
+models_url = "https://api.a6api.com/v1/models"
+api_key = "env:LLM_FALLBACK_API_KEY"
+model = "deepseek-v4-pro-0813"
+timeout_secs = 60
+retry = 2
+enabled = true
+json_mode = false

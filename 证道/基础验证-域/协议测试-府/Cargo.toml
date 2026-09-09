@@ -1,0 +1,11 @@
+[package]
+name = "zd-agui-test"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[dependencies]
+hm-agui = { path = "../../../鸿蒙/基础契约-域/交互协议-府" }
+serde_json = { workspace = true }

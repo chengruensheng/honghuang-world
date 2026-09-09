@@ -100,6 +100,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         llm池.clone(),
         鉴权令牌,
     );
+    数据状态.扫描根 = Arc::new(Mutex::new(config.app.scan_root.clone()));
 
     // 自主开发智能体上线：run_dev_agent=true 时装配到 HTTP 受理台（默认关闭）。
     // LLM key 缺失仅告警，受理台保持未上线（受理接口 503），不影响数据服务；
@@ -209,6 +210,31 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     Ok(()) => tracing::info!("看板驱动已上线（HTTP 驱动模式）"),
                     Err(e) => tracing::warn!("看板驱动装配失败，驱动接口不可用（不影响启动）: {e}"),
                 }
+                // 看板驱动台重装配回调：顶栏切换项目工作区时，与开发受理台同步重装配，
+                // 确保五层协作驱动器的执行器工作区与扫描根一致（产出直接落项目根）
+                let 看板驱动台克隆 = 数据状态.看板驱动台.clone();
+                let 看板克隆 = 任务看板.clone();
+                let 上下文路径克隆 = 驱动上下文路径.clone();
+                let 会话目录克隆 = 驱动会话目录.clone();
+                let 认知克隆 = 认知注入.clone();
+                let 池克隆 = llm池.clone();
+                let 最大轮数 = config.app.dev_max_rounds;
+                let 超时秒 = config.app.executor_timeout_secs;
+                let 输出上限 = config.app.executor_max_output_bytes;
+                数据状态.重装配看板驱动 = Some(Arc::new(move |新工作区: &str| {
+                    装配看板驱动台(
+                        &看板驱动台克隆,
+                        看板克隆.clone(),
+                        &上下文路径克隆,
+                        新工作区,
+                        最大轮数,
+                        超时秒,
+                        输出上限,
+                        Some(认知克隆.clone()),
+                        池克隆.clone(),
+                        &会话目录克隆,
+                    )
+                }));
                 // 道祖接待器装配：主控澄清会话（持久化到 persistence.dir/道祖接待.json，重启恢复）
                 let 道祖路径 = match &持久化目录 {
                     Some(d) => format!("{d}/{道祖接待文件名}"),
@@ -216,9 +242,11 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 };
                 match 道祖接待::加载(llm池.clone().expect("LLM 池已装配"), 道祖路径) {
                     Ok(接待) => {
-                        let 接待 = 接待.装配认知(认知注入.clone());
+                        let 接待 = 接待
+                            .装配认知(认知注入.clone())
+                            .装配流式(llm池.clone().expect("LLM 池已装配"));
                         数据状态.道祖接待 = Some(Arc::new(Mutex::new(接待)));
-                        tracing::info!("道祖接待已上线（主控澄清模式，认知装配已对齐）");
+                        tracing::info!("道祖接待已上线（主控澄清模式，认知装配已对齐，流式对话已开启）");
                     }
                     Err(e) => tracing::warn!("道祖接待装配失败，对话澄清不可用（不影响启动）: {e}"),
                 }

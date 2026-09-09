@@ -1,5 +1,8 @@
-use axum::{Json, extract::{Query, State}, http::StatusCode};
+use axum::{Json, extract::{Query, State}, http::StatusCode, response::sse::{Event, KeepAlive, Sse}};
+use futures_core::Stream;
+use std::convert::Infallible;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use crate::{数据服务状态, 受理失败, 受理开发任务};
 
 /// 开发受理请求体
@@ -136,12 +139,14 @@ pub struct 道祖对话请求 {
     pub 消息: String,
 }
 
-/// 道祖对话响应体：阶段 + 回复 + 待确认需求
+/// 道祖对话响应体：阶段 + 回复 + 待确认需求 + 自动发布任务ID
 #[derive(Debug, Serialize)]
 pub struct 道祖对话响应 {
     pub 阶段: hm_agent::会话阶段,
     pub 回复: String,
     pub 需求: Option<hm_agent::需求摘要>,
+    /// 道祖对齐后自动发布到看板的任务ID（None=未对齐/仍在澄清中）
+    pub 任务id: Option<u64>,
 }
 
 /// 道祖确认响应体
@@ -155,22 +160,88 @@ pub async fn 道祖对话接口(
     状态: State<数据服务状态>,
     Json(请求): Json<道祖对话请求>,
 ) -> Result<Json<道祖对话响应>, (StatusCode, Json<受理错误响应>)> {
+    // 1. 道祖接待用户消息（锁内调LLM）
     let 接待 = 状态.道祖接待.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         Json(受理错误响应 { 错误: "道祖未上线：需配置 LLM 并开启 run_dev_agent".into() }),
     ))?;
-    let 接待 = 接待.lock().expect("道祖接待锁中毒");
-    let 响应 = 接待.接待(请求.消息).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(受理错误响应 { 错误: e.to_string() }),
-        )
-    })?;
+    let (阶段, 回复, 需求) = {
+        let 接待锁 = 接待.lock().expect("道祖接待锁中毒");
+        let 响应 = 接待锁.接待(请求.消息).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(受理错误响应 { 错误: e.to_string() }),
+            )
+        })?;
+        (响应.阶段, 响应.回复, 响应.需求)
+    };
+
+    // 2. 道祖对齐完需求 → 停留「待确认」，等待用户确认（/api/dev/chat/confirm）后才发布看板
+    //    不再自动发布；若驱动台忙等异常也留待确认，由确认接口统一处理。
+    let 任务id: Option<u64> = None;
+
     Ok(Json(道祖对话响应 {
-        阶段: 响应.阶段,
-        回复: 响应.回复,
-        需求: 响应.需求,
+        阶段,
+        回复,
+        需求,
+        任务id,
     }))
+}
+
+/// POST /api/dev/chat/stream：道祖接待流式（SSE）。
+/// 事件序列：RUN_STARTED → TEXT_MESSAGE_CONTENT×N → TEXT_MESSAGE_END → RUN_FINISHED。
+/// 接待 LLM 调用在 blocking 线程执行（std 锁不适合 async），增量经 mpsc 通道转交 SSE 推送。
+pub async fn 道祖对话流式接口(
+    状态: State<数据服务状态>,
+    Json(请求): Json<道祖对话请求>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let 状态克隆 = 状态.clone();
+    let (发送端, mut 接收端) = tokio::sync::mpsc::channel::<serde_json::Value>(64);
+    let _处理 = tokio::task::spawn_blocking(move || {
+        let 发帧 = |帧: serde_json::Value| {
+            let _ = 发送端.blocking_send(帧);
+        };
+        发帧(json!({"type": "RUN_STARTED", "会话阶段": "接待中"}));
+        // 道祖未上线：直接收尾
+        let Some(接待) = 状态克隆.道祖接待.clone() else {
+            发帧(json!({"type": "TEXT_MESSAGE_END"}));
+            发帧(json!({"type": "RUN_FINISHED", "阶段": "接待中", "任务id": null}));
+            return;
+        };
+        // 流式接待：锁内仅做消息组装与会话落定，LLM 增量经回调外推（不阻塞 SSE）
+        let 结果 = {
+            let 接待锁 = 接待.lock().expect("道祖接待锁中毒");
+            let mut 回调 = |块: String| -> Result<(), hm_error::Error> {
+                发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": 块}));
+                Ok(())
+            };
+            match 接待锁.接待流式(请求.消息.clone(), &mut 回调) {
+                Ok(响应) => Some(响应),
+                Err(e) => {
+                    tracing::warn!("道祖流式接待失败: {e}");
+                    发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": format!("（道祖未能答复：{e}）")}));
+                    None
+                }
+            }
+        };
+        // 对齐 → 停留「待确认」，由用户确认（/api/dev/chat/confirm）后才发布看板；不再自动发布。
+        let mut 阶段 = "接待中";
+        let 任务id: Option<u64> = None;
+        if let Some(响应) = 结果 {
+            阶段 = match 响应.阶段 {
+                hm_agent::会话阶段::待确认 => "待确认",
+                hm_agent::会话阶段::接待中 => "接待中",
+            };
+        }
+        发帧(json!({"type": "TEXT_MESSAGE_END"}));
+        发帧(json!({"type": "RUN_FINISHED", "阶段": 阶段, "任务id": 任务id}));
+    });
+    let 流 = async_stream::stream! {
+        while let Some(帧) = 接收端.recv().await {
+            yield Ok(Event::default().data(帧.to_string()));
+        }
+    };
+    Sse::new(流).keep_alive(KeepAlive::default())
 }
 
 /// POST /api/dev/chat/confirm：确认发布对齐需求（落看板 + 写记忆 + 自动驱动）

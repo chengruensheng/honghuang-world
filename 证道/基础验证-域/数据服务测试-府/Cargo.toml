@@ -28,3 +28,5 @@ hd-event = { path = "../../../混沌/事件管理-域/事件核心-府" }
 serde_json = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
+futures-util = "0.3"
+http-body-util = "0.1"

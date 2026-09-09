@@ -38,8 +38,12 @@ pub struct 数据服务状态 {
     pub llm池: Option<Arc<LLM池>>,
     pub 鉴权令牌: Option<String>,
     pub 重装配工作区: Option<重装配回调>,
+    /// 看板驱动台重装配回调：与 重装配工作区 同步切换，确保五层协作驱动器产出落同一工作区
+    pub 重装配看板驱动: Option<重装配回调>,
     /// 扫尾执行者（太乙金仙清理后交付证据链的机器核验；未装配时 sweep 接口 503）
     pub 扫尾执行者: Option<Arc<扫尾执行者>>,
+    /// 项目工作区根（相对或绝对路径；默认 ./，供 /api/files 清单与内容读取，顶栏可切换）
+    pub 扫描根: Arc<Mutex<String>>,
 }
 
 impl 数据服务状态 {
@@ -77,13 +81,21 @@ impl 数据服务状态 {
             llm池,
             鉴权令牌,
             重装配工作区: None,
+            重装配看板驱动: None,
             扫尾执行者: None,
+            扫描根: Arc::new(Mutex::new(String::from("./"))),
         }
     }
 
     /// 链式注入扫尾执行者（启动装配调用；测试/未装配时保持 None）
     pub fn 设置扫尾执行者(mut self, 执行者: Arc<扫尾执行者>) -> Self {
         self.扫尾执行者 = Some(执行者);
+        self
+    }
+
+    /// 链式注入项目工作区根（启动装配调用；默认 ./）
+    pub fn 设置扫描根(self, 根: String) -> Self {
+        *self.扫描根.lock().expect("扫描根锁中毒") = 根;
         self
     }
 }

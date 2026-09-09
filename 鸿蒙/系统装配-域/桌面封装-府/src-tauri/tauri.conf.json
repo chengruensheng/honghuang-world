@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.honghuang.world",
   "build": {
-    "frontendDist": "../../../../乾坤/界面呈现-域/世界入口-府"
+    "frontendDist": "../../../../artifacts/agent-workspace"
   },
   "app": {
     "windows": [

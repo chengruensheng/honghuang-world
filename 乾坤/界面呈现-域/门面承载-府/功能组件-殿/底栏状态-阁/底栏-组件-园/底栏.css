@@ -1,0 +1,78 @@
+/* ═══════════════════════════════════════════════════════════
+   乾坤 · 功能组件-殿 —— 底栏 外观
+   隔离约定：只引用令牌；经挂载契约进入底栏槽位。
+   ═══════════════════════════════════════════════════════════ */
+
+.组件-底栏{
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 100%;
+  padding: 0 12px;
+  box-sizing: border-box;
+  font-family: var(--字族);
+  font-size: 11px;
+  color: var(--字三);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ── 状态项 ── */
+.组件-底栏 .底栏-项{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.组件-底栏 .底栏-项 b{
+  color: var(--字一);
+  font-weight: 500;
+}
+
+/* ── 引擎在线标 ── */
+.组件-底栏 .底栏-在线{
+  color: var(--成);
+}
+.组件-底栏 .底栏-在线 .点{
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--成);
+  animation: 底栏脉冲 1.6s ease-in-out infinite;
+}
+@keyframes 底栏脉冲{
+  0%, 100%{ opacity: 1; }
+  50%{ opacity: .35; }
+}
+
+/* ── 分隔点 ── */
+.组件-底栏 .底栏-点{
+  color: var(--线三);
+}
+
+/* ── 模型 ── */
+.组件-底栏 .底栏-模型{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--契);
+}
+.组件-底栏 .底栏-模型 .点{
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--契);
+}
+
+/* ── 右区 ── */
+.组件-底栏 .底栏-右{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ── 版本 ── */
+.组件-底栏 .底栏-版{
+  color: var(--字四);
+  font-family: var(--字码);
+}

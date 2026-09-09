@@ -1,0 +1,56 @@
+/* ═══════════════════════════════════════════════════════════
+   乾坤 · 区域布局层 —— 只有「槽位网格」，零色彩（只引用令牌）
+   隔离约定：
+   1. 组件代码不得改写 .界面-* 结构与样式；
+   2. 组件只能经 挂载契约（分区挂载.js）进入槽位；
+   3. 本层不定义组件外观，槽位自身无外观，仅承载与分区。
+   ═══════════════════════════════════════════════════════════ */
+.界面-布局{
+  display: grid;
+  /* 左右栏仅承载图标轨（56px 图标列），主区占满 */
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  grid-template-rows: 46px minmax(0, 1fr) 26px;
+  grid-template-areas:
+    "顶栏 顶栏 顶栏"
+    "左栏 主区 右栏"
+    "底栏 底栏 底栏";
+  height: 100dvh;
+}
+
+/* ── 槽位：组件唯一落点，仅分区描线 ── */
+.界面-槽位{
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.界面-槽位[data-槽位名="顶栏"]{ grid-area: 顶栏; border-bottom: 1px solid var(--线一); }
+.界面-槽位[data-槽位名="左栏"]{ grid-area: 左栏; border-right:  1px solid var(--线一); }
+.界面-槽位[data-槽位名="主区"]{ grid-area: 主区; }
+.界面-槽位[data-槽位名="右栏"]{ grid-area: 右栏; border-left:   1px solid var(--线一); }
+.界面-槽位[data-槽位名="底栏"]{ grid-area: 底栏; border-top:    1px solid var(--线一); }
+
+/* ── 空槽提示：证明布局先于组件独立成立 ── */
+.界面-槽位:empty::after{
+  content: "槽位待挂载 · " attr(data-槽位名);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-family: var(--字码);
+  font-size: 10px;
+  letter-spacing: .12em;
+  color: var(--字四);
+}
+
+/* ── 窄屏：侧栏收起，主区独占 ── */
+@media (max-width: 760px){
+  .界面-布局{
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "顶栏"
+      "主区"
+      "底栏";
+  }
+  .界面-槽位[data-槽位名="左栏"],
+  .界面-槽位[data-槽位名="右栏"]{ display: none; }
+}

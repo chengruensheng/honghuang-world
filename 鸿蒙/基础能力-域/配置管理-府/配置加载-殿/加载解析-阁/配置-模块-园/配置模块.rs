@@ -62,7 +62,7 @@ pub struct HttpConfig {
     /// HTTP 服务监听端口
     #[serde(default = "default_http_port")]
     pub port: u16,
-    /// 前端静态文件目录（相对项目根，同源托管「世界入口」）
+    /// 前端静态文件目录（相对项目根，同源托管前端页面）
     #[serde(default = "default_static_dir")]
     pub static_dir: String,
     /// 前端热更新开关（默认关闭，仅开发期开启：监视前端目录，文件变化自动刷新窗口）
@@ -152,7 +152,7 @@ fn default_executor_max_output_bytes() -> u64 { 64 * 1024 }
 
 fn default_bind() -> String { "127.0.0.1".into() }
 fn default_http_port() -> u16 { 8321 }
-fn default_static_dir() -> String { "乾坤/界面呈现-域/世界入口-府".into() }
+fn default_static_dir() -> String { "artifacts/agent-workspace".into() }
 
 impl Default for AppConfig {
     fn default() -> Self {

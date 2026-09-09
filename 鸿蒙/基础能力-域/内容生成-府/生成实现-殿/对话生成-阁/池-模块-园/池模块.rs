@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use hm_config::LlmConfig;
-use hm_content_contract::{内容生成器, 工具对话器, 对话消息, 模型响应};
+use hm_content_contract::{内容生成器, 工具对话器, 流式对话器, 对话消息, 模型响应};
 use hm_contract::Component;
 use hm_error::{Error, Result};
 use serde_json::json;
@@ -249,6 +249,53 @@ impl 工具对话器 for LLM池 {
             })
         };
         self.生成经池(&造体, &解析)
+    }
+}
+
+impl 流式对话器 for LLM池 {
+    fn 对话流式(
+        &self,
+        消息: Vec<对话消息>,
+        工具: Vec<serde_json::Value>,
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), Error>,
+    ) -> Result<模型响应> {
+        let 消息json: Vec<serde_json::Value> = 消息.iter().map(消息转json).collect();
+        let 供应商们 = self
+            .供应商们
+            .lock()
+            .map_err(|_| Error::模型("LLM 池供应商锁中毒".into()))?
+            .clone();
+        if 供应商们.is_empty() {
+            return Err(Error::模型("LLM 池无可用模型（未配置供应商）".into()));
+        }
+        let 当前 = self.当前选择().unwrap_or_else(|| 池选择 { 供应商: String::new(), 模型: String::new() });
+        let mut 顺序: Vec<&池内供应商> = Vec::with_capacity(供应商们.len());
+        // 选中供应商优先（含其选中模型），其余按配置顺序
+        if let Some(选中) = 供应商们.iter().find(|s| s.名 == 当前.供应商) {
+            顺序.push(选中);
+        }
+        for s in &供应商们 {
+            if s.名 != 当前.供应商 {
+                顺序.push(s);
+            }
+        }
+        let mut 最后错误: Option<Error> = None;
+        for 供应商 in 顺序 {
+            let 实际模型 = if 供应商.名 == 当前.供应商 && !当前.模型.is_empty() {
+                当前.模型.clone()
+            } else {
+                供应商.模型.clone()
+            };
+            let 请求供应商 = 池内供应商 { 模型: 实际模型, ..供应商.clone() };
+            match 请求供应商.流式对话(&消息json, &工具, on_chunk) {
+                Ok(响应) => return Ok(响应),
+                Err(错误) => {
+                    最后错误 = Some(错误);
+                    tracing::warn!("LLM 供应商 {} 流式请求失败，尝试转移下一供应商", 供应商.名);
+                }
+            }
+        }
+        Err(最后错误.unwrap_or_else(|| Error::模型("LLM 池流式生成失败".into())))
     }
 }
 

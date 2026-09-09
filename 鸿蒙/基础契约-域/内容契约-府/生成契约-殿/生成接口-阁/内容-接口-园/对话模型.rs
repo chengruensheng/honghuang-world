@@ -74,3 +74,17 @@ pub struct 模型响应 {
 pub trait 工具对话器: Component {
     fn 对话(&self, 消息: Vec<对话消息>, 工具: Vec<serde_json::Value>) -> Result<模型响应>;
 }
+
+/// 流式对话器契约：多轮对话 + 工具调用 + 增量内容回调（打字机式）。
+///
+/// 语义与 工具对话器::对话 等价（返回完整 模型响应 供后续解析意图），
+/// 差异仅在生成过程中通过 on_chunk 实时推送文本增量。
+/// 实现须保证：回调按序、无遗漏；任一回调返回 Err 时中止并向上传播。
+pub trait 流式对话器: Component {
+    fn 对话流式(
+        &self,
+        消息: Vec<对话消息>,
+        工具: Vec<serde_json::Value>,
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), hm_error::Error>,
+    ) -> Result<模型响应>;
+}

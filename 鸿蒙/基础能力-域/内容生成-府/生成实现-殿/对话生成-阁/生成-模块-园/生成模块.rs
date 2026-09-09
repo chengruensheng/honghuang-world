@@ -1,5 +1,5 @@
 use std::time::Duration;
-use hm_content_contract::{内容生成器, 工具对话器, 对话消息, 消息角色, 工具调用, 模型响应};
+use hm_content_contract::{内容生成器, 工具对话器, 流式对话器, 对话消息, 消息角色, 工具调用, 模型响应};
 
 use super::super::解析密钥;
 use hm_contract::Component;
@@ -8,6 +8,8 @@ use serde_json::json;
 
 /// 单次请求超时（秒）
 const 请求超时秒: u64 = 30;
+/// 流式请求超时（秒）：流式生成等待可能远超同步单次
+const 流式超时秒: u64 = 120;
 /// 失败后额外重试次数（首次 + 重试 = 总尝试次数）
 const 请求重试次数: u32 = 2;
 /// 重试间隔（秒）
@@ -44,6 +46,142 @@ impl 模型提供商 {
         serde_json::from_str(&text)
             .map_err(|e| Error::模型(format!("解析模型响应失败: {e}")))
     }
+
+    /// 流式对话：stream=true 请求 + 按配置重试 + SSE 增量回调。
+    /// 中流失败（已推部分内容）不重试，避免向客户端重复推送；仅在未推任何块时重试。
+    fn 流式对话(
+        &self,
+        消息: Vec<对话消息>,
+        工具: &[serde_json::Value],
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), Error>,
+    ) -> Result<模型响应> {
+        let 消息json: Vec<serde_json::Value> = 消息.iter().map(消息转json).collect();
+        let mut body = json!({
+            "model": &self.model,
+            "messages": &消息json,
+            "tools": 工具,
+            "stream": true,
+        });
+        // tool_choice=auto：道祖接待三选一场景，引导模型在需要时稳定触发工具调用
+        if !工具.is_empty() {
+            body["tool_choice"] = json!("auto");
+        }
+        let mut 已发块 = false;
+        let mut 最后错误: Option<Error> = None;
+        for 尝试 in 0..=请求重试次数 {
+            if 尝试 > 0 && !已发块 {
+                std::thread::sleep(Duration::from_secs(请求重试间隔秒));
+            }
+            match self.单次流式(&body, &mut 已发块, on_chunk) {
+                Ok(响应) => return Ok(响应),
+                Err(错误) => {
+                    最后错误 = Some(错误);
+                    if 已发块 {
+                        break; // 已推送部分内容，重试会重复 → 中止向上报错
+                    }
+                }
+            }
+        }
+        Err(最后错误.unwrap_or_else(|| Error::模型("请求模型失败".into())))
+    }
+
+    /// 单次流式请求：发送 + 逐行解析 SSE（content delta → on_chunk）
+    fn 单次流式(
+        &self,
+        body: &serde_json::Value,
+        已发块: &mut bool,
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), Error>,
+    ) -> Result<模型响应> {
+        let resp = ureq::post(&self.base_url)
+            .set("Authorization", &format!("Bearer {}", self.api_key))
+            .set("Content-Type", "application/json")
+            .timeout(Duration::from_secs(流式超时秒))
+            .send_string(&body.to_string())
+            .map_err(|e| Error::模型(format!("请求模型失败: {e}")))?;
+        let 读 = std::io::BufReader::new(resp.into_reader());
+        流式解析_sse(读, &mut |块: String| {
+            *已发块 = true;
+            on_chunk(块)
+        })
+    }
+}
+
+/// 解析 OpenAI 兼容 chat/completions 流式响应（SSE：`data: {json}` 行）。
+/// content delta → on_chunk 增量回调；tool_calls 增量按 index 拼接。
+/// 响应完全没有 data: 行（供应商不支持流式）→ 按整段 JSON 兜底解析，内容一次性回调。
+pub fn 流式解析_sse<R: std::io::BufRead>(
+    mut 读: R,
+    on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), Error>,
+) -> Result<模型响应> {
+    let mut 行 = String::new();
+    let mut 内容 = String::new();
+    let mut 调用们: Vec<工具调用> = Vec::new();
+    let mut 原始 = String::new();
+    let mut 见到data = false;
+    loop {
+        行.clear();
+        let n = 读
+            .read_line(&mut 行)
+            .map_err(|e| Error::模型(format!("读取流式响应失败: {e}")))?;
+        if n == 0 {
+            break;
+        }
+        原始.push_str(&行);
+        let 修剪 = 行.trim();
+        if 修剪.is_empty() {
+            continue;
+        }
+        if let Some(数据) = 修剪.strip_prefix("data:") {
+            见到data = true;
+            let 数据 = 数据.trim();
+            if 数据 == "[DONE]" {
+                break;
+            }
+            let 值: serde_json::Value = serde_json::from_str(数据)
+                .map_err(|e| Error::模型(format!("解析流式块失败: {e}")))?;
+            if let Some(delta) = 值["choices"][0]["delta"]["content"].as_str() {
+                if !delta.is_empty() {
+                    内容.push_str(delta);
+                    on_chunk(delta.to_string())?;
+                }
+            }
+            if let Some(数组) = 值["choices"][0]["delta"]["tool_calls"].as_array() {
+                for 片段 in 数组 {
+                    let 索引 = 片段["index"].as_u64().unwrap_or(0) as usize;
+                    while 调用们.len() <= 索引 {
+                        调用们.push(工具调用 { id: String::new(), 名称: String::new(), 参数: String::new() });
+                    }
+                    if let Some(id) = 片段["id"].as_str() {
+                        if 调用们[索引].id.is_empty() {
+                            调用们[索引].id = id.to_string();
+                        }
+                    }
+                    if let Some(名) = 片段["function"]["name"].as_str() {
+                        调用们[索引].名称.push_str(名);
+                    }
+                    if let Some(参) = 片段["function"]["arguments"].as_str() {
+                        调用们[索引].参数.push_str(参);
+                    }
+                }
+            }
+        }
+    }
+    // 非流式兜底：供应商忽略了 stream 标志，整段返回标准 JSON
+    if !见到data {
+        let 值: serde_json::Value = serde_json::from_str(&原始)
+            .map_err(|e| Error::模型(format!("响应非流式且非合法 JSON: {e}")))?;
+        let message = &值["choices"][0]["message"];
+        let 完整 = message["content"].as_str().unwrap_or_default();
+        if !完整.is_empty() {
+            on_chunk(完整.to_string())?;
+            内容.push_str(完整);
+        }
+        调用们 = 解析工具调用(message);
+    }
+    Ok(模型响应 {
+        内容: if 内容.is_empty() { None } else { Some(内容) },
+        工具调用: 调用们,
+    })
 }
 
 /// 对话生成器：通过 OpenAI 兼容的 chat/completions 接口调用外部大模型（默认 MiniMax）。
@@ -193,11 +331,18 @@ impl 内容生成器 for 对话生成器 {
 impl 工具对话器 for 对话生成器 {
     fn 对话(&self, 消息: Vec<对话消息>, 工具: Vec<serde_json::Value>) -> Result<模型响应> {
         let 消息json: Vec<serde_json::Value> = 消息.iter().map(消息转json).collect();
-        let 造体 = |提供商: &模型提供商| json!({
-            "model": &提供商.model,
-            "messages": &消息json,
-            "tools": &工具,
-        });
+        let 造体 = |提供商: &模型提供商| {
+            let mut 体 = json!({
+                "model": &提供商.model,
+                "messages": &消息json,
+                "tools": &工具,
+            });
+            // tool_choice=auto：道祖接待三选一场景，引导模型在需要时稳定触发工具调用
+            if !工具.is_empty() {
+                体["tool_choice"] = json!("auto");
+            }
+            体
+        };
         let 解析 = |值: &serde_json::Value| {
             let message = &值["choices"][0]["message"];
             Ok(模型响应 {
@@ -206,6 +351,26 @@ impl 工具对话器 for 对话生成器 {
             })
         };
         self.逐个生成(&造体, &解析)
+    }
+}
+
+impl 流式对话器 for 对话生成器 {
+    fn 对话流式(
+        &self,
+        消息: Vec<对话消息>,
+        工具: Vec<serde_json::Value>,
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), Error>,
+    ) -> Result<模型响应> {
+        match self.主.流式对话(消息.clone(), &工具, on_chunk) {
+            Ok(响应) => Ok(响应),
+            Err(主错误) => {
+                tracing::warn!("主模型流式请求失败，尝试降级备选: {主错误}");
+                match &self.备选 {
+                    Some(备) => 备.流式对话(消息, &工具, on_chunk),
+                    None => Err(主错误),
+                }
+            }
+        }
     }
 }
 

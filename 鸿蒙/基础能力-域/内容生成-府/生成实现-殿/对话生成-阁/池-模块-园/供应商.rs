@@ -1,8 +1,11 @@
 use std::time::Duration;
 
+use hm_content_contract::模型响应;
 use hm_error::{Error, Result};
+use serde_json::json;
 
 use super::池模块::LLM池;
+use super::super::流式解析_sse;
 use super::类型::{模型条目, 供应商信息, 模型发现, 池选择, 模板模型};
 
 /// 池内供应商：配置解析后的可调用单元
@@ -41,6 +44,59 @@ impl 池内供应商 {
             .into_iter()
             .map(|m| m.id)
             .collect())
+    }
+
+    /// 流式对话：stream=true 请求 + 重试 + SSE 增量回调（中流失败不重试，避免重复推送）
+    pub(super) fn 流式对话(
+        &self,
+        消息json: &[serde_json::Value],
+        工具: &[serde_json::Value],
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), hm_error::Error>,
+    ) -> Result<模型响应> {
+        let body = json!({
+            "model": &self.模型,
+            "messages": 消息json,
+            "tools": 工具,
+            "stream": true,
+        });
+        let mut 已发块 = false;
+        let mut 最后错误: Option<Error> = None;
+        for 尝试 in 0..=self.重试 {
+            if 尝试 > 0 && !已发块 {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+            match self.单次流式(&body, &mut 已发块, on_chunk) {
+                Ok(响应) => return Ok(响应),
+                Err(错误) => {
+                    最后错误 = Some(错误);
+                    if 已发块 {
+                        break;
+                    }
+                }
+            }
+        }
+        Err(最后错误.unwrap_or_else(|| Error::模型("请求模型失败".into())))
+    }
+
+    /// 单次流式请求（流式超时取 配置超时 与 60s 的较大者，长生成等待）
+    fn 单次流式(
+        &self,
+        body: &serde_json::Value,
+        已发块: &mut bool,
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), hm_error::Error>,
+    ) -> Result<模型响应> {
+        let 超时 = Duration::from_secs(self.超时.as_secs().max(60));
+        let resp = ureq::post(&self.端点)
+            .set("Authorization", &format!("Bearer {}", self.密钥))
+            .set("Content-Type", "application/json")
+            .timeout(超时)
+            .send_string(&body.to_string())
+            .map_err(|e| Error::模型(format!("请求模型失败: {e}")))?;
+        let 读 = std::io::BufReader::new(resp.into_reader());
+        流式解析_sse(读, &mut |块: String| {
+            *已发块 = true;
+            on_chunk(块)
+        })
     }
 }
 

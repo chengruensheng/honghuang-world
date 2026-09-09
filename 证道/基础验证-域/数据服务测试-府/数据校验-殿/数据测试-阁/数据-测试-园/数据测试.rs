@@ -470,4 +470,7 @@ mod tests {
 
     #[path = "定向回退接口.rs"]
     mod 定向回退接口;
+
+    #[path = "agui端点.rs"]
+    mod agui端点;
 }

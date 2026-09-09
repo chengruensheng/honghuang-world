@@ -1,0 +1,677 @@
+/* ═══════════════════════════════════════════════════════════
+   乾坤 · 功能组件-殿 —— 主区对话流 外观
+   隔离约定：只引用令牌；经挂载契约进入主区槽位。
+   ═══════════════════════════════════════════════════════════ */
+
+.对话外壳{
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--字族);
+  color: var(--字二);
+}
+
+/* ── 标题行 ── */
+.对话标题{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--线一);
+}
+.对话标题 .标{
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--字一);
+}
+.对话标题 .次{
+  font-size: 11px;
+  color: var(--字四);
+}
+.对话标题 .态{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--成);
+}
+.对话标题 .态 .点{
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--成);
+  animation: 对脉冲 1.6s ease-in-out infinite;
+}
+@keyframes 对脉冲{
+  0%, 100%{ opacity: 1; }
+  50%{ opacity: .35; }
+}
+.对话标题 .态.停{
+  color: var(--警);
+}
+.对话标题 .态.停 .点{
+  background: var(--警);
+}
+
+/* ── 消息列表 ── */
+.对话流{
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-behavior: smooth;
+}
+
+/* ── 空态 ── */
+.对话流.空{
+  align-items: center;
+  justify-content: center;
+  color: var(--字四);
+  font-size: 13px;
+  text-align: center;
+}
+.对话流.空 .标{
+  font-size: 15px;
+  color: var(--字二);
+  margin-bottom: 8px;
+}
+.对话流.空 .次{
+  font-size: 11px;
+  color: var(--字四);
+}
+
+/* ── 首屏欢迎面板（任务 #3） ── */
+.欢迎面板{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: min(100%, 520px);
+  margin: auto;
+  padding: 28px 22px;
+  text-align: center;
+}
+.欢迎-顶{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--线二);
+  border-radius: 99px;
+  background: var(--面一);
+  font-size: 11px;
+}
+.欢迎-徽{
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--契);
+  color: #06201c;
+  font-weight: 600;
+}
+.欢迎-名{
+  color: var(--字三);
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.欢迎-标{
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--字一);
+  letter-spacing: 2px;
+}
+.欢迎-次{
+  font-size: 12px;
+  color: var(--字四);
+  line-height: 1.6;
+  max-width: 420px;
+}
+.快捷面板{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.快捷-项{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--线二);
+  border-radius: 99px;
+  background: var(--面二);
+  color: var(--字二);
+  font-family: var(--字族);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--速), background var(--速), color var(--速);
+}
+.快捷-项:hover{
+  border-color: var(--契);
+  color: var(--契);
+  background: rgba(111, 211, 194, .08);
+}
+.快捷-名{
+  font-family: var(--字码);
+  font-weight: 600;
+  color: var(--契);
+}
+.快捷-描{
+  color: var(--字四);
+}
+.快捷-项:hover .快捷-描{ color: var(--字三); }
+
+/* ── 事件徽标（对话流里展示看板过程事件）── */
+.气泡 .徽{
+  display: inline-block;
+  padding: 1px 8px;
+  margin-right: 6px;
+  border: 1px solid var(--契);
+  border-radius: 99px;
+  font-size: 10px;
+  color: var(--契);
+  background: var(--面一);
+}
+.气泡 .徽.ok{
+  border-color: #4ade80;
+  color: #4ade80;
+}
+.气泡 .次{
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--字四);
+  font-family: var(--字码);
+}
+.气泡 .思 pre{
+  margin: 6px 0 0 0;
+  padding: 8px 10px;
+  background: var(--面二);
+  border-radius: var(--圆小);
+  font-family: var(--字码);
+  font-size: 11px;
+  color: var(--字三);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── 系统消息 ── */
+.讯{
+  font-size: 12px;
+  color: var(--字四);
+  padding: 8px 12px;
+  border: 1px solid var(--线一);
+  border-radius: var(--圆小);
+  background: var(--面一);
+}
+.讯 b{ color: var(--字二); }
+
+/* ── 消息 ── */
+.讯息{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.讯息.己{ align-items: flex-end; }
+.讯息.对{ align-items: flex-start; }
+
+.讯息 .谁{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--字三);
+}
+.讯息 .谁 .名{
+  font-weight: 600;
+  color: var(--字二);
+}
+.讯息 .谁 .时{ color: var(--字四); }
+.讯息 .谁 .徽{
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  color: var(--契);
+  border: 1px solid var(--线二);
+}
+
+/* ── 气泡 ── */
+.气泡{
+  max-width: min(72%, 640px);
+  padding: 11px 14px;
+  border-radius: var(--圆中);
+  font-size: 13px;
+  line-height: 1.6;
+  background: var(--面二);
+  border: 1px solid var(--线二);
+}
+.讯息.己 .气泡{
+  background: var(--面三);
+  border-color: var(--线三);
+}
+.气泡 p{ margin: 0 0 8px; }
+.气泡 p:last-child{ margin-bottom: 0; }
+.气泡 b{ color: var(--字一); }
+.气泡 code{
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--面四);
+  font-family: var(--字码);
+  font-size: 12px;
+}
+
+/* ── 加载占位 ── */
+.气泡.载{
+  color: var(--字三);
+  letter-spacing: 2px;
+  animation: 对闪 1s ease-in-out infinite;
+}
+@keyframes 对闪{ 50%{ opacity: .4; } }
+
+/* ── 思考过程折叠块 ── */
+.气泡 .思{
+  margin-bottom: 8px;
+  border: 1px solid var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面一);
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--字三);
+}
+.气泡 .思 summary{
+  cursor: pointer;
+  color: var(--字四);
+  font-size: 11px;
+  user-select: none;
+}
+.气泡 .思 div{
+  margin-top: 6px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+/* ── 工具卡 ── */
+.工具{
+  border: 1px solid var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面一);
+  overflow: hidden;
+  font-size: 12px;
+}
+.工具 > header{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--线一);
+  color: var(--字二);
+}
+.工具 > header svg{
+  width: 14px;
+  height: 14px;
+  color: var(--契);
+}
+.工具 > header .名{ font-weight: 600; }
+.工具 > header .状{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--成);
+}
+.工具 > header .状.行{ color: var(--讯); }
+.工具 > header .状.等{ color: var(--警); }
+.工具 pre{
+  margin: 0;
+  padding: 11px 12px;
+  overflow-x: auto;
+  font-family: var(--字码);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--字二);
+  background: var(--面一);
+}
+.工具 pre .加{ color: var(--成); }
+.工具 pre .删{ color: var(--险); }
+
+/* ── 审批区 ── */
+.审批{
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--线三);
+  border-radius: var(--圆中);
+  background: var(--面二);
+}
+.审批 > header{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--字一);
+}
+.审批 > header .叹{
+  color: var(--警);
+}
+.审批 .描{
+  margin: 8px 0 11px;
+  font-size: 12px;
+  color: var(--字三);
+}
+.审批 .排{
+  display: flex;
+  gap: 8px;
+}
+.审批 .排 button{
+  padding: 6px 14px;
+  border-radius: var(--圆小);
+  font-size: 12px;
+  font-family: var(--字族);
+  cursor: pointer;
+  border: 1px solid var(--线二);
+  background: var(--面三);
+  color: var(--字二);
+  transition: border-color var(--速), background var(--速), color var(--速);
+}
+.审批 .排 .准{
+  border-color: var(--契);
+  color: var(--契);
+}
+.审批 .排 .准:hover{ background: rgba(111, 211, 194, .12); }
+.审批 .排 .否:hover{ border-color: var(--险); color: var(--险); }
+
+/* ── 输入条 ── */
+.对话输入{
+  padding: 12px 18px;
+  border-top: 1px solid var(--线一);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.对话输入 .区{
+  display: flex;
+  gap: 8px;
+}
+.对话输入 textarea{
+  flex: 1;
+  resize: none;
+  min-height: 38px;
+  max-height: 120px;
+  padding: 9px 12px;
+  border: 1px solid var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面二);
+  color: var(--字一);
+  font-family: var(--字族);
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color var(--速);
+}
+.对话输入 textarea:focus{ border-color: var(--契); }
+.对话输入 textarea::placeholder{ color: var(--字四); }
+.对话输入 .发{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--圆小);
+  background: var(--契);
+  color: #06201c;
+  font-family: var(--字族);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--速);
+}
+.对话输入 .发:hover{ opacity: .85; }
+.对话输入 .发 svg{ width: 14px; height: 14px; }
+.对话输入 .足{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--字四);
+}
+
+/* ═══ 以下为与参考设计对齐的补充样式 ═══ */
+
+/* ── 标题区 tag + 图标按钮 ── */
+.对话标题 .火标{
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--火);
+  border: 1px solid rgba(232, 122, 74, .4);
+  background: rgba(232, 122, 74, .1);
+}
+.对话标题 .钮{
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--字三);
+  cursor: pointer;
+  transition: color var(--速), background var(--速);
+}
+.对话标题 .钮:hover{ color: var(--字一); background: var(--面二); }
+.对话标题 .钮 svg{ width: 14px; height: 14px; }
+
+/* ── 头像 ── */
+.讯息 .谁 .像{
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--面三);
+  color: var(--字二);
+  font-size: 11px;
+  font-weight: 600;
+}
+.讯息 .谁 .像 svg{ width: 14px; height: 14px; }
+.讯息.对 .谁 .像{ background: rgba(111, 211, 194, .15); color: var(--契); }
+
+/* ── 工具卡：耗时 ms ── */
+.工具 > header .ms{
+  margin-left: 8px;
+  font-size: 10px;
+  color: var(--字四);
+  font-family: var(--字码);
+}
+.工具 > header .状.ms末{ margin-left: auto; }
+
+/* ── 运行中旋转 ── */
+.工具 > header .状.行 .轮{
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--线三);
+  border-top-color: var(--讯);
+  border-radius: 50%;
+  animation: 对转 .8s linear infinite;
+}
+@keyframes 对转{ to{ transform: rotate(360deg); } }
+
+/* ── 运行测试卡：tests 列表 ── */
+.工具 ul.测{
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--字码);
+  font-size: 12px;
+}
+.工具 ul.测 li{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--字二);
+}
+.工具 ul.测 li i{
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--字四);
+}
+.工具 ul.测 li em{
+  margin-left: auto;
+  font-style: normal;
+  color: var(--字四);
+}
+
+/* ── 输入条工具行 ── */
+.对话输入 .行{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.对话输入 .行 .ico{
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--字三);
+  cursor: pointer;
+  transition: color var(--速), background var(--速);
+}
+.对话输入 .行 .ico:hover{ color: var(--字一); background: var(--面二); }
+.对话输入 .行 .ico svg{ width: 15px; height: 15px; }
+.对话输入 .行 .ctx{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--字三);
+}
+.对话输入 .行 .ctx .点{
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--火);
+}
+.对话输入 .行 .迷你{
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--线二);
+  background: var(--面二);
+  color: var(--字三);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color var(--速), color var(--速);
+}
+.对话输入 .行 .迷你.选{
+  border-color: var(--契);
+  color: var(--契);
+}
+
+/* ── 五行任务进度卡 ── */
+.任务卡{
+  max-width: min(72%, 640px);
+  padding: 12px 14px;
+  border-radius: var(--圆中);
+  background: var(--面二);
+  border: 1px solid var(--线二);
+  font-size: 12px;
+}
+.任务卡 .头{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.任务卡 .头 b{ color: var(--字一); font-size: 13px; }
+.任务卡 .头 .状{ color: var(--字三); font-size: 11px; }
+.任务卡 .流{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.任务卡 .阶段{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--面一);
+  color: var(--字四);
+  transition: background .3s, color .3s;
+}
+.任务卡 .阶段 .点{
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  opacity: .35;
+}
+.任务卡 .阶段 .名{ font-weight: 600; color: var(--字三); }
+.任务卡 .阶段 .态{ margin-left: auto; font-size: 11px; }
+.任务卡 .阶段.done{
+  opacity: .65;
+}
+.任务卡 .阶段.done .点{ opacity: 1; }
+.任务卡 .阶段.done .名{ color: var(--字二); }
+.任务卡 .阶段.done .态{ color: var(--成); }
+.任务卡 .阶段.active{
+  background: var(--面三);
+  color: var(--字一);
+}
+.任务卡 .阶段.active .点{
+  opacity: 1;
+  animation: 对脉冲 1.5s ease-in-out infinite;
+}
+.任务卡 .阶段.active .名{ color: var(--字一); }
+.任务卡 .阶段.active .态{ color: var(--讯); font-weight: 600; }
+
+/* ── 任务卡：执行过程流 ── */
+.任务卡 .过程{
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--线一);
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.任务卡 .过程:empty{ display: none; }
+.任务卡 .过程行{
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.任务卡 .过程行:hover{ background: var(--面一); }
+.任务卡 .过程行 .标{
+  flex: none;
+  min-width: 80px;
+  color: var(--字三);
+  font-weight: 600;
+}
+.任务卡 .过程行 .内{
+  color: var(--字二);
+  word-break: break-all;
+}
+.任务卡 .过程行.思考 .标{ color: var(--水); }
+.任务卡 .过程行.工具调用 .标{ color: var(--土); }
+.任务卡 .过程行.工具结果 .标{ color: var(--金); }
+.任务卡 .过程行.任务答复 .标{ color: var(--火); }
