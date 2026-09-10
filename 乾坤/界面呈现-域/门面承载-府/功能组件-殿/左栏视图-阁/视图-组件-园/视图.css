@@ -9,9 +9,9 @@
 /* ── 抽屉容器 ── */
 .视图-抽屉{
   position: fixed;
-  left: 56px;
-  top: 46px;
-  bottom: 26px;
+  left: var(--轨宽);
+  top: var(--顶高);
+  bottom: var(--底高);
   width: min(340px, calc(100vw - 120px));
   z-index: 40;
   display: flex;
@@ -300,7 +300,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 8, 12, .66);
+  background: var(--遮罩);
   backdrop-filter: blur(3px);
   opacity: 0;
   pointer-events: none;
@@ -320,7 +320,7 @@
   border: 1px solid var(--线二);
   border-radius: var(--圆中);
   background: var(--面一);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+  box-shadow: var(--影二);
 }
 .视图-阅读-头{
   display: flex;

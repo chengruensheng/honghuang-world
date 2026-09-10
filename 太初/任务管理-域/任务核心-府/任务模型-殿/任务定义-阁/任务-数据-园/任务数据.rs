@@ -65,6 +65,9 @@ pub struct Task {
     // 新增：澄清记录（回退到木层后道祖的需求纠偏结论，None=未澄清）
     #[serde(default)]
     pub 澄清记录: Option<澄清记录>,
+    // 新增：任务级临时规则（流态第三态：驱动执行期间注入智能体上下文，任务终态后清除）
+    #[serde(default)]
+    pub 临时规则: Vec<String>,
 }
 
 impl Task {
@@ -96,6 +99,7 @@ impl Task {
             当前层级: 五行层级::木,
             扫尾记录: None,
             澄清记录: None,
+            临时规则: Vec::new(),
         }
     }
 }

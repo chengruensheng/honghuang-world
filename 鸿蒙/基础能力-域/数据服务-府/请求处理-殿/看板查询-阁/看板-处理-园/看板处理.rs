@@ -21,6 +21,9 @@ pub struct 发布任务请求 {
     pub scene: Option<String>,
     #[serde(default)]
     pub priority: Option<String>,
+    /// 任务级临时规则（流态第三态：驱动执行期间注入智能体，任务终态后自动清除）
+    #[serde(default)]
+    pub 临时规则: Option<Vec<String>>,
 }
 
 /// 承接任务请求体
@@ -151,6 +154,9 @@ pub async fn 看板发布(
     }
     if let Some(p) = 请求.priority.as_deref().and_then(解析优先级) {
         task.优先级 = p;
+    }
+    if let Some(规则们) = 请求.临时规则 {
+        task.临时规则 = 规则们;
     }
     board
         .发布任务(task)

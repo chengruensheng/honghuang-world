@@ -329,6 +329,7 @@ mod tests {
             description: "验证发布".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
         assert_eq!(id, 1);
 
@@ -353,6 +354,7 @@ mod tests {
             description: "验证查询".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
@@ -370,6 +372,7 @@ mod tests {
             description: "验证承接".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
@@ -391,6 +394,7 @@ mod tests {
             description: "验证拒绝".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         let 结果 = 看板承接(State(状态), Path(id), Json(承接任务请求 {
@@ -407,6 +411,7 @@ mod tests {
             description: "验证提交".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
@@ -432,12 +437,14 @@ mod tests {
             description: "".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布1");
         let _ = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "任务二".into(),
             description: "".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布2");
 
         看板承接(State(状态.clone()), Path(1), Json(承接任务请求 {

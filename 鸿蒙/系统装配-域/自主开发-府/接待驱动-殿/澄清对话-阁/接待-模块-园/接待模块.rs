@@ -434,7 +434,7 @@ mod tests {
     }
     impl 工具对话器 for Mock对话器 {
         fn 对话(&self, _: Vec<对话消息>, _: Vec<serde_json::Value>) -> Result<模型响应> {
-            Ok(模型响应 { 内容: Some("好的".into()), 工具调用: vec![] })
+            Ok(模型响应 { 内容: Some("好的".into()), 工具调用: vec![], 思考: None })
         }
     }
 
@@ -451,6 +451,7 @@ mod tests {
                 工具_对齐总结,
                 json!({ 键_标题: "新建 jia-shang crate", 键_描述: "在 crates 目录新建纯函数 crate，暴露两数相加", 键_场景: "设计", 键_优先级: "P1" }),
             )],
+            思考: None,
         };
         let (回复, 需求) = 解析意图(&响应).unwrap();
         assert!(需求.is_some(), "对齐总结应产出需求摘要");
@@ -468,6 +469,7 @@ mod tests {
         let 响应 = 模型响应 {
             内容: None,
             工具调用: vec![构造工具调用(工具_闲聊, json!({ 键_回复: "善。" }))],
+            思考: None,
         };
         let (回复, 需求) = 解析意图(&响应).unwrap();
         assert_eq!(回复, "善。");
@@ -477,7 +479,7 @@ mod tests {
     /// 无工具调用（纯文本答复）→ 无需求
     #[test]
     fn 无工具调用_纯文本_无需求() {
-        let 响应 = 模型响应 { 内容: Some("好的".into()), 工具调用: vec![] };
+        let 响应 = 模型响应 { 内容: Some("好的".into()), 工具调用: vec![], 思考: None };
         let (回复, 需求) = 解析意图(&响应).unwrap();
         assert_eq!(回复, "好的");
         assert!(需求.is_none());
@@ -489,6 +491,7 @@ mod tests {
         let 响应 = 模型响应 {
             内容: None,
             工具调用: vec![构造工具调用(工具_对齐总结, json!({ 键_标题: "", 键_描述: "" }))],
+            思考: None,
         };
         assert!(解析意图(&响应).is_err());
     }
@@ -513,7 +516,7 @@ mod tests {
         let 接待 = 道祖接待::新(Arc::new(Mock对话器));
         for i in 0..(会话历史上限 + 6) {
             接待
-                .更新会话(&format!("消息{i}"), &模型响应 { 内容: Some(format!("回复{i}")), 工具调用: vec![] })
+                .更新会话(&format!("消息{i}"), &模型响应 { 内容: Some(format!("回复{i}")), 工具调用: vec![], 思考: None })
                 .unwrap();
         }
         let 会话 = 接待.会话.lock().expect("道祖接待锁中毒");

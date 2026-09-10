@@ -53,6 +53,13 @@
 .对话标题 .态.停 .点{
   background: var(--警);
 }
+/* 运转中：青蓝提示（设置态 添加 .忙） */
+.对话标题 .态.忙{
+  color: var(--讯);
+}
+.对话标题 .态.忙 .点{
+  background: var(--讯);
+}
 
 /* ── 消息列表 ── */
 .对话流{
@@ -109,7 +116,7 @@
   padding: 1px 7px;
   border-radius: 99px;
   background: var(--契);
-  color: #06201c;
+  color: var(--契字);
   font-weight: 600;
 }
 .欢迎-名{
@@ -153,7 +160,7 @@
 .快捷-项:hover{
   border-color: var(--契);
   color: var(--契);
-  background: rgba(111, 211, 194, .08);
+  background: color-mix(in srgb, var(--契) 10%, transparent);
 }
 .快捷-名{
   font-family: var(--字码);
@@ -177,8 +184,8 @@
   background: var(--面一);
 }
 .气泡 .徽.ok{
-  border-color: #4ade80;
-  color: #4ade80;
+  border-color: var(--成);
+  color: var(--成);
 }
 .气泡 .次{
   display: inline-block;
@@ -245,6 +252,8 @@
   max-width: min(72%, 640px);
   padding: 11px 14px;
   border-radius: var(--圆中);
+  overflow-wrap: break-word;
+  word-break: break-word;
   font-size: 13px;
   line-height: 1.6;
   background: var(--面二);
@@ -263,6 +272,34 @@
   background: var(--面四);
   font-family: var(--字码);
   font-size: 12px;
+}
+
+/* ── 围栏代码块（净化输出 pre.码；解析时与 p 同居气泡内）── */
+.气泡 pre.码{
+  margin: 2px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--线一);
+  border-radius: var(--圆小);
+  background: var(--面一);
+  overflow-x: auto;
+  font-family: var(--字码);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--字二);
+}
+.气泡 pre.码 code{
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* ── 轻渲染标题行 ── */
+.气泡 h6{
+  margin: 6px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--字一);
 }
 
 /* ── 加载占位 ── */
@@ -383,7 +420,7 @@
   border-color: var(--契);
   color: var(--契);
 }
-.审批 .排 .准:hover{ background: rgba(111, 211, 194, .12); }
+.审批 .排 .准:hover{ background: color-mix(in srgb, var(--契) 12%, transparent); }
 .审批 .排 .否:hover{ border-color: var(--险); color: var(--险); }
 
 /* ── 输入条 ── */
@@ -424,7 +461,7 @@
   border: none;
   border-radius: var(--圆小);
   background: var(--契);
-  color: #06201c;
+  color: var(--契字);
   font-family: var(--字族);
   font-size: 13px;
   font-weight: 600;
@@ -450,8 +487,8 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--火);
-  border: 1px solid rgba(232, 122, 74, .4);
-  background: rgba(232, 122, 74, .1);
+  border: 1px solid color-mix(in srgb, var(--火) 40%, transparent);
+  background: color-mix(in srgb, var(--火) 10%, transparent);
 }
 .对话标题 .钮{
   width: 26px;
@@ -482,7 +519,7 @@
   font-weight: 600;
 }
 .讯息 .谁 .像 svg{ width: 14px; height: 14px; }
-.讯息.对 .谁 .像{ background: rgba(111, 211, 194, .15); color: var(--契); }
+.讯息.对 .谁 .像{ background: color-mix(in srgb, var(--契) 15%, transparent); color: var(--契); }
 
 /* ── 工具卡：耗时 ms ── */
 .工具 > header .ms{

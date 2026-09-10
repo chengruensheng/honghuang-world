@@ -215,14 +215,18 @@ pub async fn 会话分叉接口(
     }
 }
 
-/// GET /api/dev/stream?since=N：驱动过程事件 SSE 流（增量推送，15s 心跳保活）
+/// GET /api/dev/stream?since=N：驱动过程事件 SSE 流（增量推送，15s 心跳保活；并发超限 429）
 pub async fn 看板驱动过程流接口(
     状态: State<数据服务状态>,
     Query(游标): Query<事件游标>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    let Ok(许可) = 状态.sse信号量.clone().try_acquire_owned() else {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    };
     let 台 = 状态.看板驱动台.clone();
     let mut 游标 = 游标.since.unwrap_or(0);
     let 流 = async_stream::stream! {
+        let _持有 = 许可;
         loop {
             for 事件 in 台.过程事件增量(游标) {
                 游标 = 事件.序号;
@@ -232,17 +236,21 @@ pub async fn 看板驱动过程流接口(
             tokio::time::sleep(Duration::from_millis(300)).await;
         }
     };
-    Sse::new(流).keep_alive(KeepAlive::default())
+    Ok(Sse::new(流).keep_alive(KeepAlive::default()))
 }
 
-/// GET /api/dev/stream/state?since=N：驱动阶段事件 SSE 流（增量推送，15s 心跳保活）
+/// GET /api/dev/stream/state?since=N：驱动阶段事件 SSE 流（增量推送，15s 心跳保活；并发超限 429）
 pub async fn 看板驱动阶段流接口(
     状态: State<数据服务状态>,
     Query(游标): Query<事件游标>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    let Ok(许可) = 状态.sse信号量.clone().try_acquire_owned() else {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    };
     let 台 = 状态.看板驱动台.clone();
     let mut 游标 = 游标.since.unwrap_or(0);
     let 流 = async_stream::stream! {
+        let _持有 = 许可;
         loop {
             for 事件 in 台.驱动事件增量(游标) {
                 游标 = 事件.序号;
@@ -252,42 +260,55 @@ pub async fn 看板驱动阶段流接口(
             tokio::time::sleep(Duration::from_millis(300)).await;
         }
     };
-    Sse::new(流).keep_alive(KeepAlive::default())
+    Ok(Sse::new(流).keep_alive(KeepAlive::default()))
 }
 
-/// GET /api/dev/stream/agui?since=N：驱动过程事件 → AG-UI 标准事件 SSE 流（适配器映射，15s 心跳保活）
+/// GET /api/dev/stream/agui?since=N：驱动过程事件 → AG-UI 标准事件 SSE 流（适配器映射，15s 心跳保活；并发超限 429）
 pub async fn 看板驱动过程流_agui接口(
     状态: State<数据服务状态>,
     Query(游标): Query<事件游标>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    let Ok(许可) = 状态.sse信号量.clone().try_acquire_owned() else {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    };
     let 台 = 状态.看板驱动台.clone();
     let mut 游标 = 游标.since.unwrap_or(0);
     let mut 适配器 = crate::协议适配器::新();
     let 流 = async_stream::stream! {
+        let _持有 = 许可;
         loop {
             let 会话id = 台.当前会话id().unwrap_or(0);
             for 事件 in 台.过程事件增量(游标) {
                 游标 = 事件.序号;
                 for 协议事件 in 适配器.过程事件(&事件, 会话id) {
-                    let 载荷 = serde_json::to_string(&协议事件).unwrap_or_else(|_| "{}".into());
+                    let mut 载荷json: serde_json::Value = serde_json::to_value(&协议事件).unwrap_or_else(|_| serde_json::json!({}));
+                    // 往JSON里加角色字段，前端按角色分发到对应组件
+                    if let Some(角色) = &事件.角色 {
+                        载荷json["角色"] = serde_json::Value::String(角色.clone());
+                    }
+                    let 载荷 = serde_json::to_string(&载荷json).unwrap_or_else(|_| "{}".into());
                     yield Ok(Event::default().data(载荷));
                 }
             }
             tokio::time::sleep(Duration::from_millis(300)).await;
         }
     };
-    Sse::new(流).keep_alive(KeepAlive::default())
+    Ok(Sse::new(流).keep_alive(KeepAlive::default()))
 }
 
-/// GET /api/dev/stream/agui/state?since=N：驱动阶段事件 → AG-UI 标准事件 SSE 流（适配器映射）
+/// GET /api/dev/stream/agui/state?since=N：驱动阶段事件 → AG-UI 标准事件 SSE 流（适配器映射；并发超限 429）
 pub async fn 看板驱动阶段流_agui接口(
     状态: State<数据服务状态>,
     Query(游标): Query<事件游标>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    let Ok(许可) = 状态.sse信号量.clone().try_acquire_owned() else {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    };
     let 台 = 状态.看板驱动台.clone();
     let mut 游标 = 游标.since.unwrap_or(0);
     let 适配器 = crate::协议适配器::新();
     let 流 = async_stream::stream! {
+        let _持有 = 许可;
         loop {
             let 会话id = 台.当前会话id().unwrap_or(0);
             for 事件 in 台.驱动事件增量(游标) {
@@ -300,5 +321,5 @@ pub async fn 看板驱动阶段流_agui接口(
             tokio::time::sleep(Duration::from_millis(300)).await;
         }
     };
-    Sse::new(流).keep_alive(KeepAlive::default())
+    Ok(Sse::new(流).keep_alive(KeepAlive::default()))
 }

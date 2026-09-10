@@ -140,8 +140,9 @@ pub async fn 模型探测接口(
             }
             match 地址.filter(|a| !a.is_empty()) {
                 Some(地址值) => {
-                    let 列表端点 = format!("{}/models", 地址值.trim_end_matches('/'));
-                    match hm_content::网络探测模型(&列表端点, 密钥) {
+                    // 端点归一化：地址可能是完整 chat 端点（与池内规则一致）
+                    let 根 = 地址值.trim_end_matches('/').trim_end_matches("/chat/completions");
+                    match hm_content::网络探测模型(&format!("{根}/models"), 密钥) {
                         Ok((来源, 模型)) => Json(LLM探测响应 { 来源, 模型, 错误: None }),
                         Err(e) => Json(LLM探测响应 { 来源: String::new(), 模型: vec![], 错误: Some(e.to_string()) }),
                     }
@@ -172,4 +173,84 @@ pub async fn 模型接入接口(
         })),
         Err(_) => Err(StatusCode::BAD_REQUEST),
     }
+}
+
+/// 智能体绑定响应：身份 + 当前独立模型绑定（None = 跟随全局选择）
+#[derive(Debug, Serialize)]
+pub struct 智能体绑定响应 {
+    pub 名: String,
+    pub 绑定: Option<池选择响应>,
+}
+
+/// LLM 智能体清单响应：可绑定身份 × 当前绑定
+#[derive(Debug, Serialize)]
+pub struct LLM智能体响应 {
+    pub 智能体: Vec<智能体绑定响应>,
+}
+
+/// 绑定请求体（智能体身份须在清单内；供应商须在池内）
+#[derive(Deserialize)]
+pub struct LLM绑定请求 {
+    pub 智能体: String,
+    pub 供应商: String,
+    pub 模型: String,
+}
+
+/// 解绑请求体
+#[derive(Deserialize)]
+pub struct LLM解绑请求 {
+    pub 智能体: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LLM绑定操作响应 {
+    pub 成功: bool,
+}
+
+/// GET /api/llm/agents：智能体身份清单 + 当前独立模型绑定
+pub async fn 智能体清单接口(State(状态): State<数据服务状态>) -> Json<LLM智能体响应> {
+    match &状态.llm池 {
+        Some(池) => Json(LLM智能体响应 {
+            智能体: 池
+                .绑定清单()
+                .into_iter()
+                .map(|b| 智能体绑定响应 {
+                    名: b.名,
+                    绑定: b.绑定.map(|s| 池选择响应 { 供应商: s.供应商, 模型: s.模型 }),
+                })
+                .collect(),
+        }),
+        None => Json(LLM智能体响应 { 智能体: vec![] }),
+    }
+}
+
+/// POST /api/llm/agent/bind：为智能体绑定独立模型（校验身份与供应商；成功落盘绑定文件）
+pub async fn 智能体绑定接口(
+    State(状态): State<数据服务状态>,
+    Json(请求): Json<LLM绑定请求>,
+) -> Result<Json<LLM绑定操作响应>, StatusCode> {
+    let Some(池) = &状态.llm池 else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+    if !池.可用() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    池.绑定智能体(&请求.智能体, &请求.供应商, &请求.模型)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    Ok(Json(LLM绑定操作响应 { 成功: true }))
+}
+
+/// POST /api/llm/agent/unbind：解除智能体绑定（回退全局选择，幂等）
+pub async fn 智能体解绑接口(
+    State(状态): State<数据服务状态>,
+    Json(请求): Json<LLM解绑请求>,
+) -> Result<Json<LLM绑定操作响应>, StatusCode> {
+    let Some(池) = &状态.llm池 else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+    if !池.可用() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    池.解绑智能体(&请求.智能体).map_err(|_| StatusCode::BAD_REQUEST)?;
+    Ok(Json(LLM绑定操作响应 { 成功: true }))
 }

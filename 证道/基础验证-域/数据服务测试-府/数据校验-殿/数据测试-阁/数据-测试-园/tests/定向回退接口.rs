@@ -10,6 +10,7 @@ async fn 发布(状态: &数据服务状态) -> u64 {
         description: "验证定向回退接口".into(),
         scene: None,
         priority: None,
+        临时规则: None,
     }))
     .await
     .expect("发布应成功");

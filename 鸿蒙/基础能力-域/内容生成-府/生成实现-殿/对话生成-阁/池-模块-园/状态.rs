@@ -73,16 +73,20 @@ impl LLM池 {
                 tracing::warn!("接入文件供应商 {} 密钥无效（env 引用缺失），跳过", 名称);
                 continue;
             }
-            let 端点 = 条目["地址"].as_str().unwrap_or_default();
+            let 端点存 = 条目["地址"].as_str().unwrap_or_default();
             let 模型 = 条目["模型"].as_str().unwrap_or_default();
-            if 端点.is_empty() || 模型.is_empty() {
+            if 端点存.is_empty() || 模型.is_empty() {
                 continue;
             }
+            // 端点归一化（与 接入() 同规则）：接受根地址或完整 chat 端点
+            let 根 = 端点存
+                .trim_end_matches('/')
+                .trim_end_matches("/chat/completions");
             let 供应商 = 池内供应商 {
                 名: 名称.into(),
                 密钥,
-                端点: 端点.into(),
-                列表端点: format!("{}/models", 端点.trim_end_matches('/')),
+                端点: format!("{根}/chat/completions"),
+                列表端点: format!("{根}/models"),
                 模型: 模型.into(),
                 超时: Duration::from_secs(
                     条目["超时秒"].as_u64().unwrap_or(30).max(1),

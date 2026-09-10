@@ -51,7 +51,17 @@ window.乾坤视图 = (function(){
   var 题 = 抽屉.querySelector(".视图-题");
   var 数 = 抽屉.querySelector(".视图-数");
   var 体 = 抽屉.querySelector(".视图-体");
-  抽屉.querySelector(".视图-关").addEventListener("click", 收起);
+
+  // 当前抽屉展示键（空 = 收起）；重复点击同键 → 收起并复位图标高亮
+  var 当前键 = "";
+  function 复位收起(键){
+    当前键 = "";
+    抽屉.classList.remove("开");
+    if (键){
+      document.dispatchEvent(new CustomEvent("乾坤图标复位", { detail: { 键: 键 } }));
+    }
+  }
+  抽屉.querySelector(".视图-关").addEventListener("click", function(){ 复位收起(当前键); });
 
   function 收起(){ 抽屉.classList.remove("开"); }
   function 打开(标题){ 题.textContent = 标题; 数.textContent = ""; 抽屉.classList.add("开"); }
@@ -133,15 +143,16 @@ window.乾坤视图 = (function(){
       });
   }
 
-  // ── 事件路由：图标键 → 视图动作 ──
+  // ── 事件路由：图标键 → 视图动作（重复点击同键 = 收起）──
   document.addEventListener("乾坤图标", function(e){
     var 键 = e.detail && e.detail.键;
-    if (键 === "记忆"){ 载记忆(); }
-    else if (键 === "图谱"){ 载图谱(); }
-    else if (键 === "传承殿"){ 载文件("传承殿", "传承殿"); }
-    else if (键 === "门禁"){ 载文件("门禁", "门禁"); }
-    else if (键 === "架构"){ 载文件("架构", "架构"); }
-    else { 收起(); }
+    if (键 && 键 === 当前键){ 复位收起(键); return; }
+    if (键 === "记忆"){ 当前键 = 键; 载记忆(); }
+    else if (键 === "图谱"){ 当前键 = 键; 载图谱(); }
+    else if (键 === "传承殿"){ 当前键 = 键; 载文件("传承殿", "传承殿"); }
+    else if (键 === "门禁"){ 当前键 = 键; 载文件("门禁", "门禁"); }
+    else if (键 === "架构"){ 当前键 = 键; 载文件("架构", "架构"); }
+    else { 当前键 = ""; 收起(); }
   });
 
   // ── 文件视图：传承殿（文档）/ 门禁（-门禁）/ 架构（架构图）──

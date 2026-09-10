@@ -249,7 +249,9 @@ impl LLM池 {
                     .filter(|k| !k.is_empty())
                     .map(|k| k.to_string())
                     .or_else(|| Some(已存密钥));
-                let 列表端点 = format!("{}/models", 实际地址.trim_end_matches('/'));
+                // 端点归一化：池内地址可能是完整 chat 端点（与 接入()/从配置 同规则）
+                let 根 = 实际地址.trim_end_matches('/').trim_end_matches("/chat/completions");
+                let 列表端点 = format!("{根}/models");
                 return 网络探测模型(&列表端点, 实际密钥.as_deref());
             }
         }
@@ -257,7 +259,9 @@ impl LLM池 {
             return Err(Error::模型("模型探测需提供 base_url 或选择内置模板".into()));
         };
         let 实际密钥 = 密钥.filter(|k| !k.is_empty()).map(|k| k.to_string());
-        let 列表端点 = format!("{}/models", 地址值.trim_end_matches('/'));
+        // 端点归一化：自定义地址同样可能是完整 chat 端点
+        let 根 = 地址值.trim_end_matches('/').trim_end_matches("/chat/completions");
+        let 列表端点 = format!("{根}/models");
         网络探测模型(&列表端点, 实际密钥.as_deref())
     }
 
@@ -265,11 +269,17 @@ impl LLM池 {
     /// 返回 (新选择, TOML 配置片段)。
     pub fn 接入(&self, 名称: &str, 地址: &str, 密钥: &str, 模型: &str) -> Result<(池选择, String)> {
         let 名 = 名称.trim();
-        let 端点 = 地址.trim();
         let 模型值 = 模型.trim();
-        if 名.is_empty() || 端点.is_empty() || 模型值.is_empty() {
+        // 端点归一化：接受 API 根地址或完整 chat 端点，统一为 {根}/chat/completions + {根}/models
+        let 根 = 地址
+            .trim()
+            .trim_end_matches('/')
+            .trim_end_matches("/chat/completions")
+            .to_string();
+        if 名.is_empty() || 根.is_empty() || 模型值.is_empty() {
             return Err(Error::模型("接入供应商：名称/地址/模型 必填".into()));
         }
+        let 端点 = format!("{根}/chat/completions");
         let 解析后 = 解析密钥(密钥);
         if 解析后.is_empty() {
             return Err(Error::模型(format!(
@@ -279,8 +289,8 @@ impl LLM池 {
         let 供应商 = 池内供应商 {
             名: 名.into(),
             密钥: 解析后,
-            端点: 端点.into(),
-            列表端点: format!("{}/models", 端点.trim_end_matches('/')),
+            端点: 端点.clone(),
+            列表端点: format!("{根}/models"),
             模型: 模型值.into(),
             超时: Duration::from_secs(30),
             重试: 2,

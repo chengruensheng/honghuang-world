@@ -16,6 +16,8 @@ pub struct 认知注入 {
     上下文: Arc<Mutex<上下文库>>,
     /// 三态持久化存储（可选）：装配后每轮对话结束自动 保存 三态写穿落盘
     存储: Option<Arc<三态存储>>,
+    /// 临时规则（流态第三态）：任务级规则，任务执行期间注入初始上下文，任务终态后清除
+    临时规则们: Arc<Mutex<Vec<String>>>,
 }
 
 impl 认知注入 {
@@ -25,7 +27,21 @@ impl 认知注入 {
         心智: Arc<Mutex<心智地图>>,
         上下文: Arc<Mutex<上下文库>>,
     ) -> Self {
-        认知注入 { 图谱, 心智, 上下文, 存储: None }
+        认知注入 { 图谱, 心智, 上下文, 存储: None, 临时规则们: Arc::new(Mutex::new(Vec::new())) }
+    }
+
+    /// 注入临时规则（流态第三态）：任务承接时调用，替换为当前任务的规则集（幂等：同任务重复承接不叠加）
+    pub fn 注入临时规则(&self, 规则们: Vec<String>) {
+        let 清洗后: Vec<String> = 规则们.into_iter().map(|r| r.trim().to_string()).filter(|r| !r.is_empty()).collect();
+        if 清洗后.is_empty() {
+            return;
+        }
+        *self.临时规则们.lock().expect("临时规则锁中毒") = 清洗后;
+    }
+
+    /// 清除临时规则：任务终态（清理完成）后调用，规则不外溢到后续任务
+    pub fn 清除临时规则(&self) {
+        self.临时规则们.lock().expect("临时规则锁中毒").clear();
     }
 
     /// 链式装配三态持久化存储：装配后 保存() 把 图谱/心智/上下文 写穿落盘
@@ -72,6 +88,19 @@ impl 认知注入 {
                 "【图谱·按需】\n{}",
                 拉.iter()
                     .map(|p| p.内容.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
+        // 流态第三态：临时任务规则（任务执行期间强制约束，任务终态后随清除不再现）
+        let 临时规则 = self.临时规则们.lock().expect("临时规则锁中毒").clone();
+        if !临时规则.is_empty() {
+            段.push(format!(
+                "【临时·任务规则】（本任务执行期间的强制约束，必须遵守）\n{}",
+                临时规则
+                    .iter()
+                    .enumerate()
+                    .map(|(i, r)| format!("{}. {r}", i + 1))
                     .collect::<Vec<_>>()
                     .join("\n")
             ));

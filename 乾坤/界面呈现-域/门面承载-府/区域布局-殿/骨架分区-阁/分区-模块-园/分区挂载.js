@@ -15,7 +15,7 @@ window.乾坤界面 = (function(){
 
     /**
      * 挂载组件到槽位
-     * @param {string} 名 - 槽位名（顶栏/左栏/主区/右栏/底栏）
+     * @param {string} 名 - 槽位名（顶栏/左栏/主区/底栏）
      * @param {Node|Function} 节点 - DOM 节点，或返回节点的工厂函数
      * @returns {Node|null} 实际挂载的节点；未知槽位返回 null
      */

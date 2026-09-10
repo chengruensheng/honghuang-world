@@ -12,11 +12,19 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
     let config = hm_config::运行配置();
     let logger = hm_log::Logger::new(&config.log);
 
-    // 持久化目录：空字符串 = 纯内存（不持久化）
+    // 持久化目录：空字符串 = 纯内存（不持久化）。
+    // 目录不存在则自动创建（原子写入不建父目录，五行引擎自动保存依赖目录就位）；
+    // 创建失败回退纯内存并告警（与三态存储的降级策略一致）。
     let 持久化目录 = if config.persistence.dir.trim().is_empty() {
         None
     } else {
-        Some(config.persistence.dir.clone())
+        match std::fs::create_dir_all(&config.persistence.dir) {
+            Ok(()) => Some(config.persistence.dir.clone()),
+            Err(e) => {
+                tracing::warn!("持久化目录 {} 创建失败，回退纯内存模式: {e}", config.persistence.dir);
+                None
+            }
+        }
     };
 
     // 商业级 LLM 池：配置 providers 非空 → 从配置（多供应商池）；否则回退环境变量单点（兼容 v1.43）。
@@ -79,7 +87,14 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         Some(d) => format!("{d}/任务看板.jsonl"),
         None => std::env::temp_dir().join("洪荒任务看板.jsonl").to_string_lossy().to_string(),
     };
-    let 任务看板 = Arc::new(std::sync::Mutex::new(tc_task::TaskBoard::新建(看板路径)));
+    // 加载历史看板（文件不存在则空板）：重启恢复，避免看板失忆
+    let 任务看板 = Arc::new(std::sync::Mutex::new(match tc_task::TaskBoard::加载(&看板路径) {
+        Ok(看板) => 看板,
+        Err(e) => {
+            tracing::warn!("任务看板加载失败，使用空看板: {e}");
+            tc_task::TaskBoard::新建(&看板路径)
+        }
+    }));
     {
         let mut 看板 = 任务看板.lock().expect("看板锁中毒");
         看板.设置信号总线(装配.信号总线.clone());
@@ -106,13 +121,16 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
     // LLM key 缺失仅告警，受理台保持未上线（受理接口 503），不影响数据服务；
     // dev_task 非空时自动受理为首个任务
     if config.app.run_dev_agent {
+        // 执行链视图：「执行」身份独立模型绑定（无绑定回退全局选择；UI 改绑即时生效）
+        let 执行视图: Option<Arc<dyn hm_content_contract::工具对话器>> =
+            llm池.as_ref().map(|池| 池.绑定视图("执行") as Arc<dyn hm_content_contract::工具对话器>);
         match 装配开发受理台(
             &数据状态.开发执行台,
             &config.app.dev_workspace,
             config.app.dev_max_rounds,
             config.app.executor_timeout_secs,
             config.app.executor_max_output_bytes,
-            llm池.clone(),
+            执行视图.clone(),
         ) {
             Ok(()) => {
                 tracing::info!("自主开发智能体已上线（HTTP 受理模式，工作区 {}）", config.app.dev_workspace);
@@ -121,9 +139,9 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 let 最大轮数 = config.app.dev_max_rounds;
                 let 超时秒 = config.app.executor_timeout_secs;
                 let 输出上限 = config.app.executor_max_output_bytes;
-                let 重装配池 = llm池.clone();
+                let 重装配视图 = 执行视图.clone();
                 数据状态.重装配工作区 = Some(Arc::new(move |新工作区: &str| {
-                    装配开发受理台(&执行台, 新工作区, 最大轮数, 超时秒, 输出上限, 重装配池.clone())
+                    装配开发受理台(&执行台, 新工作区, 最大轮数, 超时秒, 输出上限, 重装配视图.clone())
                 }));
                 if !config.app.dev_task.trim().is_empty() {
                     match hm_http::受理开发任务(&数据状态, config.app.dev_task.clone()) {
@@ -190,6 +208,13 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                         }
                     }
                 };
+                // 规则种子注入：从 rules/ 目录加载 .md 规则文件，写入心智地图的规则维度格位
+                {
+                    let 种子们 = hm_agent::加载规则种子("rules");
+                    if !种子们.is_empty() {
+                        hm_agent::注入种子到格位(&数据状态.心智地图, &种子们);
+                    }
+                }
                 // 驱动会话落盘目录：persistence.dir/驱动会话（空=纯内存，重启丢失）
                 let 驱动会话目录 = match &持久化目录 {
                     Some(d) => format!("{d}/驱动会话"),
@@ -204,7 +229,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     config.app.executor_timeout_secs,
                     config.app.executor_max_output_bytes,
                     Some(认知注入.clone()),
-                    llm池.clone(),
+                    执行视图.clone(),
                     &驱动会话目录,
                 ) {
                     Ok(()) => tracing::info!("看板驱动已上线（HTTP 驱动模式）"),
@@ -217,7 +242,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 let 上下文路径克隆 = 驱动上下文路径.clone();
                 let 会话目录克隆 = 驱动会话目录.clone();
                 let 认知克隆 = 认知注入.clone();
-                let 池克隆 = llm池.clone();
+                let 视图克隆 = 执行视图.clone();
                 let 最大轮数 = config.app.dev_max_rounds;
                 let 超时秒 = config.app.executor_timeout_secs;
                 let 输出上限 = config.app.executor_max_output_bytes;
@@ -231,7 +256,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                         超时秒,
                         输出上限,
                         Some(认知克隆.clone()),
-                        池克隆.clone(),
+                        视图克隆.clone(),
                         &会话目录克隆,
                     )
                 }));
@@ -240,15 +265,23 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     Some(d) => format!("{d}/{道祖接待文件名}"),
                     None => std::env::temp_dir().join(道祖接待文件名).to_string_lossy().to_string(),
                 };
-                match 道祖接待::加载(llm池.clone().expect("LLM 池已装配"), 道祖路径) {
-                    Ok(接待) => {
-                        let 接待 = 接待
-                            .装配认知(认知注入.clone())
-                            .装配流式(llm池.clone().expect("LLM 池已装配"));
-                        数据状态.道祖接待 = Some(Arc::new(Mutex::new(接待)));
-                        tracing::info!("道祖接待已上线（主控澄清模式，认知装配已对齐，流式对话已开启）");
+                // 道祖视图：「道祖」身份独立模型绑定（澄清对话通道，无绑定回退全局选择）。
+                // llm池 在密钥缺失/供应商全禁用时为 None，不得 expect（否则 run_dev_agent=true 且
+                // 池未就绪时启动即崩）——此处与上方「执行视图」的 .map 兜底保持一致。
+                if let Some(池) = llm池.as_ref() {
+                    let 道祖视图 = 池.绑定视图("道祖");
+                    match 道祖接待::加载(道祖视图.clone(), 道祖路径) {
+                        Ok(接待) => {
+                            let 接待 = 接待
+                                .装配认知(认知注入.clone())
+                                .装配流式(道祖视图);
+                            数据状态.道祖接待 = Some(Arc::new(Mutex::new(接待)));
+                            tracing::info!("道祖接待已上线（主控澄清模式，认知装配已对齐，流式对话已开启）");
+                        }
+                        Err(e) => tracing::warn!("道祖接待装配失败，对话澄清不可用（不影响启动）: {e}"),
                     }
-                    Err(e) => tracing::warn!("道祖接待装配失败，对话澄清不可用（不影响启动）: {e}"),
+                } else {
+                    tracing::warn!("道祖接待装配跳过（LLM 池未就绪）");
                 }
                 // 三态认知注入注入数据服务状态：认知问答接口据此提供检索决策与 LLM 组装答复（阶段 0C）
                 数据状态.认知注入 = Some(认知注入.clone());

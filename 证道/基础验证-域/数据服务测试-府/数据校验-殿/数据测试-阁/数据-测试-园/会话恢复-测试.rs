@@ -118,6 +118,7 @@ mod tests {
             description: "会话恢复测试描述".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         });
         let Json(_) = 看板发布(State(状态.clone()), 请求).await.expect("发布应成功");
     }
@@ -196,8 +197,9 @@ mod tests {
                     名称: "列目录".into(),
                     参数: r#"{"路径": "."}"#.into(),
                 }],
+                思考: None,
             },
-            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
+            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![], 思考: None },
         ]));
         装配驱动器带检查点(&状态, &看板, 对话器);
         发布任务(&状态, "断点恢复任务").await;

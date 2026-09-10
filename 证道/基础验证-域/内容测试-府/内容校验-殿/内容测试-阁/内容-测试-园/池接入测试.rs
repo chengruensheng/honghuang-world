@@ -210,7 +210,8 @@ mod tests {
         池.接入("甲", "http://127.0.0.1:2/v2", "key-2", "模型2").unwrap();
         let 清单 = 池.供应商清单();
         assert_eq!(清单.len(), 1, "重名应覆盖");
-        assert_eq!(清单[0].地址, "http://127.0.0.1:2/v2");
+        // 接入时端点已归一化为完整 chat/completions 端点（供应商.rs 接入契约）
+        assert_eq!(清单[0].地址, "http://127.0.0.1:2/v2/chat/completions");
         assert_eq!(清单[0].模型, "模型2");
         let 选择 = 池.当前选择().unwrap();
         assert_eq!(选择.供应商, "甲");

@@ -1,0 +1,294 @@
+/* ═══════════════════════════════════════════════════════════
+   乾坤 · 功能组件-殿 —— 设置面板 接入组件 外观
+   隔离约定：只引用背景层令牌，不写死色值；类名一律「设置-」前缀。
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 供应商组头：标题与密钥按钮同排 ── */
+.设置-供应商组 h6{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.设置-密钥钮{
+  padding: 2px 10px;
+  border: 1px solid var(--线二);
+  border-radius: 99px;
+  background: var(--面二);
+  color: var(--字三);
+  font-family: var(--字族);
+  font-size: 10px;
+  cursor: pointer;
+  transition: border-color var(--速), color var(--速);
+}
+.设置-密钥钮:hover{
+  border-color: var(--契);
+  color: var(--字一);
+}
+
+/* ── 密钥行（组内展开）── */
+.设置-密钥行{
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面二);
+}
+.设置-密钥输入{
+  flex: 1 1 220px;
+  padding: 6px 9px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面一);
+  color: var(--字一);
+  font-family: var(--字码);
+  font-size: 11px;
+}
+.设置-密钥输入:focus{
+  outline: none;
+  border-color: var(--契);
+}
+.设置-密钥保存{
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--契);
+  color: var(--契字);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity var(--速);
+}
+.设置-密钥保存:disabled{
+  opacity: .55;
+  cursor: default;
+}
+.设置-密钥反馈{
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--成);
+  word-break: break-all;
+}
+.设置-密钥反馈.坏{
+  color: var(--警);
+}
+
+/* ── 接入入口 + 向导 ── */
+.设置-接入钮{
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px dashed var(--线二);
+  border-radius: var(--圆小);
+  background: transparent;
+  color: var(--字三);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color var(--速), color var(--速);
+}
+.设置-接入钮:hover{
+  border-color: var(--契);
+  color: var(--字一);
+}
+.设置-向导{
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面二);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.设置-向导头{
+  display: flex;
+  align-items: center;
+}
+.设置-向导头 b{
+  font-size: 12px;
+  color: var(--字一);
+}
+.设置-向导关{
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--字三);
+  cursor: pointer;
+}
+.设置-向导关:hover{
+  color: var(--字一);
+  background: var(--面三);
+}
+.设置-向导行{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.设置-向导行 input,
+.设置-向导行 select{
+  flex: 1 1 150px;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面一);
+  color: var(--字一);
+  font-family: var(--字族);
+  font-size: 11px;
+}
+.设置-向导行 input:focus,
+.设置-向导行 select:focus{
+  outline: none;
+  border-color: var(--契);
+}
+.设置-向导取模{
+  padding: 6px 12px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面三);
+  color: var(--字二);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-向导取模:hover{
+  border-color: var(--契);
+  color: var(--字一);
+}
+.设置-向导取模:disabled{
+  opacity: .55;
+  cursor: default;
+}
+.设置-向导接{
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--契);
+  color: var(--契字);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-向导接:disabled{
+  opacity: .55;
+  cursor: default;
+}
+.设置-向导反馈{
+  flex-basis: 100%;
+  align-self: center;
+  font-size: 11px;
+  color: var(--成);
+  word-break: break-all;
+}
+.设置-向导反馈.坏{
+  color: var(--警);
+}
+
+/* ── 智能体绑定 ── */
+.设置-绑定{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.设置-绑定空{
+  padding: 10px 12px;
+  border: 1px dashed var(--线二);
+  border-radius: var(--圆小);
+  font-size: 11px;
+  color: var(--字四);
+  text-align: center;
+}
+.设置-绑定行{
+  padding: 10px 12px;
+  border: 1px solid var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面二);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.设置-绑定头{
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.设置-绑定头 b{
+  font-size: 12px;
+  color: var(--字一);
+}
+.设置-绑定头 em{
+  font-style: normal;
+  font-size: 10px;
+  color: var(--字四);
+}
+.设置-绑定生{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--字四);
+}
+.设置-绑定生 code{
+  font-family: var(--字码);
+  font-size: 10px;
+  color: var(--字二);
+  word-break: break-all;
+}
+.设置-绑定选{
+  display: flex;
+  gap: 6px;
+}
+.设置-绑定选 select{
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面一);
+  color: var(--字一);
+  font-family: var(--字码);
+  font-size: 11px;
+}
+.设置-绑定制{
+  display: flex;
+  gap: 6px;
+}
+.设置-绑钮{
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--契);
+  color: var(--契字);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-绑钮:hover{
+  opacity: .9;
+}
+.设置-解钮{
+  padding: 5px 12px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--字三);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-解钮:hover{
+  border-color: var(--警);
+  color: var(--警);
+}
+.设置-绑定错{
+  font-size: 11px;
+  color: var(--警);
+  word-break: break-all;
+}

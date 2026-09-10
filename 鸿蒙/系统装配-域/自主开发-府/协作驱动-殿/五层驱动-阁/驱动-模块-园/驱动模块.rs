@@ -124,6 +124,14 @@ impl 五层协作驱动器 {
             上下文.创建上下文(角色, Some(快照.id))
         };
 
+        // 3b. 流态第三态：任务承接即注入其临时规则（任务终态后清除，见 6d）
+        if let Some(认知) = &self.认知 {
+            if !快照.临时规则.is_empty() {
+                认知.注入临时规则(快照.临时规则.clone());
+                tracing::info!("任务 #{} 注入临时规则 {} 条", 快照.id, 快照.临时规则.len());
+            }
+        }
+
         // 4. 组装阶段提示并执行（智能体循环，LLM 可用工具实际干活）
         let 提示 = 阶段提示(&角色, &快照);
         let mut 智能体 = 智能体::new(self.对话器.clone(), self.执行器.clone(), self.最大轮数);
@@ -160,6 +168,12 @@ impl 五层协作驱动器 {
 
         // 5. 解析阶段产出为文档（失败 → 回喂 serde 错误原文重试，上限 2 次；仍失败任务保持待承接可重试）
         let (写文档, 下一状态) = 解析并构造带重试(&角色, &答复, &提示, &智能体)?;
+
+        // 5b. 清理残留核验门：太乙金仙产出解析通过且要推进「清理完成」时，先用执行器实扫工作区
+        //     确认 .bak/.tmp 已清空；有残留则返回 Err，任务保持待清理可重试（防模型「自报完成但产物残留」）
+        if 角色 == AgentRole::太乙金仙 && 下一状态 == TaskStatus::清理完成 {
+            self.清理残留核验()?;
+        }
 
         // 6. 承接 + 写文档 + 提交（锁内原子）；记录是否发生定向回退
         let (实际新状态, 回退信息) = {
@@ -216,6 +230,14 @@ impl 五层协作驱动器 {
             }
         }
 
+        // 6d. 任务终态（清理完成）：清除临时规则，规则不外溢到后续任务
+        if 实际新状态 == TaskStatus::清理完成 {
+            if let Some(认知) = &self.认知 {
+                认知.清除临时规则();
+                tracing::info!("任务 #{} 已终态（清理完成），临时规则已清除", 快照.id);
+            }
+        }
+
         // 7. 上下文记录后清理
         {
             let mut 上下文 = self.上下文.lock().expect("上下文锁中毒");
@@ -248,6 +270,34 @@ impl 五层协作驱动器 {
     /// 供外部注入事件回调的便捷方法（转发给循环的事件回调在此不展开，MVP 由调用方直接构造智能体）
     pub fn 看板(&self) -> Arc<Mutex<TaskBoard>> {
         self.看板.clone()
+    }
+
+    /// 清理残留机器核验门：太乙金仙宣告「清理完成」前，扫描工作区内 `.bak`/`.tmp` 临时产物；
+    /// 存在残留则拒绝推进（任务保持待清理可重试），杜绝模型「自报清理完成但产物真实残留」的虚假完成。
+    fn 清理残留核验(&self) -> Result<()> {
+        let mut 残留: Vec<String> = Vec::new();
+        for 模式 in ["**/*.bak", "**/*.tmp"] {
+            match self.执行器.按名找文件(模式) {
+                Ok(输出) => {
+                    for 行 in 输出.lines() {
+                        let 行 = 行.trim();
+                        if !行.is_empty() && 行 != "（无匹配）" {
+                            残留.push(行.to_string());
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!("清理残留核验扫描 {模式} 失败: {e}"),
+            }
+        }
+        if 残留.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!(
+                "清理残留核验未通过：工作区仍存在 {} 个临时/备份文件（{}），已拒绝推进「清理完成」；请用「删除文件」工具清理后再重试",
+                残留.len(),
+                残留.join("、")
+            )))
+        }
     }
 
     /// Resume 前置闸门：校验任务当前状态是否仍可由 `角色名` 承接（即该检查点对应阶段尚未推进成功）。
@@ -288,6 +338,8 @@ struct 任务快照 {
     /// 结构化阶段文档（供错误追溯器纯规则判定）
     设计对象: Option<DesignDoc>,
     实现对象: Option<ImplementationDoc>,
+    /// 任务级临时规则（流态第三态：承接时注入，任务终态后清除）
+    临时规则: Vec<String>,
 }
 
 fn 任务快照(t: &Task) -> 任务快照 {
@@ -304,6 +356,7 @@ fn 任务快照(t: &Task) -> 任务快照 {
         终审: t.终审文档.as_ref().map(|d| serde_json::to_string_pretty(d).unwrap_or_default()),
         设计对象: t.设计文档.clone(),
         实现对象: t.实现文档.clone(),
+        临时规则: t.临时规则.clone(),
     }
 }
 
@@ -351,8 +404,14 @@ fn 阶段提示(角色: &AgentRole, 快照: &任务快照) -> String {
              {\"通过\":true,\"需求满足度\":10,\"可维护性\":9,\"代码质量\":9,\"风险评估\":\"\",\"评语\":\"\"}"
         }
         AgentRole::太乙金仙 => {
-            "你的任务是【清理】。对已终审通过的任务做收尾清理：核对产物、归档、移除临时文件。\
-             输出清理记录 JSON：\
+            "你的任务是【清理】。对已终审通过的任务做收尾清理：核对产物、归档、移除临时文件。\n\
+             清理纪律（强制，否则清理会被机器核验驳回）：\n\
+             1) 先用「按名找文件」扫描工作区残留临时/备份文件，工具调用必须显式携带模式参数，\
+             形如 {\"模式\":\"**/*.bak\"} 与 {\"模式\":\"**/*.tmp\"}（参数为空会被拒绝，禁止省略）；\n\
+             2) 对每个残留文件调用「删除文件」工具逐一删除，形如 {\"路径\":\"<扫描返回的相对路径>\"}；\n\
+             3) 删除后再用「按名找文件」重新扫描同一模式，确认已无匹配（返回（无匹配））才可宣告完成；\n\
+             4) 若工具调用失败，必须读取错误信息修正后重试，不得在工具失败时直接宣告清理完成（机器会实扫工作区，谎报必被驳回）。\n\
+             输出清理记录 JSON：\n\
              {\"清理项\":[{\"项\":\"\",\"结果\":\"已清理\"}],\"归档完成\":true}"
         }
     };
@@ -405,7 +464,11 @@ fn 解析并构造(
     角色: &AgentRole,
     答复: &str,
 ) -> Result<(Box<dyn FnOnce(&mut TaskBoard, u64) -> Result<()>>, TaskStatus)> {
-    let json = 提取json(答复)
+    // LLM 常在 JSON 前包裹 <think>...</think> 思考标签或 ```json 代码块，
+    // 提取json 会从第一个 { 开始匹配，可能抓到 think 内部的碎片 JSON 而非真正的阶段产出。
+    // 先剥离这些杂质再提取，避免误抓导致的反序列化失败回喂重试浪费轮次。
+    let 净化答复 = 剥离杂质标签(答复);
+    let json = 提取json(&净化答复)
         .ok_or_else(|| Error::反序列化(format!("阶段产出无 JSON（答复前 200 字：{}）", 截断(答复, 200))))?;
     let mut 值: serde_json::Value = serde_json::from_str(&json)
         .map_err(|e| Error::反序列化(format!("阶段产出非合法 JSON: {e}；前 200 字：{}", 截断(&json, 200))))?;
@@ -481,6 +544,72 @@ fn 解析并构造带重试(
 ///
 /// 逐字符扫描：首个 `{` 入栈，配平到栈空为止。忽略字符串内与转义序列中的括号，
 /// 避免 LLM 在 JSON 后追加解释/代码块标记导致 rfind 取错闭合符。
+/// 剥离 LLM 输出中的杂质标签（...、```json...```），
+/// 避免 提取json 误抓 think 内部的碎片 JSON。
+/// 支持大小写不敏感匹配、多段出现；保留标签外的正文内容。
+/// 注意：<think>/``` 均为纯 ASCII，可直接在 UTF-8 字节流上匹配，
+/// 避免 to_lowercase 改变多字节字符长度导致的偏移错位。
+fn 剥离杂质标签(文本: &str) -> String {
+    let mut 结果 = String::with_capacity(文本.len());
+    let bytes = 文本.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    while i < len {
+        // 检测 <think> 开始标签（7 字节纯 ASCII，大小写不敏感）
+        if i + 7 <= len && bytes[i] == b'<' {
+            let 候选 = &bytes[i..i + 7];
+            if 候选.eq_ignore_ascii_case(b"<think>") {
+                // 找 </think> 结束标签（8 字节纯 ASCII）
+                if let Some(相对偏移) = 文本[i + 7..].find("</think>") {
+                    // 跳过整个 <think>...</think> 块
+                    i += 7 + 相对偏移 + 8;
+                    continue;
+                }
+                // 无闭合标签：跳过 <think> 标记本身
+                i += 7;
+                continue;
+            }
+        }
+        // 检测 ``` 代码块围栏（3 字节纯 ASCII）
+        if i + 3 <= len && &bytes[i..i + 3] == b"```" {
+            if let Some(相对偏移) = 文本[i + 3..].find("```") {
+                let 块内容 = &文本[i + 3..i + 3 + 相对偏移];
+                // 去掉首行可能的语言标识（如 "json\n"）
+                let 内容起始 = if let Some(换行位置) = 块内容.find('\n') {
+                    let 首行 = &块内容[..换行位置];
+                    if 首行.trim().chars().all(|c| c.is_ascii_alphabetic()) {
+                        换行位置 + 1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+                结果.push_str(&块内容[内容起始..]);
+                i += 3 + 相对偏移 + 3;
+                continue;
+            }
+        }
+        // 安全推进：UTF-8 首字节决定字符宽度，避免截断多字节字符
+        let 字符宽度 = utf8_char_width(bytes[i]);
+        let end = (i + 字符宽度).min(len);
+        结果.push_str(&文本[i..end]);
+        i = end;
+    }
+    结果
+}
+
+/// UTF-8 首字节 → 字符字节宽度（无效前缀当 1 字节处理）
+fn utf8_char_width(首字节: u8) -> usize {
+    match 首字节 {
+        0x00..=0x7F => 1,
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF7 => 4,
+        _ => 1, // 无效续字节或孤立字节，安全跳过 1
+    }
+}
+
 fn 提取json(文本: &str) -> Option<String> {
     let 开始 = 文本.find('{')?;
     let mut 深度 = 0i32;
@@ -523,7 +652,21 @@ fn 截断(文本: &str, 上限: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::提取json;
+    use super::{阶段提示, 任务快照, 提取json, 剥离杂质标签};
+    use hm_cognition::AgentRole;
+    use tc_task::Task;
+
+    #[test]
+    fn 阶段提示_太乙金仙_含清理纪律() {
+        let 任务 = Task::新建(1, "清理纪律任务".to_string(), "描述".to_string(), 0);
+        let 快照 = 任务快照(&任务);
+        let 提示 = 阶段提示(&AgentRole::太乙金仙, &快照);
+        assert!(提示.contains("按名找文件"), "太乙金仙提示应先扫描残留，实际: {提示}");
+        assert!(提示.contains("删除文件"), "太乙金仙提示应要求用删除文件工具清理，实际: {提示}");
+        assert!(提示.contains("{\"模式\":\"**/*.bak\"}"), "太乙金仙提示应给出显式模式参数示例（防空参连败），实际: {提示}");
+        assert!(提示.contains("重新扫描"), "太乙金仙提示应要求删除后复核为空，实际: {提示}");
+        assert!(提示.contains("不得在工具失败时直接宣告清理完成"), "太乙金仙提示应禁止失败即宣告，实际: {提示}");
+    }
 
     #[test]
     fn 提取json_无杂质_原样返回() {
@@ -564,6 +707,49 @@ mod tests {
     #[test]
     fn 提取json_只有左括号未闭合_返回空() {
         assert!(提取json("内容 { 未闭合").is_none());
+    }
+
+    #[test]
+    fn 剥离杂质_think标签_完整剥离() {
+        let 输入 = r#"<think>内部推理{"key":"val"}</think>
+
+{"代码变更":[],"自检":{}}"#;
+        let 净化 = 剥离杂质标签(输入);
+        assert!(!净化.contains("内部推理"), "think 内容应被剥离");
+        assert!(!净化.contains("<think>"), "think 标签应被剥离");
+        let json = 提取json(&净化).expect("应提取到正文 JSON");
+        assert!(json.contains("代码变更"), "应提取到正文 JSON 而非 think 内碎片");
+    }
+
+    #[test]
+    fn 剥离杂质_think大小写不敏感() {
+        let 输入 = r#"<Think>思考过程</Think>{"结果":true}"#;
+        let 净化 = 剥离杂质标签(输入);
+        let json = 提取json(&净化).expect("大写 Think 也应剥离");
+        assert_eq!(json, r#"{"结果":true}"#);
+    }
+
+    #[test]
+    fn 剥离杂质_代码块围栏_提取内容() {
+        let 输入 = "以下是文档：\n```json\n{\"边界定义\":{\"输入\":\"n\"}}\n```\n完毕";
+        let 净化 = 剥离杂质标签(输入);
+        let json = 提取json(&净化).expect("应从代码块中提取 JSON");
+        assert_eq!(json, r#"{"边界定义":{"输入":"n"}}"#);
+    }
+
+    #[test]
+    fn 剥离杂质_无杂质_原样保留() {
+        let 输入 = r#"{"直接":"json","值":42}"#;
+        assert_eq!(剥离杂质标签(输入), 输入);
+    }
+
+    #[test]
+    fn 剥离杂质_think未闭合_跳过标签保留后续() {
+        let 输入 = r#"<think>未闭合的思考{"正文":true}"#;
+        let 净化 = 剥离杂质标签(输入);
+        // 未闭合时跳过  标记本身，后续内容当正文
+        let json = 提取json(&净化).expect("未闭合 think 后仍应提取 JSON");
+        assert_eq!(json, r#"{"正文":true}"#);
     }
 }
 

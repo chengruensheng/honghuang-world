@@ -23,16 +23,27 @@ if ($任务清单.Count -eq 0) {
 }
 
 function 调用Json($方法, $路径, $体 = $null) {
+    # 统一用 Invoke-WebRequest 取原始字节并按 UTF-8 解码，规避 PowerShell 5.1 对无 BOM
+    # UTF-8 JSON 中文键/值按本地代码页误读导致「驱动台就绪」判断失真的问题（需 pwsh 7+）
     if ($null -eq $体) {
-        Invoke-RestMethod -Uri "$地址$路径" -Method $方法
+        $响应 = Invoke-WebRequest -Uri "$地址$路径" -Method $方法 -UseBasicParsing
     } else {
-        Invoke-RestMethod -Uri "$地址$路径" -Method $方法 -Body ($体 | ConvertTo-Json -Compress) -ContentType "application/json; charset=utf-8"
+        $响应 = Invoke-WebRequest -Uri "$地址$路径" -Method $方法 -Body ($体 | ConvertTo-Json -Compress) -ContentType "application/json; charset=utf-8" -UseBasicParsing
     }
+    $字节 = $响应.RawContentStream.ToArray()
+    $文本 = [System.Text.Encoding]::UTF8.GetString($字节)
+    if ([string]::IsNullOrWhiteSpace($文本)) { return $null }
+    $文本 | ConvertFrom-Json
 }
 
 # ============ 前置自检 ============
 Write-Host "========== 端到端基准 · 真实 LLM 全链 ==========" -ForegroundColor Cyan
 Write-Host "后端地址：$地址"
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Host "⚠ 检测到 PowerShell $($PSVersionTable.PSVersion.ToString())（低于 7）" -ForegroundColor Yellow
+    Write-Host "  建议改用 pwsh 运行本脚本（中文 JSON 键/值按 UTF-8 解码需要 PS7+）：" -ForegroundColor Yellow
+    Write-Host "  pwsh -ExecutionPolicy Bypass -File .\传承殿\端到端基准.ps1" -ForegroundColor Yellow
+}
 try {
     $状态 = 调用Json GET "/api/dev/pilot/status"
     if (-not $状态.就绪) {
@@ -56,16 +67,35 @@ foreach ($任务描述 in $任务清单) {
     $发布 = 调用Json POST "/api/board" @{ title = $标题; description = $任务描述 }
     Write-Host "  任务 #$($发布.id) 已发布，开始自主驱动…"
 
-    # 发布自动仅推进第一层（圣人设计）；为走完五层，显式驱动到空闲（连续循环直至无可承接任务）
-    # drain 上限用足（60 轮，覆盖五层 × 每层修复轮数），超时兜底避免死等
-    try {
-        $受理 = 调用Json POST "/api/dev/pilot/drain" @{ 上限 = 60 }
-        Write-Host "  已受理驱动到空闲（drain）"
-    } catch {
-        # 发布自动线程可能仍在跑（运行中），等待其结束后再驱动到空闲
-        Write-Host "  drain 未立即受理（发布自动线程可能占用），等待片刻后重试…" -ForegroundColor Yellow
-        Start-Sleep -Seconds ($轮询间隔秒 * 2)
-        调用Json POST "/api/dev/pilot/drain" @{ 上限 = 60 } | Out-Null
+    # 发布自动仅推进第一层（圣人设计）；等待发布自动线程落定（运行中=false）后再显式 drain
+    # 走完五层。避免「发布线程占用 → drain 409 → 脚本中断」的时序缺陷。
+    $发布线程落定 = $false
+    for ($等待 = 0; $等待 -lt 60; $等待++) {
+        Start-Sleep -Seconds 1
+        try {
+            $状态 = 调用Json GET "/api/dev/pilot/status"
+            if (-not $状态.运行中) { $发布线程落定 = $true; break }
+        } catch { break } # 状态接口瞬时失败也继续，交由 drain 重试兜底
+    }
+    if (-not $发布线程落定) {
+        Write-Host "  发布自动线程 $等待 秒仍未落定，继续尝试 drain（drain 自身带重试）" -ForegroundColor Yellow
+    }
+
+    # drain 带重试（3 次，间隔轮询）：每次失败告警但不中断脚本
+    $受理成功 = $false
+    for ($重试 = 1; $重试 -le 3; $重试++) {
+        try {
+            调用Json POST "/api/dev/pilot/drain" @{ 上限 = 60 } | Out-Null
+            $受理成功 = $true
+            break
+        } catch {
+            Write-Host "  drain 第 $重试/3 次未受理（驱动线程可能占用），等待后重试…" -ForegroundColor Yellow
+            Start-Sleep -Seconds ($轮询间隔秒 * 2)
+        }
+    }
+    if (-not $受理成功) {
+        Write-Host "  ✗ drain 3 次仍失败，请检查后端日志后重跑该任务。任务 #$($发布.id) 仍保留在看板。" -ForegroundColor Red
+        continue
     }
 
     # 轮询到空闲
@@ -143,20 +173,37 @@ foreach ($会话 in $会话们) {
     $详情 = 调用Json GET "/api/dev/sessions/$($会话.会话id)"
     $事件们 = @($详情.事件)
 
-    $本会话测试通过 = $false
     $本会话有测试动作 = $false
-    $本会话返工 = $false
+    $本会话测试失败 = $false   # 实现阶段 cargo test 曾失败（显式返工信号）
+    $本会话返工 = $false       # 每会话重置：准圣打回「待修复」或隐式修复（防跨会话泄漏）
+    $本会话测试动作序列 = @()
 
     foreach ($事件 in $事件们) {
         $内容 = [string]$事件.内容
-        if ($内容 -match "待修复") { $本会话返工 = $true }
-        if ($事件.类型 -eq "工具调用" -and $事件.工具名 -eq "运行命令" -and $内容 -match "test") {
+        $事件类型 = [string]$事件.类型
+        $工具名 = [string]$事件.工具名
+        # 测试动作：运行命令工具且命令含 cargo test / cargo test -p ...
+        if ($事件类型 -eq "工具调用" -and $工具名 -eq "运行命令" -and $内容 -match "cargo\s+test") {
             $本会话有测试动作 = $true
+            $本会话测试动作序列 += $内容
         }
-        if ($事件.类型 -eq "工具结果" -and $内容 -match "test result:\s*ok|passed|全绿") {
-            $本会话测试通过 = $true
+        # 显式打回（准圣「待修复」事件）
+        if ($内容 -match "待修复") { $本会话返工 = $true }
+        # 测试失败证据：工具结果里命令失败退出码 101 / 编译错误 / 测试失败标记。
+        # 工具结果可能被服务端截断（不依赖完整 test result: ok. 行），改为识别失败前缀与 running 行辅助。
+        if ($事件类型 -eq "工具结果" -and $内容 -match "命令失败（退出码 10|error\[E0|test result: FAILED|panicked") {
+            $本会话测试失败 = $true
         }
     }
+
+    # 测试通过判定（新口径，绕开工具结果截断导致 test result: ok. 行丢失的假阴性）：
+    # 有测试动作 且 关联任务终态 ∈ 完成集合（五层全链走完 = 实现阶段测试最终通过）
+    $本会话测试通过 = $本会话有测试动作 -and $本会话完成
+
+    # 返工判定（新口径）：显式打回（待修复）算返工；隐式修复——测试失败后同会话又出现后续
+    # 测试动作（失败→改→重测），或失败后任务仍走完五层——也算返工
+    $隐式修复 = $本会话测试失败 -and ($本会话测试动作序列.Count -ge 2 -or $本会话完成)
+    if ($隐式修复) { $本会话返工 = $true }
 
     if ($本会话有测试动作) { $有测试动作会话++ }
     if ($本会话测试通过) { $测试通过会话++ }

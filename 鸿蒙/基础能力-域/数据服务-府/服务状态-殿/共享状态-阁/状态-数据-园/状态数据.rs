@@ -44,7 +44,12 @@ pub struct 数据服务状态 {
     pub 扫尾执行者: Option<Arc<扫尾执行者>>,
     /// 项目工作区根（相对或绝对路径；默认 ./，供 /api/files 清单与内容读取，顶栏可切换）
     pub 扫描根: Arc<Mutex<String>>,
+    /// SSE 并发连接许可（所有 SSE 流共享，防止无限连接耗尽资源）
+    pub sse信号量: Arc<tokio::sync::Semaphore>,
 }
+
+/// SSE 最大并发连接数（超出时新连接立即返回 429）
+pub const SSE最大连接数: usize = 10;
 
 impl 数据服务状态 {
     pub fn 新(
@@ -84,6 +89,7 @@ impl 数据服务状态 {
             重装配看板驱动: None,
             扫尾执行者: None,
             扫描根: Arc::new(Mutex::new(String::from("./"))),
+            sse信号量: Arc::new(tokio::sync::Semaphore::new(SSE最大连接数)),
         }
     }
 

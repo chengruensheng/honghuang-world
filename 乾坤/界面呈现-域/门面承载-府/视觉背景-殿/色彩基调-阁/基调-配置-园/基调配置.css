@@ -4,44 +4,58 @@
    不得自带色彩字面量；本层不得出现任何网格/定位属性。
    ═══════════════════════════════════════════════════════════ */
 :root{
-  /* ── 五行基色 ── */
+  /* ── 五行基色（唯一权威；看板/对话/图谱一律引用此套）── */
   --木: #6fbf73;
   --火: #e87a4a;
   --土: #d8b36a;
-  --金: #c8c8d4;
+  --金: #b9c2d0;
   --水: #6fb0d3;
 
   /* ── 主色与状态 ── */
-  --契:  #6fd3c2;   /* 主强调 · 契约青 */
+  --契:  #5fd0be;   /* 主强调 · 契约青 */
+  --契暗: #2a6a60;  /* 主强调深色（辉光底/描边） */
+  --契字: #06201c;  /* 主强调底上的深字（随 --契 配套） */
   --成:  #5ce0a0;
   --警:  #e8a64a;
   --险:  #e05252;
   --讯:  #6fb0d3;
 
   /* ── 面材（深 → 浅）── */
-  --底:  #0a0d12;
-  --面一: #10141b;
-  --面二: #141924;
-  --面三: #1a212d;
-  --面四: #222a38;
+  --底:  #090c11;
+  --面一: #0f131a;
+  --面二: #131824;
+  --面三: #1a2130;
+  --面四: #232c3d;
+  --面悬: #1e2634;  /* 悬停专用面 */
 
-  /* ── 线 ── */
-  --线一: #1c2330;
-  --线二: #262f40;
-  --线三: #333e54;
+  /* ── 线（半透明，随底色自然融合）── */
+  --线一: rgba(148, 170, 205, .08);
+  --线二: rgba(148, 170, 205, .14);
+  --线三: rgba(148, 170, 205, .22);
 
   /* ── 字 ── */
-  --字一: #f0f3f8;
-  --字二: #c3cad6;
-  --字三: #8b94a5;
-  --字四: #5b6474;
+  --字一: #eef2f8;
+  --字二: #c6cdd9;
+  --字三: #8d97a8;
+  --字四: #5c6575;
 
-  /* ── 字体 / 圆角 / 过渡 ── */
+  /* ── 字体 / 圆角 / 阴影 / 过渡 ── */
   --字族: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   --字码: "Cascadia Code", Consolas, monospace;
   --圆小: 6px;
   --圆中: 10px;
+  --圆大: 14px;
+  --影一: 0 8px 28px rgba(0, 0, 0, .35);
+  --影二: 0 20px 56px rgba(0, 0, 0, .5);
   --速:   .16s ease;
+
+  /* ── 全屏遮罩底（弹层/阅读/设置统一）── */
+  --遮罩: rgba(4, 6, 10, .62);
+
+  /* ── 布局骨架尺寸（布局层与覆盖层共同引用的唯一定义）── */
+  --轨宽: 56px;   /* 左栏图标轨宽 */
+  --顶高: 46px;   /* 顶栏高 */
+  --底高: 26px;   /* 底栏高 */
 
   color-scheme: dark;
 }
@@ -56,9 +70,9 @@ body{
   font-size: 13px;
   color: var(--字二);
   background:
-    radial-gradient(1100px 500px at 85% -10%, rgba(111, 211, 194, .06), transparent 60%),
-    radial-gradient(900px 480px at -10% 110%, rgba(111, 176, 211, .05), transparent 55%),
-    radial-gradient(700px 420px at 50% 120%, rgba(216, 179, 106, .04), transparent 60%),
+    radial-gradient(1100px 520px at 85% -12%, rgba(95, 208, 190, .07), transparent 60%),
+    radial-gradient(900px 480px at -10% 112%, rgba(111, 176, 211, .055), transparent 55%),
+    radial-gradient(700px 420px at 50% 122%, rgba(216, 179, 106, .045), transparent 60%),
     var(--底);
   -webkit-font-smoothing: antialiased;
 }
@@ -70,4 +84,5 @@ body{
 }
 *::-webkit-scrollbar{ width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb{ background: var(--面四); border-radius: 4px; }
-::selection{ background: rgba(111, 211, 194, .25); }
+*::-webkit-scrollbar-thumb:hover{ background: var(--线三); }
+::selection{ background: rgba(95, 208, 190, .28); }

@@ -1416,6 +1416,7 @@ dependencies = [
  "hm-cognition",
  "hm-config",
  "hm-content",
+ "hm-content-contract",
  "hm-contract",
  "hm-error",
  "hm-execute",
@@ -1525,6 +1526,7 @@ dependencies = [
  "hm-contract",
  "hm-error",
  "hm-execute-contract",
+ "serde_json",
  "tracing",
 ]
 

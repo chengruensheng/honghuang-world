@@ -37,6 +37,7 @@ use super::*;
             description: "验证发布信号".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
@@ -53,6 +54,7 @@ use super::*;
             description: "验证木生火".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
@@ -116,6 +118,7 @@ use super::*;
             description: "验证一键清理".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         // 推进到待清理状态
@@ -166,6 +169,7 @@ use super::*;
             description: "验证错误清理".into(),
             scene: None,
             priority: None,
+            临时规则: None,
         })).await.expect("发布应成功");
 
         let 结果 = 看板清理(State(状态), Path(id)).await;

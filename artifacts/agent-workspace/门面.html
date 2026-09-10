@@ -10,44 +10,58 @@
    不得自带色彩字面量；本层不得出现任何网格/定位属性。
    ═══════════════════════════════════════════════════════════ */
 :root{
-  /* ── 五行基色 ── */
+  /* ── 五行基色（唯一权威；看板/对话/图谱一律引用此套）── */
   --木: #6fbf73;
   --火: #e87a4a;
   --土: #d8b36a;
-  --金: #c8c8d4;
+  --金: #b9c2d0;
   --水: #6fb0d3;
 
   /* ── 主色与状态 ── */
-  --契:  #6fd3c2;   /* 主强调 · 契约青 */
+  --契:  #5fd0be;   /* 主强调 · 契约青 */
+  --契暗: #2a6a60;  /* 主强调深色（辉光底/描边） */
+  --契字: #06201c;  /* 主强调底上的深字（随 --契 配套） */
   --成:  #5ce0a0;
   --警:  #e8a64a;
   --险:  #e05252;
   --讯:  #6fb0d3;
 
   /* ── 面材（深 → 浅）── */
-  --底:  #0a0d12;
-  --面一: #10141b;
-  --面二: #141924;
-  --面三: #1a212d;
-  --面四: #222a38;
+  --底:  #090c11;
+  --面一: #0f131a;
+  --面二: #131824;
+  --面三: #1a2130;
+  --面四: #232c3d;
+  --面悬: #1e2634;  /* 悬停专用面 */
 
-  /* ── 线 ── */
-  --线一: #1c2330;
-  --线二: #262f40;
-  --线三: #333e54;
+  /* ── 线（半透明，随底色自然融合）── */
+  --线一: rgba(148, 170, 205, .08);
+  --线二: rgba(148, 170, 205, .14);
+  --线三: rgba(148, 170, 205, .22);
 
   /* ── 字 ── */
-  --字一: #f0f3f8;
-  --字二: #c3cad6;
-  --字三: #8b94a5;
-  --字四: #5b6474;
+  --字一: #eef2f8;
+  --字二: #c6cdd9;
+  --字三: #8d97a8;
+  --字四: #5c6575;
 
-  /* ── 字体 / 圆角 / 过渡 ── */
+  /* ── 字体 / 圆角 / 阴影 / 过渡 ── */
   --字族: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   --字码: "Cascadia Code", Consolas, monospace;
   --圆小: 6px;
   --圆中: 10px;
+  --圆大: 14px;
+  --影一: 0 8px 28px rgba(0, 0, 0, .35);
+  --影二: 0 20px 56px rgba(0, 0, 0, .5);
   --速:   .16s ease;
+
+  /* ── 全屏遮罩底（弹层/阅读/设置统一）── */
+  --遮罩: rgba(4, 6, 10, .62);
+
+  /* ── 布局骨架尺寸（布局层与覆盖层共同引用的唯一定义）── */
+  --轨宽: 56px;   /* 左栏图标轨宽 */
+  --顶高: 46px;   /* 顶栏高 */
+  --底高: 26px;   /* 底栏高 */
 
   color-scheme: dark;
 }
@@ -62,9 +76,9 @@ body{
   font-size: 13px;
   color: var(--字二);
   background:
-    radial-gradient(1100px 500px at 85% -10%, rgba(111, 211, 194, .06), transparent 60%),
-    radial-gradient(900px 480px at -10% 110%, rgba(111, 176, 211, .05), transparent 55%),
-    radial-gradient(700px 420px at 50% 120%, rgba(216, 179, 106, .04), transparent 60%),
+    radial-gradient(1100px 520px at 85% -12%, rgba(95, 208, 190, .07), transparent 60%),
+    radial-gradient(900px 480px at -10% 112%, rgba(111, 176, 211, .055), transparent 55%),
+    radial-gradient(700px 420px at 50% 122%, rgba(216, 179, 106, .045), transparent 60%),
     var(--底);
   -webkit-font-smoothing: antialiased;
 }
@@ -76,7 +90,8 @@ body{
 }
 *::-webkit-scrollbar{ width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb{ background: var(--面四); border-radius: 4px; }
-::selection{ background: rgba(111, 211, 194, .25); }
+*::-webkit-scrollbar-thumb:hover{ background: var(--线三); }
+::selection{ background: rgba(95, 208, 190, .28); }
 </style>
   <style>/* ═══════════════════════════════════════════════════════════
    乾坤 · 区域布局层 —— 只有「槽位网格」，零色彩（只引用令牌）
@@ -87,13 +102,13 @@ body{
    ═══════════════════════════════════════════════════════════ */
 .界面-布局{
   display: grid;
-  /* 左右栏仅承载图标轨（56px 图标列），主区占满 */
-  grid-template-columns: 56px minmax(0, 1fr) 56px;
-  grid-template-rows: 46px minmax(0, 1fr) 26px;
+  /* 左栏仅承载图标轨（--轨宽 图标列），主区占满；无右栏 */
+  grid-template-columns: var(--轨宽) minmax(0, 1fr);
+  grid-template-rows: var(--顶高) minmax(0, 1fr) var(--底高);
   grid-template-areas:
-    "顶栏 顶栏 顶栏"
-    "左栏 主区 右栏"
-    "底栏 底栏 底栏";
+    "顶栏 顶栏"
+    "左栏 主区"
+    "底栏 底栏";
   height: 100dvh;
 }
 
@@ -106,7 +121,6 @@ body{
 .界面-槽位[data-槽位名="顶栏"]{ grid-area: 顶栏; border-bottom: 1px solid var(--线一); }
 .界面-槽位[data-槽位名="左栏"]{ grid-area: 左栏; border-right:  1px solid var(--线一); }
 .界面-槽位[data-槽位名="主区"]{ grid-area: 主区; }
-.界面-槽位[data-槽位名="右栏"]{ grid-area: 右栏; border-left:   1px solid var(--线一); }
 .界面-槽位[data-槽位名="底栏"]{ grid-area: 底栏; border-top:    1px solid var(--线一); }
 
 /* ── 空槽提示：证明布局先于组件独立成立 ── */
@@ -122,17 +136,12 @@ body{
   color: var(--字四);
 }
 
-/* ── 窄屏：侧栏收起，主区独占 ── */
+/* ── 窄屏：图标轨保留（它是全部导航的唯一入口，隐藏即界面锁死），
+       仅压缩主区最小宽，防止内容撑破 ── */
 @media (max-width: 760px){
   .界面-布局{
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "顶栏"
-      "主区"
-      "底栏";
+    grid-template-columns: var(--轨宽) minmax(0, 1fr);
   }
-  .界面-槽位[data-槽位名="左栏"],
-  .界面-槽位[data-槽位名="右栏"]{ display: none; }
 }
 </style>
   <style>/* ═══════════════════════════════════════════════════════════
@@ -206,6 +215,301 @@ body{
 }
 
 /* ═══════════════════════════════════════════════════════════
+   乾坤 · 功能组件-殿 —— 设置面板 接入组件 外观
+   隔离约定：只引用背景层令牌，不写死色值；类名一律「设置-」前缀。
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 供应商组头：标题与密钥按钮同排 ── */
+.设置-供应商组 h6{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.设置-密钥钮{
+  padding: 2px 10px;
+  border: 1px solid var(--线二);
+  border-radius: 99px;
+  background: var(--面二);
+  color: var(--字三);
+  font-family: var(--字族);
+  font-size: 10px;
+  cursor: pointer;
+  transition: border-color var(--速), color var(--速);
+}
+.设置-密钥钮:hover{
+  border-color: var(--契);
+  color: var(--字一);
+}
+
+/* ── 密钥行（组内展开）── */
+.设置-密钥行{
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面二);
+}
+.设置-密钥输入{
+  flex: 1 1 220px;
+  padding: 6px 9px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面一);
+  color: var(--字一);
+  font-family: var(--字码);
+  font-size: 11px;
+}
+.设置-密钥输入:focus{
+  outline: none;
+  border-color: var(--契);
+}
+.设置-密钥保存{
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--契);
+  color: var(--契字);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity var(--速);
+}
+.设置-密钥保存:disabled{
+  opacity: .55;
+  cursor: default;
+}
+.设置-密钥反馈{
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--成);
+  word-break: break-all;
+}
+.设置-密钥反馈.坏{
+  color: var(--警);
+}
+
+/* ── 接入入口 + 向导 ── */
+.设置-接入钮{
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px dashed var(--线二);
+  border-radius: var(--圆小);
+  background: transparent;
+  color: var(--字三);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color var(--速), color var(--速);
+}
+.设置-接入钮:hover{
+  border-color: var(--契);
+  color: var(--字一);
+}
+.设置-向导{
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面二);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.设置-向导头{
+  display: flex;
+  align-items: center;
+}
+.设置-向导头 b{
+  font-size: 12px;
+  color: var(--字一);
+}
+.设置-向导关{
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--字三);
+  cursor: pointer;
+}
+.设置-向导关:hover{
+  color: var(--字一);
+  background: var(--面三);
+}
+.设置-向导行{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.设置-向导行 input,
+.设置-向导行 select{
+  flex: 1 1 150px;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面一);
+  color: var(--字一);
+  font-family: var(--字族);
+  font-size: 11px;
+}
+.设置-向导行 input:focus,
+.设置-向导行 select:focus{
+  outline: none;
+  border-color: var(--契);
+}
+.设置-向导取模{
+  padding: 6px 12px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面三);
+  color: var(--字二);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-向导取模:hover{
+  border-color: var(--契);
+  color: var(--字一);
+}
+.设置-向导取模:disabled{
+  opacity: .55;
+  cursor: default;
+}
+.设置-向导接{
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--契);
+  color: var(--契字);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-向导接:disabled{
+  opacity: .55;
+  cursor: default;
+}
+.设置-向导反馈{
+  flex-basis: 100%;
+  align-self: center;
+  font-size: 11px;
+  color: var(--成);
+  word-break: break-all;
+}
+.设置-向导反馈.坏{
+  color: var(--警);
+}
+
+/* ── 智能体绑定 ── */
+.设置-绑定{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.设置-绑定空{
+  padding: 10px 12px;
+  border: 1px dashed var(--线二);
+  border-radius: var(--圆小);
+  font-size: 11px;
+  color: var(--字四);
+  text-align: center;
+}
+.设置-绑定行{
+  padding: 10px 12px;
+  border: 1px solid var(--线二);
+  border-radius: var(--圆小);
+  background: var(--面二);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.设置-绑定头{
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.设置-绑定头 b{
+  font-size: 12px;
+  color: var(--字一);
+}
+.设置-绑定头 em{
+  font-style: normal;
+  font-size: 10px;
+  color: var(--字四);
+}
+.设置-绑定生{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--字四);
+}
+.设置-绑定生 code{
+  font-family: var(--字码);
+  font-size: 10px;
+  color: var(--字二);
+  word-break: break-all;
+}
+.设置-绑定选{
+  display: flex;
+  gap: 6px;
+}
+.设置-绑定选 select{
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: var(--面一);
+  color: var(--字一);
+  font-family: var(--字码);
+  font-size: 11px;
+}
+.设置-绑定制{
+  display: flex;
+  gap: 6px;
+}
+.设置-绑钮{
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--契);
+  color: var(--契字);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-绑钮:hover{
+  opacity: .9;
+}
+.设置-解钮{
+  padding: 5px 12px;
+  border: 1px solid var(--线二);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--字三);
+  font-family: var(--字族);
+  font-size: 11px;
+  cursor: pointer;
+}
+.设置-解钮:hover{
+  border-color: var(--警);
+  color: var(--警);
+}
+.设置-绑定错{
+  font-size: 11px;
+  color: var(--警);
+  word-break: break-all;
+}
+
+/* ═══════════════════════════════════════════════════════════
    乾坤 · 功能组件-殿 —— 设置面板 外观
    隔离约定：
    1. 只引用背景层令牌，不写死任何色值；
@@ -221,7 +525,7 @@ body{
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 8, 12, .62);
+  background: var(--遮罩);
   backdrop-filter: blur(3px);
   opacity: 0;
   pointer-events: none;
@@ -240,7 +544,7 @@ body{
   border: 1px solid var(--线二);
   border-radius: var(--圆中);
   background: var(--面一);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+  box-shadow: var(--影二);
   font-family: var(--字族);
   color: var(--字二);
 }
@@ -374,95 +678,7 @@ body{
   padding: 4px 0;
 }
 
-/* ── 智能体入口（挪入设置）── */
-.设置-智能体{
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--线二);
-  border-radius: var(--圆小);
-  background: var(--面二);
-  color: var(--字二);
-  font-family: var(--字族);
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color var(--速), background var(--速);
-}
-.设置-智能体:hover{
-  border-color: var(--契);
-  background: var(--面三);
-}
-.设置-智能体 svg{
-  width: 18px;
-  height: 18px;
-  color: var(--契);
-}
-.设置-智能体 .设置-智能体-右{
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-.设置-智能体 .设置-智能体-右 em{
-  font-style: normal;
-  font-size: 11px;
-  color: var(--字四);
-}
-
-/* ── 开关行 ── */
-.设置-开关行{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 0;
-  font-size: 13px;
-}
-.设置-开关行 .设置-开关{
-  margin-left: auto;
-}
-.设置-开关{
-  position: relative;
-  width: 34px;
-  height: 18px;
-  border-radius: 99px;
-  background: var(--面四);
-  border: none;
-  cursor: pointer;
-  transition: background var(--速);
-}
-.设置-开关::after{
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--字三);
-  transition: transform var(--速), background var(--速);
-}
-.设置-开关.开{
-  background: var(--契);
-}
-.设置-开关.开::after{
-  transform: translateX(16px);
-  background: #fff;
-}
-
-/* ── 滑动条行 ── */
-.设置-滑行{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--字三);
-}
-.设置-滑行 input{
-  flex: 1;
-  accent-color: var(--契);
-}
+/* ── 智能体绑定区（样式见 接入.css）── */
 
 /* ═══════════════════════════════════════════════════════════
    乾坤 · 功能组件-殿 —— 顶栏 外观
@@ -562,7 +778,7 @@ body{
   border: 1px solid var(--线二);
   border-radius: var(--圆中);
   background: var(--面一);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, .35);
+  box-shadow: var(--影一);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -612,7 +828,7 @@ body{
 .组件-顶栏 .顶栏-工作区-面 .行 .定{
   border: 1px solid transparent;
   background: var(--契);
-  color: #fff;
+  color: var(--契字);
 }
 .组件-顶栏 .顶栏-工作区-面 .行 .定:hover{
   filter: brightness(1.1);
@@ -799,6 +1015,13 @@ body{
 .对话标题 .态.停 .点{
   background: var(--警);
 }
+/* 运转中：青蓝提示（设置态 添加 .忙） */
+.对话标题 .态.忙{
+  color: var(--讯);
+}
+.对话标题 .态.忙 .点{
+  background: var(--讯);
+}
 
 /* ── 消息列表 ── */
 .对话流{
@@ -855,7 +1078,7 @@ body{
   padding: 1px 7px;
   border-radius: 99px;
   background: var(--契);
-  color: #06201c;
+  color: var(--契字);
   font-weight: 600;
 }
 .欢迎-名{
@@ -899,7 +1122,7 @@ body{
 .快捷-项:hover{
   border-color: var(--契);
   color: var(--契);
-  background: rgba(111, 211, 194, .08);
+  background: color-mix(in srgb, var(--契) 10%, transparent);
 }
 .快捷-名{
   font-family: var(--字码);
@@ -923,8 +1146,8 @@ body{
   background: var(--面一);
 }
 .气泡 .徽.ok{
-  border-color: #4ade80;
-  color: #4ade80;
+  border-color: var(--成);
+  color: var(--成);
 }
 .气泡 .次{
   display: inline-block;
@@ -991,6 +1214,8 @@ body{
   max-width: min(72%, 640px);
   padding: 11px 14px;
   border-radius: var(--圆中);
+  overflow-wrap: break-word;
+  word-break: break-word;
   font-size: 13px;
   line-height: 1.6;
   background: var(--面二);
@@ -1009,6 +1234,34 @@ body{
   background: var(--面四);
   font-family: var(--字码);
   font-size: 12px;
+}
+
+/* ── 围栏代码块（净化输出 pre.码；解析时与 p 同居气泡内）── */
+.气泡 pre.码{
+  margin: 2px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--线一);
+  border-radius: var(--圆小);
+  background: var(--面一);
+  overflow-x: auto;
+  font-family: var(--字码);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--字二);
+}
+.气泡 pre.码 code{
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* ── 轻渲染标题行 ── */
+.气泡 h6{
+  margin: 6px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--字一);
 }
 
 /* ── 加载占位 ── */
@@ -1129,7 +1382,7 @@ body{
   border-color: var(--契);
   color: var(--契);
 }
-.审批 .排 .准:hover{ background: rgba(111, 211, 194, .12); }
+.审批 .排 .准:hover{ background: color-mix(in srgb, var(--契) 12%, transparent); }
 .审批 .排 .否:hover{ border-color: var(--险); color: var(--险); }
 
 /* ── 输入条 ── */
@@ -1170,7 +1423,7 @@ body{
   border: none;
   border-radius: var(--圆小);
   background: var(--契);
-  color: #06201c;
+  color: var(--契字);
   font-family: var(--字族);
   font-size: 13px;
   font-weight: 600;
@@ -1196,8 +1449,8 @@ body{
   font-size: 10px;
   font-weight: 600;
   color: var(--火);
-  border: 1px solid rgba(232, 122, 74, .4);
-  background: rgba(232, 122, 74, .1);
+  border: 1px solid color-mix(in srgb, var(--火) 40%, transparent);
+  background: color-mix(in srgb, var(--火) 10%, transparent);
 }
 .对话标题 .钮{
   width: 26px;
@@ -1228,7 +1481,7 @@ body{
   font-weight: 600;
 }
 .讯息 .谁 .像 svg{ width: 14px; height: 14px; }
-.讯息.对 .谁 .像{ background: rgba(111, 211, 194, .15); color: var(--契); }
+.讯息.对 .谁 .像{ background: color-mix(in srgb, var(--契) 15%, transparent); color: var(--契); }
 
 /* ── 工具卡：耗时 ms ── */
 .工具 > header .ms{
@@ -1424,17 +1677,9 @@ body{
 
 /* ═══════════════════════════════════════════════════════════
    乾坤 · 功能组件-殿 —— 主区任务看板 外观
-   隔离约定：只引用令牌；经挂载契约进入主区槽位；五行色为看板语义色。
+   隔离约定：只引用令牌层 :root 变量；经挂载契约进入主区槽位；
+   五行语义色直接引用基调配置的 --木/--火/--土/--金/--水。
    ═══════════════════════════════════════════════════════════ */
-
-/* 五行语义色（看板组件私有，不污染背景令牌） */
-.看板外壳{
-  --木色: #4ade80;
-  --火色: #f87171;
-  --土色: #fbbf24;
-  --金色: #eab308;
-  --水色: #60a5fa;
-}
 
 .看板外壳{
   display: flex;
@@ -1448,8 +1693,8 @@ body{
 .看板头{
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
+  gap: 10px;
+  padding: 12px 18px;
   border-bottom: 1px solid var(--线一);
   flex: none;
 }
@@ -1457,13 +1702,13 @@ body{
   font-size: 15px;
   font-weight: 600;
   color: var(--字一);
+  letter-spacing: .02em;
 }
 .看板头 .次{
   font-size: 11px;
   color: var(--字四);
 }
 .看板头 .钮{
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1473,13 +1718,22 @@ body{
   background: var(--面二);
   color: var(--字三);
   font-size: 12px;
+  font-family: var(--字族);
   cursor: pointer;
-  transition: color var(--速), border-color var(--速), background var(--速);
+  transition: color var(--速), border-color var(--速), background var(--速), opacity var(--速);
 }
-.看板头 .钮:hover{
+/* 第一个按钮推到右侧，其余紧随（修复原先各钮均 auto 导致的分散布局） */
+.看板头 .钮:first-of-type{
+  margin-left: auto;
+}
+.看板头 .钮:hover:not(:disabled){
   color: var(--字一);
-  border-color: var(--字四);
-  background: var(--面三);
+  border-color: var(--线三);
+  background: var(--面悬);
+}
+.看板头 .钮:disabled{
+  opacity: .55;
+  cursor: default;
 }
 .看板头 .钮 svg{
   width: 14px;
@@ -1488,19 +1742,63 @@ body{
 /* 驱动按钮：主操作，契色高亮 */
 .看板头 .钮.主{
   color: var(--契);
+  border-color: color-mix(in srgb, var(--契) 45%, transparent);
+}
+.看板头 .钮.主:hover:not(:disabled){
+  color: var(--契字);
+  background: var(--契);
   border-color: var(--契);
 }
-.看板头 .钮.主:hover{
-  color: #fff;
-  background: var(--契);
+/* 加载态：图标旋转 */
+.看板头 .钮.载 svg{
+  animation: 看板旋转 1s linear infinite;
+}
+@keyframes 看板旋转{
+  to{ transform: rotate(360deg); }
+}
+
+/* ── 驱动状态条 ── */
+.驱动条{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 18px;
+  font-size: 11px;
+  color: var(--字三);
+  border-bottom: 1px solid var(--线一);
+  background: var(--面一);
+  flex: none;
+}
+.驱动条 .灯{
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--字四);
+  flex: none;
+  transition: background var(--速);
+}
+.驱动条 .文{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.驱动条.态-闲 .灯{ background: var(--字四); }
+.驱动条.态-行 .灯{ background: var(--契); animation: 看板呼吸 1.2s ease-in-out infinite; }
+.驱动条.态-讯 .灯{ background: var(--讯); }
+.驱动条.态-成 .灯{ background: var(--成); }
+.驱动条.态-险 .灯{ background: var(--险); }
+.驱动条.态-险 .文{ color: var(--险); }
+@keyframes 看板呼吸{
+  0%, 100%{ opacity: 1; }
+  50%{ opacity: .35; }
 }
 
 /* ── 列组：横向五行分列 ── */
 .看板列组{
   flex: 1;
   display: flex;
-  gap: 12px;
-  padding: 14px 18px;
+  gap: 10px;
+  padding: 12px 18px 16px;
   overflow-x: auto;
   overflow-y: hidden;
   align-items: stretch;
@@ -1514,14 +1812,18 @@ body{
   border-radius: var(--圆中);
   background: var(--面一);
   overflow: hidden;
+  transition: border-color var(--速);
+}
+.看板列:hover{
+  border-color: var(--线二);
 }
 
-/* 列头（五行标识色条） */
+/* 列头（五行标识） */
 .看板列头{
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--线一);
   background: var(--面二);
 }
@@ -1530,9 +1832,10 @@ body{
   height: 8px;
   border-radius: 50%;
   background: var(--列色);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--列色) 45%, transparent);
 }
 .看板列头 .名{
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--字一);
 }
@@ -1543,7 +1846,7 @@ body{
 .看板列头 .计{
   margin-left: auto;
   min-width: 20px;
-  height: 20px;
+  height: 18px;
   padding: 0 6px;
   display: inline-flex;
   align-items: center;
@@ -1558,34 +1861,38 @@ body{
 .看板列体{
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 9px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
-/* ── 任务卡片 ── */
+/* ── 任务卡片：左缘五行色线 ── */
 .看板卡{
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 9px 11px 9px 13px;
   border: 1px solid var(--线一);
+  border-left: 2px solid color-mix(in srgb, var(--列色) 55%, transparent);
   border-radius: var(--圆小);
   background: var(--面二);
+  font-family: var(--字族);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--速), background var(--速);
+  transition: border-color var(--速), background var(--速), transform var(--速);
 }
 .看板卡:hover{
-  border-color: var(--字四);
-  background: var(--面三);
+  border-color: var(--线三);
+  border-left-color: var(--列色);
+  background: var(--面悬);
+  transform: translateY(-1px);
 }
 .看板卡 .题{
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--字一);
-  line-height: 1.4;
+  line-height: 1.45;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1601,12 +1908,12 @@ body{
   padding: 1px 8px;
   border-radius: 99px;
   font-size: 10px;
-  color: var(--字二);
+  color: var(--字三);
   background: var(--面一);
   border: 1px solid var(--线二);
 }
 .看板卡 .状.行{
-  border-color: var(--列色);
+  border-color: color-mix(in srgb, var(--列色) 55%, transparent);
   color: var(--列色);
 }
 .看板卡 .优{
@@ -1631,6 +1938,204 @@ body{
   text-align: center;
 }
 
+/* ═══════════ 卡片详情弹层 ═══════════ */
+.看板弹罩{
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--遮罩);
+  backdrop-filter: blur(3px);
+  animation: 看板淡入 var(--速) ease;
+}
+@keyframes 看板淡入{
+  from{ opacity: 0; }
+}
+.看板弹层{
+  width: min(640px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--线二);
+  border-radius: var(--圆大);
+  background: var(--面二);
+  box-shadow: var(--影二);
+  animation: 看板浮起 var(--速) ease;
+  overflow: hidden;
+}
+@keyframes 看板浮起{
+  from{ opacity: 0; transform: translateY(10px); }
+}
+
+/* 弹层头 */
+.看板弹层 .弹头{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--线一);
+  background: var(--面三);
+  flex: none;
+}
+.看板弹层 .弹标{
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--字三);
+}
+.看板弹层 .弹状{
+  padding: 1px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--线三);
+  font-size: 11px;
+}
+.看板弹层 .弹关{
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--圆小);
+  background: transparent;
+  color: var(--字三);
+  cursor: pointer;
+  transition: color var(--速), background var(--速);
+}
+.看板弹层 .弹关:hover{
+  color: var(--字一);
+  background: var(--面四);
+}
+.看板弹层 .弹关 svg{ width: 14px; height: 14px; }
+
+/* 弹层体 */
+.看板弹层 .弹体{
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.看板弹层 .弹题{
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--字一);
+  line-height: 1.5;
+}
+.看板弹层 .弹描{
+  font-size: 12.5px;
+  color: var(--字二);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 10px 12px;
+  border: 1px solid var(--线一);
+  border-radius: var(--圆中);
+  background: var(--面一);
+}
+.看板弹层 .弱{ color: var(--字四); }
+.看板弹层 .弹空{
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--字四);
+}
+.看板弹层 .弹载{
+  font-size: 11px;
+  color: var(--字四);
+}
+
+/* 元信息表 */
+.看板弹层 .弹表{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.看板弹层 .元项{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--线一);
+  border-radius: var(--圆小);
+  background: var(--面一);
+}
+.看板弹层 .元名{
+  font-size: 10px;
+  color: var(--字四);
+}
+.看板弹层 .元值{
+  font-size: 12px;
+  color: var(--字一);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 分块（回退/澄清/核验/承接/状态史） */
+.看板弹层 .弹块{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.看板弹层 .块题{
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--字三);
+  letter-spacing: .04em;
+}
+.看板弹层 .史注{
+  font-size: 12px;
+  color: var(--字二);
+  line-height: 1.6;
+  word-break: break-word;
+}
+.看板弹层 .回退行{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.看板弹层 .史迁{
+  color: var(--警);
+}
+.看板弹层 .史者{ color: var(--字三); }
+.看板弹层 .史时{ color: var(--字四); font-size: 11px; }
+.看板弹层 .弹史{
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-left: 1px solid var(--线二);
+  margin-left: 4px;
+  padding-left: 12px;
+}
+.看板弹层 .史行{
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.看板弹层 .史行::before{
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 12px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--字四);
+  transform: translateX(-2px);
+}
+
 /* ═══════════════════════════════════════════════════════════
    乾坤 · 功能组件-殿 —— 左栏视图 外观
    隔离约定：
@@ -1642,9 +2147,9 @@ body{
 /* ── 抽屉容器 ── */
 .视图-抽屉{
   position: fixed;
-  left: 56px;
-  top: 46px;
-  bottom: 26px;
+  left: var(--轨宽);
+  top: var(--顶高);
+  bottom: var(--底高);
   width: min(340px, calc(100vw - 120px));
   z-index: 40;
   display: flex;
@@ -1933,7 +2438,7 @@ body{
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 8, 12, .66);
+  background: var(--遮罩);
   backdrop-filter: blur(3px);
   opacity: 0;
   pointer-events: none;
@@ -1953,7 +2458,7 @@ body{
   border: 1px solid var(--线二);
   border-radius: var(--圆中);
   background: var(--面一);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+  box-shadow: var(--影二);
 }
 .视图-阅读-头{
   display: flex;
@@ -2008,7 +2513,6 @@ body{
     <header class="界面-槽位" data-槽位名="顶栏"></header>
     <aside class="界面-槽位" data-槽位名="左栏"></aside>
     <main class="界面-槽位" data-槽位名="主区"></main>
-    <aside class="界面-槽位" data-槽位名="右栏"></aside>
     <footer class="界面-槽位" data-槽位名="底栏"></footer>
   </div>
   <!-- 环境配置：同源托管（8321）走相对路径；预览端口或 file 打开时显式指向数据服务 -->
@@ -2035,7 +2539,7 @@ window.乾坤界面 = (function(){
 
     /**
      * 挂载组件到槽位
-     * @param {string} 名 - 槽位名（顶栏/左栏/主区/右栏/底栏）
+     * @param {string} 名 - 槽位名（顶栏/左栏/主区/底栏）
      * @param {Node|Function} 节点 - DOM 节点，或返回节点的工厂函数
      * @returns {Node|null} 实际挂载的节点；未知槽位返回 null
      */
@@ -2054,27 +2558,24 @@ window.乾坤界面 = (function(){
    乾坤 · 功能组件-殿 —— 侧栏图标轨 实现
    职责：
    1. 数据驱动地构建「图标 + 小字」按钮；
-   2. 只经 乾坤界面.挂载("左栏"/"右栏", 节点) 入园，绝不改写布局；
-   3. 点击切换激活态，为后续抽屉/面板挂载预留事件入口（此处仅做高亮）。
+   2. 只经 乾坤界面.挂载("左栏", 节点) 入园，绝不改写布局；
+   3. 点击派发「乾坤图标」事件（组件间经事件解耦）；
+   4. 监听「乾坤图标复位」事件：设置面板关闭/抽屉收起时清除对应高亮。
    ═══════════════════════════════════════════════════════════ */
 window.乾坤组件 = (function(){
   // ── 图标 SVG 内联（沿用参考设计语义）──
   var S = {
     对话:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
     看板:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/></svg>',
-    智能体:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4M8 4h8"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 16.5h6"/></svg>',
     记忆:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="2.5"/><path d="M4 5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5"/><path d="M4 11v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/></svg>',
     传承殿:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6M9 11h.01M15 11h.01"/></svg>',
     门禁:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4.5"/></svg>',
     架构:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/><circle cx="12" cy="19" r="2.2"/><path d="M12 7.2v3M7 13.5L10 17M17 13.5L14 17M10.5 5H7M13.5 5H17"/></svg>',
     图谱:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7.6 7.6L11 16M16.4 7.6L13 16"/></svg>',
-    设置:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
-    Diff:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4l-4 8 4 8M16 4l4 8-4 8"/><path d="M14 4l-4 16"/></svg>',
-    文件:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
-    终端:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg>'
+    设置:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
   };
 
-  // ── 左侧导航：主导航（智能体已移入设置；图谱保留于此；看板为主区第二视图）──
+  // ── 左侧导航：对话/看板为主区双视图，其余为抽屉视图与设置 ──
   var 左导航 = [
     { 键:"对话",   名:"对话",   图:S.对话 },
     { 键:"看板",   名:"看板",   图:S.看板 },
@@ -2086,25 +2587,15 @@ window.乾坤组件 = (function(){
     { 键:"设置",   名:"设置",   图:S.设置, 末:true }
   ];
 
-  // ── 右侧切换：精简为前三个（Diff/文件/终端），图谱与设置不再重复出现 ──
-  var 右切换 = [
-    { 键:"Diff",  名:"Diff",  图:S.Diff },
-    { 键:"文件",  名:"文件",  图:S.文件 },
-    { 键:"终端",  名:"终端",  图:S.终端 }
-  ];
-
-  // ── 构建一根图标轨 ──
+  // ── 构建图标轨 ──
   function 建轨(数据, 默认键){
     var 轨 = document.createElement("div");
     轨.className = "组件-图标轨";
     数据.forEach(function(项){
       var 钮 = document.createElement("button");
-      钮.className = "组件-图标";
+      钮.className = "组件-图标" + (项.末 ? " 组件-末" : "");
       钮.setAttribute("data-键", 项.键 || "末");
       钮.setAttribute("title", 项.名 || 项.键);
-      if (项.末){
-        钮.className += " 组件-末";
-      }
       钮.innerHTML = (项.图 || S.设置) + "<em>" + (项.名 || "设置") + "</em>";
       if (项.键 === 默认键){
         钮.classList.add("是");
@@ -2112,30 +2603,358 @@ window.乾坤组件 = (function(){
       钮.addEventListener("click", function(){
         轨.querySelectorAll(".组件-图标").forEach(function(x){ x.classList.remove("是"); });
         钮.classList.add("是");
-        // 派发图标选择事件，供设置面板等组件监听（组件间经事件解耦）
+        // 派发图标选择事件，供对话/看板/视图/设置等组件监听（组件间经事件解耦）
         document.dispatchEvent(new CustomEvent("乾坤图标", { detail: { 键: 项.键 } }));
       });
       轨.appendChild(钮);
+    });
+    // 监听复位事件：面板关闭/抽屉收起时清除对应键的高亮
+    document.addEventListener("乾坤图标复位", function(e){
+      var 键 = e.detail && e.detail.键;
+      if (!键){ return; }
+      var 钮 = 轨.querySelector('.组件-图标[data-键="' + 键 + '"]');
+      if (钮){ 钮.classList.remove("是"); }
     });
     return 轨;
   }
 
   // ── 对外：只提供「构建节点」的工厂，经挂载契约入园 ──
   return {
-    左: function(){ return 建轨(左导航, "对话"); },
-    右: function(){ return 建轨(右切换, "Diff"); }
+    左: function(){ return 建轨(左导航, "对话"); }
   };
 })();
 
 // ── 经挂载契约入园（布局与组件的唯一接口）──
 乾坤界面.挂载("左栏", 乾坤组件.左);
-乾坤界面.挂载("右栏", 乾坤组件.右);
+
+/* ═══════════════════════════════════════════════════════════
+   乾坤 · 功能组件-殿 —— 设置面板 接入组件（密钥/接入向导/智能体绑定）
+   职责（面板.js 消费本组件 API，故脚本聚合顺序须在本组件之后）：
+   1. 密钥按钮：供应商组头展开密钥行 → discover 真实校验 + connect 保存；
+   2. 接入入口：模板/自定义 → 密钥 → 获取模型 → 接入；
+   3. 智能体区块：每身份绑定独立模型（agents / bind / unbind）。
+   铁律：密钥一律 password 输入，绝不回显已存密钥。
+   ═══════════════════════════════════════════════════════════ */
+window.乾坤接入 = (function(){
+  // ── 基础：后端地址 / 转义 / fetch 封装（与面板.js 同模式）──
+  function 后端(){
+    return (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.道祖) || "";
+  }
+  function 名(s){
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function 请求(路径, 方法, 体){
+    return fetch(后端() + 路径, {
+      method: 方法,
+      headers: { "Content-Type": "application/json" },
+      body: 体 === undefined ? undefined : JSON.stringify(体)
+    }).then(function(r){
+      if (!r.ok){ throw new Error("HTTP " + r.status); }
+      return r.json();
+    });
+  }
+  function 反馈写(元素, 文, 坏){
+    元素.textContent = 文;
+    元素.classList.toggle("坏", !!坏);
+  }
+  function 下拉填模型(选, 模型们, 选中){
+    选.innerHTML = "";
+    (模型们 || []).forEach(function(m){
+      var o = document.createElement("option");
+      o.value = m.id;
+      o.textContent = m.id;
+      if (m.id === 选中){ o.selected = true; }
+      选.appendChild(o);
+    });
+  }
+
+  /* ═══ 1. 密钥按钮：供应商组头按钮 → 展开密钥行 ═══ */
+  function 密钥按钮(信息, 组, 刷新){
+    var 钮 = document.createElement("button");
+    钮.type = "button";
+    钮.className = "设置-密钥钮";
+    钮.textContent = "密钥";
+    钮.title = "修改该供应商 API 密钥";
+    钮.addEventListener("click", function(){
+      var 已有 = 组.querySelector(".设置-密钥行");
+      if (已有){ 已有.remove(); return; }
+      组.appendChild(密钥行(信息, 刷新));
+    });
+    return 钮;
+  }
+
+  // 密钥行：discover 真实校验（失败展示后端错误原文）→ connect 重名覆盖保存
+  function 密钥行(信息, 刷新){
+    var 行 = document.createElement("div");
+    行.className = "设置-密钥行";
+    行.innerHTML =
+      "<input class=\"设置-密钥输入\" type=\"password\" placeholder=\"API 密钥（env:变量名 引用可重启恢复；明文仅会话内）\">" +
+      "<button class=\"设置-密钥保存\" type=\"button\">验证并保存</button>" +
+      "<span class=\"设置-密钥反馈\"></span>";
+    var 输入 = 行.querySelector(".设置-密钥输入");
+    var 保存钮 = 行.querySelector(".设置-密钥保存");
+    var 反馈 = 行.querySelector(".设置-密钥反馈");
+    保存钮.addEventListener("click", function(){
+      var 密钥 = 输入.value.trim();
+      if (!密钥){ 反馈写(反馈, "请输入密钥", true); return; }
+      保存钮.disabled = true;
+      反馈写(反馈, "验证中…");
+      // discover：地址省略 → 后端回退池内已存地址
+      请求("/api/llm/discover", "POST", { 供应商: 信息.名称, 密钥: 密钥 })
+        .then(function(d){
+          if (d.错误){ throw new Error(d.错误); }
+          反馈写(反馈, "验证通过（" + 名(d.来源) + " · " + (d.模型 || []).length + " 个模型），保存中…");
+          // connect：重名覆盖更新池内密钥并选中该供应商
+          return 请求("/api/llm/connect", "POST",
+            { 名称: 信息.名称, 地址: 信息.地址, 密钥: 密钥, 模型: 信息.模型 });
+        })
+        .then(function(){
+          反馈写(反馈, "已保存（该供应商已选中）");
+          输入.value = "";
+          if (刷新){ 刷新(); }
+        })
+        .catch(function(e){ 反馈写(反馈, "失败：" + e.message, true); })
+        .then(function(){ 保存钮.disabled = false; });
+    });
+    return 行;
+  }
+
+  /* ═══ 2. 接入入口：向导（模板/自定义 → 密钥 → 获取模型 → 接入）═══ */
+  function 接入入口(容器, 刷新){
+    var 钮 = document.createElement("button");
+    钮.type = "button";
+    钮.className = "设置-接入钮";
+    钮.textContent = "＋ 接入供应商";
+    钮.addEventListener("click", function(){
+      var 已有 = 容器.querySelector(".设置-向导");
+      if (已有){ 已有.remove(); return; }
+      容器.appendChild(向导(刷新));
+    });
+    return 钮;
+  }
+
+  function 向导(刷新){
+    var w = document.createElement("div");
+    w.className = "设置-向导";
+    w.innerHTML =
+      "<div class=\"设置-向导头\"><b>接入供应商</b>" +
+        "<button class=\"设置-向导关\" type=\"button\" aria-label=\"关闭\">✕</button></div>" +
+      "<div class=\"设置-向导行\">" +
+        "<select class=\"设置-向导模板\"><option value=\"\">自定义供应商…</option></select>" +
+        "<input class=\"设置-向导名\" placeholder=\"供应商名称（自定义时必填）\">" +
+      "</div>" +
+      "<div class=\"设置-向导行\">" +
+        "<input class=\"设置-向导址\" placeholder=\"API 地址（https://... 或 .../chat/completions）\">" +
+      "</div>" +
+      "<div class=\"设置-向导行\">" +
+        "<input class=\"设置-向导钥\" type=\"password\" placeholder=\"API 密钥（env:变量名 引用可重启恢复）\">" +
+      "</div>" +
+      "<div class=\"设置-向导行\">" +
+        "<button class=\"设置-向导取模\" type=\"button\">获取可用模型</button>" +
+        "<select class=\"设置-向导模型\"><option value=\"\">— 先获取模型 —</option></select>" +
+      "</div>" +
+      "<div class=\"设置-向导行\">" +
+        "<button class=\"设置-向导接\" type=\"button\">接入</button>" +
+        "<span class=\"设置-向导反馈\"></span>" +
+      "</div>";
+    var 模板选 = w.querySelector(".设置-向导模板");
+    var 名入 = w.querySelector(".设置-向导名");
+    var 址入 = w.querySelector(".设置-向导址");
+    var 钥入 = w.querySelector(".设置-向导钥");
+    var 取模钮 = w.querySelector(".设置-向导取模");
+    var 模选 = w.querySelector(".设置-向导模型");
+    var 接钮 = w.querySelector(".设置-向导接");
+    var 反馈 = w.querySelector(".设置-向导反馈");
+
+    // 模板清单（含环境变量提示）；拉取失败时追加提示选项
+    请求("/api/llm/templates", "GET").then(function(d){
+      (d.模板 || []).forEach(function(t){
+        var o = document.createElement("option");
+        o.value = t.名称;
+        o.textContent = t.显示名 + (t.环境变量 ? "（env:" + t.环境变量 + "）" : "");
+        o.setAttribute("data-址", t.地址 || "");
+        模板选.appendChild(o);
+      });
+    }).catch(function(){
+      var o = document.createElement("option");
+      o.disabled = true;
+      o.textContent = "（模板加载失败，请手动填写）";
+      模板选.appendChild(o);
+    });
+
+    模板选.addEventListener("change", function(){
+      var o = 模板选.options[模板选.selectedIndex];
+      名入.value = o.value ? o.value : "";
+      址入.value = o.value ? (o.getAttribute("data-址") || "") : "";
+    });
+
+    // 获取可用模型：模板命中零网络 / 自定义网络探测
+    取模钮.addEventListener("click", function(){
+      var 供 = 模板选.value;
+      var 址 = 址入.value.trim();
+      if (!供 && !址){ 反馈写(反馈, "请选择模板或填写 API 地址", true); return; }
+      取模钮.disabled = true;
+      反馈写(反馈, "获取模型中…");
+      请求("/api/llm/discover", "POST", {
+        供应商: 供 || undefined,
+        地址: 址 || undefined,
+        密钥: 钥入.value.trim() || undefined
+      })
+      .then(function(d){
+        if (d.错误){ throw new Error(d.错误); }
+        下拉填模型(模选, d.模型, "");
+        反馈写(反馈, "已获取 " + 模选.options.length + " 个模型（来源 " + 名(d.来源) + "）");
+      })
+      .catch(function(e){ 反馈写(反馈, "获取失败：" + e.message, true); })
+      .then(function(){ 取模钮.disabled = false; });
+    });
+
+    // 接入：注册进池 + 选中；env: 引用落盘（llm-接入.json）重启恢复
+    接钮.addEventListener("click", function(){
+      var 请求体 = {
+        名称: (模板选.value || 名入.value).trim(),
+        地址: 址入.value.trim(),
+        密钥: 钥入.value.trim(),
+        模型: 模选.value
+      };
+      if (!请求体.名称){ 反馈写(反馈, "请选择模板或填写供应商名称", true); return; }
+      if (!请求体.地址){ 反馈写(反馈, "请填写 API 地址", true); return; }
+      if (!请求体.密钥){ 反馈写(反馈, "请输入密钥", true); return; }
+      if (!请求体.模型){ 反馈写(反馈, "请先获取可用模型并选择", true); return; }
+      接钮.disabled = true;
+      反馈写(反馈, "接入中…");
+      请求("/api/llm/connect", "POST", 请求体)
+        .then(function(){
+          反馈写(反馈, "已接入并选中（" + 名(请求体.名称) + " · " + 名(请求体.模型) + "）");
+          钥入.value = "";
+          if (刷新){ 刷新(); }
+        })
+        .catch(function(e){ 反馈写(反馈, "接入失败：" + e.message, true); })
+        .then(function(){ 接钮.disabled = false; });
+    });
+
+    w.querySelector(".设置-向导关").addEventListener("click", function(){ w.remove(); });
+    return w;
+  }
+
+  /* ═══ 3. 智能体绑定区块：身份 × 绑定（绑定 ?? 全局选择）═══ */
+  function 智能体区块(){
+    var 块 = document.createElement("div");
+    块.className = "设置-绑定";
+    块.innerHTML = "<div class=\"设置-绑定空\">加载中…</div>";
+
+    function 拉(){
+      Promise.all([
+        请求("/api/llm/agents", "GET"),
+        请求("/api/llm/status", "GET")
+      ]).then(function(组){ 画(组[0].智能体 || [], 组[1]); })
+      .catch(function(){
+        块.innerHTML = "<div class=\"设置-绑定空\">绑定清单拉取失败（数据服务未在线）</div>";
+      });
+    }
+
+    function 画(清单, 状态){
+      块.innerHTML = "";
+      if (!清单.length){
+        块.innerHTML = "<div class=\"设置-绑定空\">LLM 池未装配，无法绑定</div>";
+        return;
+      }
+      var 全局 = (状态 && 状态.当前选择) || { 供应商: "", 模型: "" };
+      var 供应商清单 = (状态 && 状态.供应商) || [];
+      清单.forEach(function(项){ 块.appendChild(绑定行(项, 全局, 供应商清单, 拉)); });
+    }
+
+    function 绑定行(项, 全局, 供应商清单, 重画){
+      var 行 = document.createElement("div");
+      行.className = "设置-绑定行";
+      var 说明 = 项.名 === "道祖" ? "主控澄清对话" : "开发执行链";
+      var 生效 = 项.绑定
+        ? (项.绑定.供应商 + " · " + 项.绑定.模型)
+        : (全局.供应商 + " · " + 全局.模型 + "（跟随全局）");
+      行.innerHTML =
+        "<div class=\"设置-绑定头\"><b>" + 名(项.名) + "</b><em>" + 名(说明) + "</em></div>" +
+        "<div class=\"设置-绑定生\"><span>当前生效</span><code>" + 名(生效) + "</code></div>" +
+        "<div class=\"设置-绑定选\">" +
+          "<select class=\"设置-绑定供\"></select>" +
+          "<select class=\"设置-绑定模\"><option value=\"\">— 模型 —</option></select>" +
+        "</div>" +
+        "<div class=\"设置-绑定制\">" +
+          "<button class=\"设置-绑钮\" type=\"button\">绑定</button>" +
+          (项.绑定 ? "<button class=\"设置-解钮\" type=\"button\">恢复默认</button>" : "") +
+        "</div>";
+      var 供选 = 行.querySelector(".设置-绑定供");
+      var 模选 = 行.querySelector(".设置-绑定模");
+      供应商清单.forEach(function(s){
+        var o = document.createElement("option");
+        o.value = s.名称;
+        o.textContent = s.名称;
+        if (项.绑定 && 项.绑定.供应商 === s.名称){ o.selected = true; }
+        供选.appendChild(o);
+      });
+      if (项.绑定){ 拉模型(模选, 项.绑定.供应商, 项.绑定.模型); }
+      供选.addEventListener("change", function(){ 拉模型(模选, 供选.value, ""); });
+
+      行.querySelector(".设置-绑钮").addEventListener("click", function(){
+        if (!供选.value || !模选.value){ 行错(行, "请选择供应商与模型"); return; }
+        行错清(行);
+        请求("/api/llm/agent/bind", "POST", { 智能体: 项.名, 供应商: 供选.value, 模型: 模选.value })
+          .then(function(){ 重画(); })
+          .catch(function(e){ 行错(行, "绑定失败：" + e.message); });
+      });
+      var 解钮 = 行.querySelector(".设置-解钮");
+      if (解钮){
+        解钮.addEventListener("click", function(){
+          行错清(行);
+          请求("/api/llm/agent/unbind", "POST", { 智能体: 项.名 })
+            .then(function(){ 重画(); })
+            .catch(function(e){ 行错(行, "解绑失败：" + e.message); });
+        });
+      }
+      return 行;
+    }
+
+    // 模型下拉：按供应商 discover（池内已存密钥回退，零输入）
+    function 拉模型(选, 供应商, 选中){
+      选.innerHTML = "<option value=\"\">加载中…</option>";
+      请求("/api/llm/discover", "POST", { 供应商: 供应商 })
+        .then(function(d){
+          if (d.错误){ throw new Error(d.错误); }
+          下拉填模型(选, d.模型, 选中);
+        })
+        .catch(function(){ 选.innerHTML = "<option value=\"\">获取失败</option>"; });
+    }
+
+    function 行错(行, 文){
+      var t = 行.querySelector(".设置-绑定错");
+      if (!t){
+        t = document.createElement("div");
+        t.className = "设置-绑定错";
+        行.appendChild(t);
+      }
+      t.textContent = 文;
+    }
+    function 行错清(行){
+      var t = 行.querySelector(".设置-绑定错");
+      if (t){ t.remove(); }
+    }
+
+    拉();
+    return 块;
+  }
+
+  return {
+    密钥按钮: 密钥按钮,
+    接入入口: 接入入口,
+    智能体区块: 智能体区块
+  };
+})();
 
 /* ═══════════════════════════════════════════════════════════
    乾坤 · 功能组件-殿 —— 设置面板 实现
    职责：
-   1. 监听「乾坤图标」事件（键=设置）→ 展开/收起；
-   2. 构建居中设置面板，内含 模型 + 智能体（独立模型配置）+ 权限 + 温度；
+   1. 监听「乾坤图标」事件（键=设置）→ 展开/收起；关闭时发「乾坤图标复位」清高亮；
+   2. 构建居中设置面板，内含 模型（真实接口）+ 智能体（独立模型绑定）；
    3. 只读写自身 DOM，不触碰布局结构；经事件与图标轨解耦。
    ═══════════════════════════════════════════════════════════ */
 window.乾坤设置 = (function(){
@@ -2172,34 +2991,26 @@ window.乾坤设置 = (function(){
     var 模型 = 模型区块();
     面板.appendChild(模型.块);
 
-    // ── 智能体区块（挪入设置）──
+    // ── 智能体区块（每身份独立模型绑定，真实接口）──
     var 智块 = 区块("智能体");
-    智块.appendChild(智能体行());
+    智块.appendChild(乾坤接入.智能体区块());
     面板.appendChild(智块);
-
-    // ── 权限区块 ──
-    var 权块 = 区块("工具权限");
-    [["代码库读写", true], ["终端执行", true], ["运行测试", true]].forEach(function(项){
-      权块.appendChild(开关行(项[0], 项[1]));
-    });
-    面板.appendChild(权块);
-
-    // ── 温度区块 ──
-    var 温块 = 区块("温度");
-    温块.appendChild(滑动行());
-    面板.appendChild(温块);
 
     托盘.appendChild(面板);
 
-    // ── 交互：关闭 ──
-    关.addEventListener("click", function(){ 托盘.classList.remove("开"); });
-    托盘.addEventListener("click", function(e){ if (e.target === 托盘){ 托盘.classList.remove("开"); } });
-    document.addEventListener("keydown", function(e){ if (e.key === "Escape"){ 托盘.classList.remove("开"); } });
+    // ── 交互：关闭（三路关闭统一复位图标高亮）──
+    function 收(){
+      托盘.classList.remove("开");
+      document.dispatchEvent(new CustomEvent("乾坤图标复位", { detail: { 键: "设置" } }));
+    }
+    关.addEventListener("click", 收);
+    托盘.addEventListener("click", function(e){ if (e.target === 托盘){ 收(); } });
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape" && 托盘.classList.contains("开")){ 收(); } });
 
     return { 托盘: 托盘, 刷新模型: 模型.刷新 };
   }
 
-  // ── 模型区块：当前选择 + 供应商模型清单 + 点击切换 ──
+  // ── 模型区块：当前选择 + 供应商模型清单 + 点击切换 + 密钥配置 + 接入向导 ──
   function 模型区块(){
     var 块 = 区块("模型");
     var 当前 = document.createElement("div");
@@ -2209,8 +3020,13 @@ window.乾坤设置 = (function(){
     列表.className = "设置-模型列表";
     块.appendChild(当前);
     块.appendChild(列表);
+    // 接入入口：展开接入向导（模板/自定义 → 密钥 → 获取模型 → 接入）
+    块.appendChild(乾坤接入.接入入口(块, 刷新));
 
     var 现选 = { 供应商: "", 模型: "" };
+    var 切换中 = false; // 防并发切换锁
+    // 供应商信息表（名称 → {名称/地址/模型}，密钥行保存时回填 connect 参数）
+    var 供应商信息表 = {};
 
     function 画当前(d){
       if (d && d.配置 && d.当前选择){
@@ -2220,6 +3036,9 @@ window.乾坤设置 = (function(){
       } else {
         当前.innerHTML = "<span class=\"点 死\"></span><b>LLM 池未装配</b><em>请配置供应商密钥</em>";
       }
+      // 供应商信息表（供密钥行回填 connect 参数）
+      供应商信息表 = {};
+      ((d && d.供应商) || []).forEach(function(s){ 供应商信息表[s.名称] = s; });
     }
     function 画列表(结果){
       列表.innerHTML = "";
@@ -2227,7 +3046,10 @@ window.乾坤设置 = (function(){
         var 组 = document.createElement("div");
         组.className = "设置-供应商组";
         var 题 = document.createElement("h6");
-        题.textContent = 项.供应商;
+        题.innerHTML = "<span>" + 名(项.供应商) + "</span>";
+        // 组头密钥按钮：展开密钥行（discover 校验 + connect 保存）
+        var 信息 = 供应商信息表[项.供应商];
+        if (信息){ 题.appendChild(乾坤接入.密钥按钮(信息, 组, 刷新)); }
         组.appendChild(题);
         if (项.模型 && 项.模型.length){
           项.模型.forEach(function(m){
@@ -2247,6 +3069,8 @@ window.乾坤设置 = (function(){
       });
     }
     function 选择(供应商, 模型){
+      if (切换中){ return; }
+      切换中 = true;
       fetch(后端() + "/api/llm/select", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2259,21 +3083,32 @@ window.乾坤设置 = (function(){
       .then(function(){ 现选 = { 供应商: 供应商, 模型: 模型 }; 刷新(); })
       .catch(function(){
         当前.innerHTML = "<span class=\"点 死\"></span><b>切换失败</b><em>" + 名(供应商) + " · " + 名(模型) + "</em>";
-      });
+        // 清除列表中所有高亮，避免与顶部状态矛盾
+        var 按钮们 = 列表.querySelectorAll(".设置-模型项.当前");
+        for (var i = 0; i < 按钮们.length; i++){ 按钮们[i].classList.remove("当前"); }
+      })
+      .finally(function(){ 切换中 = false; });
     }
+    var 刷新中 = false; // 防并发刷新锁
     function 刷新(){
+      if (刷新中){ return; }
+      刷新中 = true;
+      // 先 status（填供应商信息表）再 models（画清单挂密钥按钮）——串行消除竞态
       fetch(后端() + "/api/llm/status")
         .then(function(r){ if (!r.ok){ throw new Error("HTTP " + r.status); } return r.json(); })
         .then(function(d){ 画当前(d); })
         .catch(function(){
           当前.innerHTML = "<span class=\"点 死\"></span><b>数据服务未在线</b><em>需启动后端 127.0.0.1:8321</em>";
-        });
-      fetch(后端() + "/api/llm/models")
-        .then(function(r){ if (!r.ok){ throw new Error("HTTP " + r.status); } return r.json(); })
-        .then(function(d){ 画列表(d.结果); })
-        .catch(function(){
-          列表.innerHTML = "<span class=\"设置-模型错误\">模型清单拉取失败（供应商端点不可达）</span>";
-        });
+        })
+        .then(function(){
+          fetch(后端() + "/api/llm/models")
+            .then(function(r){ if (!r.ok){ throw new Error("HTTP " + r.status); } return r.json(); })
+            .then(function(d){ 画列表(d.结果); })
+            .catch(function(){
+              列表.innerHTML = "<span class=\"设置-模型错误\">模型清单拉取失败（供应商端点不可达）</span>";
+            });
+        })
+        .finally(function(){ 刷新中 = false; });
     }
 
     return { 块: 块, 刷新: 刷新 };
@@ -2289,54 +3124,17 @@ window.乾坤设置 = (function(){
     return 块;
   }
 
-  // ── 智能体行（独立模型配置入口）──
-  function 智能体行(){
-    var 行 = document.createElement("button");
-    行.className = "设置-智能体";
-    var svg = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"7\" width=\"16\" height=\"12\" rx=\"2\"/><path d=\"M12 7V4M8 4h8\"/><circle cx=\"9\" cy=\"13\" r=\"1\"/><circle cx=\"15\" cy=\"13\" r=\"1\"/><path d=\"M9 16.5h6\"/></svg>";
-    var 右 = document.createElement("span");
-    右.className = "设置-智能体-右";
-    右.innerHTML = "<b>独立模型配置</b><em>各智能体可独立接入不同模型 · 平时低频率使用</em>";
-    行.innerHTML = svg;
-    行.appendChild(右);
-    行.setAttribute("title", "智能体 · 独立模型配置");
-    return 行;
-  }
-
-  // ── 开关行 ──
-  function 开关行(名, 开){
-    var 行 = document.createElement("label");
-    行.className = "设置-开关行";
-    行.innerHTML = "<span>" + 名 + "</span>";
-    var 开关 = document.createElement("button");
-    开关.className = "设置-开关" + (开 ? " 开" : "");
-    开关.setAttribute("aria-label", 名);
-    开关.addEventListener("click", function(e){
-      e.preventDefault();
-      开关.classList.toggle("开");
-    });
-    行.appendChild(开关);
-    return 行;
-  }
-
-  // ── 滑动行 ──
-  function 滑动行(){
-    var 行 = document.createElement("div");
-    行.className = "设置-滑行";
-    行.innerHTML = "<span>严谨</span><input type=\"range\" min=\"0\" max=\"1\" step=\"0.1\" value=\"0.7\"><span>发散</span>";
-    return 行;
-  }
-
   // 托盘实例化后挂到 body（覆盖层），初始收起
   var 实例 = 构建();
   var 托盘 = 实例.托盘;
   document.body.appendChild(托盘);
 
-  // ── 监听图标事件：键=设置 → 展开/收起；展开时拉取真实模型状态 ──
+  // ── 监听图标事件：键=设置 → 展开/收起；展开时拉取真实模型状态，收起时复位图标高亮 ──
   document.addEventListener("乾坤图标", function(e){
     if (e.detail && e.detail.键 === "设置"){
       var 开 = 托盘.classList.toggle("开");
       if (开){ 实例.刷新模型(); }
+      else { document.dispatchEvent(new CustomEvent("乾坤图标复位", { detail: { 键: "设置" } })); }
     }
   });
 
@@ -2486,12 +3284,18 @@ window.乾坤底栏 = (function(){
     return (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.道祖) || "";
   }
 
+  // 模块级槽位引用（供事件监听器和定时器使用，避免闭包泄漏）
+  var 槽引用 = null;
+  var 在线节点 = null;
+
   function 建(){
     var 底 = document.createElement("footer");
     底.className = "组件-底栏";
 
     // ── 左区：引擎在线 + 引擎计数 ──
-    底.appendChild(项("<i class=\"点\"></i> 主引擎在线", "底栏-在线"));
+    var 在线项 = 项("<i class=\"点\"></i> <span class=\"在线文\">主引擎在线</span>", "底栏-在线");
+    在线节点 = 在线项;
+    底.appendChild(在线项);
     底.appendChild(点());
     var 记 = 项("记忆 <b class=\"记\">…</b>");
     var 谱 = 项("图谱 <b class=\"谱\">…</b>");
@@ -2516,8 +3320,25 @@ window.乾坤底栏 = (function(){
     右.appendChild(版);
     底.appendChild(右);
 
+    槽引用 = { 记: 记.querySelector("b"), 谱: 谱.querySelector("b"), 规: 规.querySelector("b"), 事: 事.querySelector("b"), 模: 模型.querySelector("b"), 版: 版 };
+
     // ── 拉取真实数据 ──
-    刷新({ 记: 记.querySelector("b"), 谱: 谱.querySelector("b"), 规: 规.querySelector("b"), 事: 事.querySelector("b"), 模: 模型.querySelector("b"), 版: 版 });
+    刷新(槽引用);
+
+    // ── 设置面板关闭事件监听（只注册一次，在IIFE顶层）──
+    document.addEventListener("乾坤图标复位", function(e){
+      if (e.detail && e.detail.键 === "设置" && 槽引用){
+        fetch(后端() + "/api/llm/status")
+          .then(function(r){ if (!r.ok){ throw new Error(); } return r.json(); })
+          .then(function(d){ 槽引用.模.textContent = (d && d.当前选择 && d.当前选择.模型) || "未接入"; })
+          .catch(function(){});
+      }
+    });
+
+    // ── 定时刷新：每30秒更新计数（保持数据新鲜）──
+    setInterval(function(){
+      if (槽引用){ 刷新(槽引用); }
+    }, 30000);
 
     return 底;
   }
@@ -2532,18 +3353,61 @@ window.乾坤底栏 = (function(){
     }
     数("/api/memories", "记", function(d){ return (d.length || 0) + " 条"; });
     数("/api/cognition/graph", "谱", function(d){ return (d.符号集 || []).length + " 符号"; });
-    数("/api/rules", "规", function(d){ return (d.length || 0) + " 条"; });
+
+    // 规则计数 = RuleSet + 心智格位，用 Promise.allSettled 消除竞态闪烁
+    Promise.allSettled([
+      fetch(后端() + "/api/rules").then(function(r){ if (!r.ok){ throw new Error(); } return r.json(); }),
+      fetch(后端() + "/api/cognition/cells").then(function(r){ if (!r.ok){ throw new Error(); } return r.json(); })
+    ]).then(function(结果组){
+      var rs = 0, 格位 = 0;
+      // rules
+      if (结果组[0].status === "fulfilled"){
+        var rd = 结果组[0].value;
+        rs = rd.length || 0;
+      }
+      // cells
+      if (结果组[1].status === "fulfilled"){
+        var cd = 结果组[1].value;
+        var 全部 = cd.格位集 || cd.全部 || cd.cells || [];
+        for (var i = 0; i < 全部.length; i++){
+          var g = 全部[i];
+          if ((g.维度 === "规则" || g.dimension === "规则") && g.摘要 && g.摘要.length > 0){
+            格位++;
+          }
+        }
+      }
+      槽.规.textContent = (rs + 格位) + " 条";
+    });
+
     数("/api/events", "事", function(d){ return (d.length || 0) + " 条"; });
 
+    // 模型状态 + 引擎在线指示器联动
     fetch(后端() + "/api/llm/status")
       .then(function(r){ if (!r.ok){ throw new Error(); } return r.json(); })
-      .then(function(d){ 槽.模.textContent = (d && d.当前选择 && d.当前选择.模型) || "未接入"; })
-      .catch(function(){ 槽.模.textContent = "未接入"; });
+      .then(function(d){
+        槽.模.textContent = (d && d.当前选择 && d.当前选择.模型) || "未接入";
+        设置在线态(true);
+      })
+      .catch(function(){
+        槽.模.textContent = "未接入";
+        设置在线态(false);
+      });
 
     fetch(后端() + "/api/iterations/version")
       .then(function(r){ if (!r.ok){ throw new Error(); } return r.json(); })
       .then(function(d){ 槽.版.textContent = "v" + (d.主 || 0) + "." + (d.次 || 0) + "." + (d.修订 || 0); })
       .catch(function(){ 槽.版.textContent = "v—"; });
+  }
+
+  // ── 引擎在线状态动态更新 ──
+  function 设置在线态(在线){
+    if (!在线节点){ return; }
+    var 文 = 在线节点.querySelector(".在线文");
+    var 点 = 在线节点.querySelector(".点");
+    if (文){ 文.textContent = 在线 ? "主引擎在线" : "引擎离线"; }
+    if (点){
+      if (在线){ 点.classList.remove("死"); } else { 点.classList.add("死"); }
+    }
   }
 
   function 项(html, 类){
@@ -2568,37 +3432,32 @@ window.乾坤底栏 = (function(){
 
 /* ═══════════════════════════════════════════════════════════
    乾坤 · 功能组件-殿 —— 主区对话流 实现
-   职责：渲染用户/智能体消息（含头像）、工具卡、运行测试卡、审批区、
-   系统消息与输入条，经挂载契约进入主区槽位；支持发送新消息。
+   职责：渲染用户/道祖消息、五行任务进度卡、待确认卡、系统消息与
+   输入条，经挂载契约进入主区槽位；支持快捷指令与流式回复。
    ═══════════════════════════════════════════════════════════ */
 window.乾坤对话 = (function(){
-  // ── 会话状态：空态启动，所有内容由后续真实交互（用户发送 / 智能体回复 / 看板过程事件）填充 ──
+  // ── 会话状态：空态启动，内容由真实交互填充 ──
   var 数据 = [];
+  var 发送中 = false;   // 防重复发送锁
+  var 发按钮 = null;    // 发送按钮引用（解锁用）
 
   // ── SVGs ──
   var I = {
-    查: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
-    编: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>',
     智: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4M8 4h8"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 16.5h6"/></svg>',
-    发: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l18-9-6 18-3-7z"/></svg>',
-    附: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M21 11l-9 9a5 5 0 1 1-7-7l10-10a3.5 3.5 0 0 1 5 5L10 18"/></svg>',
-    具: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M14 3l7 7-4 4-7-7zM3 21l8-4-4-4z"/></svg>',
-    引: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 7h4v4H7zM13 7h4v4h-4zM7 13h4v4H7zM13 13h4v4h-4z"/></svg>',
+    发: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l18-9-6 18-3-7z"/></svg>'
   };
 
-  // ── 快捷指令注册表（可扩展）：内置 /清空、/刷新 两条；外部可继续 register_command ──
+  // ── 快捷指令注册表（可扩展）：内置 /清空、/刷新 两条 ──
   var 指令表 = {
     "清空": function(ctx){ return Promise.resolve(cmd_clear(ctx)); },
     "刷新": function(ctx){ return cmd_refresh(ctx); }
   };
 
-  // 注册自定义快捷指令（用于扩展更多 / 指令）
   function register_command(名, 处理器){
     if (!名 || typeof 处理器 !== "function"){ return; }
     指令表[String(名).replace(/^\//, "")] = 处理器;
   }
 
-  // 解析快捷指令：/开头文本拆为 { name, args }；不匹配返回 null
   function parse_command(输入){
     var 文 = String(输入 == null ? "" : 输入).trim();
     if (!文 || 文.charAt(0) !== "/"){ return null; }
@@ -2608,81 +3467,61 @@ window.乾坤对话 = (function(){
     return { name: 名, args: 段 };
   }
 
-  // /清空：清空当前会话的消息列表渲染与数据；保留会话标识与会话元数据
+  // /清空：清空消息渲染与数据；保留会话标识与元数据
   function cmd_clear(ctx){
     ctx = ctx || {};
-    // 会话标识：当前会话ID（来自外部依赖或顶部状态），存在则保留以便恢复上下文
     var 会话id = (ctx.会话id != null ? ctx.会话id : (window.乾坤对话.会话id || ""));
     var 会话元数据 = window.乾坤对话.会话元数据 || null;
     数据.length = 0;
     var 流 = ctx.流 || document.querySelector(".对话外壳 .对话流");
     if (流){
       流.innerHTML = "";
-      流.classList.add("空");
-      流.classList.remove("有内容");
       render_welcome_panel(流);
       流.scrollTop = 0;
     }
-    // 会话标识与会话元数据保留（仅清空消息列表渲染与数据）
     window.乾坤对话.会话id = 会话id;
     window.乾坤对话.会话元数据 = 会话元数据;
   }
 
-  // /刷新：触发当前会话消息的重新拉取；保持渲染与原发送链路一致
+  // /刷新：重新拉取当前会话消息；无会话时直接跳过（避免注定失败的占位请求），失败静默降级
   function cmd_refresh(ctx){
     ctx = ctx || {};
     var 后端 = (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.道祖) || "";
     var 会话id = (ctx.会话id != null ? ctx.会话id : (window.乾坤对话.会话id || ""));
-    // 取最近一次驱动会话ID（看板驱动台保留的当前会话）作为真实拉取目标
     var 真实会话id = 会话id || (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.当前会话id) || "";
-    // 不引入新依赖：复用道祖已有 /api/dev/chat 回放历史会话（看板驱动台记录）
+    if (!真实会话id){ return Promise.resolve(); }
     var 端点 = 后端 + "/api/dev/sessions/" + encodeURIComponent(真实会话id || "current");
     return fetch(端点)
       .then(function(r){ return r.ok ? r.json() : { 事件: [] }; })
       .then(function(d){
         数据.length = 0;
-        var 事件 = d.事件 || [];
-        // 把事件流折叠为对话消息（仅文本类）
-        事件.forEach(function(ev){
+        (d.事件 || []).forEach(function(ev){
           if (ev.内容 && (ev.类型 === "任务答复" || ev.类型 === "思考" || ev.类型 === "工具结果")){
-            数据.push({ 类:"讯息", 方:"对", 名:ev.角色 || "系统", 时:"刚刚", 文:ev.内容.replace(/</g,"&lt;") });
+            // 回放内容一律过净化后再入 DOM
+            数据.push({ 类:"讯息", 方:"对", 名:ev.角色 || "系统", 时:"刚刚", 文:净化(ev.内容) });
           }
         });
         var 流 = ctx.流 || document.querySelector(".对话外壳 .对话流");
         if (流){
           流.innerHTML = "";
           if (数据.length){
-            流.classList.remove("空");
-            流.classList.add("有内容");
             数据.forEach(function(m){ 流.appendChild(渲染(m)); });
             流.scrollTop = 流.scrollHeight;
           } else {
-            流.classList.add("空");
-            流.classList.remove("有内容");
             render_welcome_panel(流);
           }
         }
       })
-      .catch(function(){
-        // 静默降级：不抛错，不影响后续输入；聊天面板保持可见
-      });
+      .catch(function(){ /* 静默降级：聊天面板保持可见 */ });
   }
 
-  // 未知指令：在对话区给出友好提示，不抛错、不影响后续输入
   function on_unknown_command(名, 流){
     if (流){
-      流.classList.remove("空");
-      流.classList.add("有内容");
       var 泡 = document.createElement("div");
       泡.className = "讯";
-      // 净化指令名后再拼接，避免 XSS（用户输入的命令名不可信）
-      var 转义 = 净化(String(名 || ""));
-      var 时间 = document.createElement("span");
-      时间.textContent = "系统 · 刚刚";
-      泡.appendChild(时间);
       泡.appendChild(document.createTextNode("未知指令 /"));
       var 加粗 = document.createElement("b");
-      加粗.textContent = 转义;
+      加粗.textContent = String(名 || "");
       泡.appendChild(加粗);
       泡.appendChild(document.createTextNode("，已忽略。可用：/清空、/刷新"));
       流.appendChild(泡);
@@ -2690,7 +3529,6 @@ window.乾坤对话 = (function(){
     }
   }
 
-  // 指令分发：解析 → 路由到内置或注册处理器；统一异常捕获与提示反馈
   function dispatch_command(parsed, ctx){
     ctx = ctx || {};
     if (!parsed || !parsed.name){
@@ -2712,12 +3550,10 @@ window.乾坤对话 = (function(){
     }
   }
 
-  // 首屏欢迎语：消息列表为空时调用；展示引导文案与快捷指令按钮
+  // 首屏欢迎面板：引导文案 + 快捷指令
   function render_welcome_panel(容器){
     if (!容器){ return; }
     容器.innerHTML = "";
-    容器.classList.add("空");
-    容器.classList.remove("有内容");
     var 欢迎 = document.createElement("div");
     欢迎.className = "欢迎面板";
     欢迎.innerHTML =
@@ -2725,28 +3561,59 @@ window.乾坤对话 = (function(){
         '<span class="欢迎-徽">紫霄宫</span>' +
         '<span class="欢迎-名">洪荒·世界</span>' +
       '</div>' +
-      '<div class="欢迎-标">欢迎来到乾坤界面</div>' +
-      '<div class="欢迎-次">与道祖对话，发布任务进入五行流转；也可使用下方快捷指令。</div>' +
+      '<div class="欢迎-标">与道祖对话</div>' +
+      '<div class="欢迎-次">描述你的需求，道祖澄清对齐后发布任务，<br>经 木→火→土→金→水 五行流转自主完成。</div>' +
+      '<div class="欢迎-行">' +
+        '<i style="background:var(--木)"></i><i style="background:var(--火)"></i><i style="background:var(--土)"></i><i style="background:var(--金)"></i><i style="background:var(--水)"></i>' +
+      '</div>' +
       '<div class="快捷面板">' +
         '<button class="快捷-项" data-cmd="清空"><span class="快捷-名">/清空</span><span class="快捷-描">清空当前会话</span></button>' +
         '<button class="快捷-项" data-cmd="刷新"><span class="快捷-名">/刷新</span><span class="快捷-描">重新拉取最新消息</span></button>' +
       '</div>';
     容器.appendChild(欢迎);
-    // 绑定点击 → 写入输入框并触发分发
-    // 注意：textarea 引用需在挂载到主区后才能稳定查询；首次空态渲染时输入框可能未挂载，按需重查
-    var 框 = ctx_取输入框();
-    var 流 = 容器;
-    function ctx_取输入框(){
+    function 取输入框(){
       return document.querySelector(".对话外壳 .对话输入 textarea");
     }
     Array.prototype.forEach.call(欢迎.querySelectorAll(".快捷-项"), function(btn){
       btn.addEventListener("click", function(){
         var 名 = btn.getAttribute("data-cmd") || "";
-        var 框2 = ctx_取输入框();
-        if (框2){ 框2.value = "/" + 名; 框2.focus(); }
-        dispatch_command({ name: 名, args: [] }, { 流: 流 });
+        var 框 = 取输入框();
+        // 回显指令便于所见即所发；执行后清空，避免残留已执行的命令文本
+        if (框){ 框.value = "/" + 名; 框.focus(); }
+        dispatch_command({ name: 名, args: [] }, { 流: 容器 });
+        if (框){ 框.value = ""; }
       });
     });
+  }
+
+  // ── 净化与轻渲染：先整体转义杜绝注入，再对已转义文本做结构替换 ──
+  // 支持：思考折叠、```围栏代码块、`行内码`、**粗体**、# 标题、- 列表
+  function 净化(文本){
+    var s = String(文本 == null ? "" : 文本)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // 1. 思考段折叠（内容保留原始换行，交由样式 pre-wrap 呈现）
+    s = s.replace(/&lt;think&gt;([\s\S]*?)&lt;\/think&gt;/g, function(全, 内){
+      return '<details class="思"><summary>思考过程</summary><div>' + 内 + '</div></details>';
+    });
+    // 2. 围栏代码块先摘出，避免内部被行内规则改写
+    //    语言标记仅参与围栏识别，不落 DOM：净化不转义引号，属性拼接会被 " 逃逸（XSS）
+    var 码堆 = [];
+    s = s.replace(/```([\w-]*)\n?([\s\S]*?)```/g, function(全, 语言, 码){
+      码堆.push(码.replace(/\n$/, ""));
+      return "\x00" + (码堆.length - 1) + "\x00";
+    });
+    // 3. 行内码 / 粗体 / 标题 / 列表
+    s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+    s = s.replace(/^#{1,4}\s+(.*)$/gm, "<h6>$1</h6>");
+    s = s.replace(/^[-*]\s+(.*)$/gm, "<span class='列'>•</span> $1");
+    // 4. 换行 → <br>
+    s = s.replace(/\n/g, "<br>");
+    // 5. 还原代码块（pre 内保留真实换行）
+    s = s.replace(/\x00(\d+)\x00/g, function(全, 序){
+      return '<pre class="码"><code>' + 码堆[Number(序)] + '</code></pre>';
+    });
+    return s;
   }
 
   // ── 渲染入口：挂到主区 ──
@@ -2755,7 +3622,7 @@ window.乾坤对话 = (function(){
     外.className = "对话外壳 主区视图";
     外.setAttribute("data-视图", "对话");
 
-    // 标题行（无当前任务时显示空态提示）
+    // 标题行
     var 标题 = document.createElement("div");
     标题.className = "对话标题";
     标题.innerHTML = '<span class="标">紫霄宫对话</span><span class="次">与道祖对话，发布任务或自由提问</span>';
@@ -2768,41 +3635,32 @@ window.乾坤对话 = (function(){
     // 消息流
     var 流 = document.createElement("div");
     流.className = "对话流";
-    // 空态：调用欢迎面板组件；非空态：渲染历史
     if (!数据.length){
       render_welcome_panel(流);
     } else {
-      流.classList.add("有内容");
-      流.classList.remove("空");
       数据.forEach(function(m){ 流.appendChild(渲染(m)); });
+      流.scrollTop = 流.scrollHeight;
     }
     外.appendChild(流);
-    流.scrollTop = 流.scrollHeight;
 
-    // 输入条
+    // 输入条：只保留真实可用的输入与发送
     var 输 = document.createElement("div");
     输.className = "对话输入";
     输.innerHTML =
-      '<div class="行">' +
-        '<button class="ico" title="附件">' + I.附 + '</button>' +
-        '<button class="ico" title="工具">' + I.具 + '</button>' +
-        '<button class="ico" title="引用">' + I.引 + '</button>' +
-        '<span class="ctx" id="对话-ctx"><i class="点"></i>未发布任务</span>' +
-        '<span style="margin-left:auto"></span>' +
-        '<button class="迷你 选">先审后写</button><button class="迷你">自动测试</button><button class="迷你">自动提交</button>' +
+      '<div class="区">' +
+        '<textarea rows="2" placeholder="描述你的需求 · Enter 发送 · Shift+Enter 换行"></textarea>' +
+        '<button class="发" title="发送">发送' + I.发 + '</button>' +
       '</div>' +
-      '<div class="区"><textarea rows="2" placeholder="描述你的需求 · Enter 发送 · Shift+Enter 换行"></textarea><button class="发">发送' + I.发 + '</button></div>' +
-      '<div class="足"><span>⌘↵ 发送 · Esc 取消</span></div>';
+      '<div class="足"><span>Enter 发送 · Shift+Enter 换行</span><span class="足-右">对话即发布 · 五行自主流转</span></div>';
     外.appendChild(输);
 
-    // 发送逻辑：真实调用后端 道祖对话 /api/dev/chat
     var 框 = 输.querySelector("textarea");
     var 发 = 输.querySelector(".发");
+    发按钮 = 发;
     function 发送(){
+      if (发送中){ return; }
       var 文 = 框.value.trim();
       if (!文){ return; }
-
-      // 识别 / 指令：分发到内置或注册指令处理器
       var 解析 = parse_command(文);
       if (解析){
         dispatch_command(解析, { 流: 流 });
@@ -2810,16 +3668,15 @@ window.乾坤对话 = (function(){
         流.scrollTop = 流.scrollHeight;
         return;
       }
-
-      流.appendChild(渲染({ 类:"讯息", 方:"己", 名:"道祖", 字:"九", 时:"刚刚", 文:文.replace(/</g,"&lt;") }));
+      发送中 = true;
+      发.disabled = true;
+      设置态("运转中");
+      // 用户消息同样过净化：杜绝自输入 HTML 被当标记执行（自注入 XSS）
+      流.appendChild(渲染({ 类:"讯息", 方:"己", 名:"界主", 字:"界", 时:"刚刚", 文:净化(文) }));
       框.value = "";
       流.scrollTop = 流.scrollHeight;
-
-      // 加载占位
       var 载 = 流.appendChild(加载中());
       流.scrollTop = 流.scrollHeight;
-
-      // 调接口：流式优先（POST /api/dev/chat/stream 打字机式），失败降级原同步 /api/dev/chat
       var 后端 = (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.道祖) || "";
       流式对话(后端, 文, 流, 载);
     }
@@ -2828,11 +3685,62 @@ window.乾坤对话 = (function(){
       if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); 发送(); }
     });
 
+    // ── 初始化：自动获取最新会话并回放消息（解决 API 发布任务后对话流空白的问题）──
+    (function(){
+      var 后端 = (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.道祖) || "";
+      fetch(后端 + "/api/dev/sessions")
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){
+          var 列表 = d && (d.会话 || d.sessions || []);
+          if (!列表.length){ return; }
+          // 取最新会话
+          var 最新 = 列表[列表.length - 1];
+          var sid = 最新.会话id || 最新.id;
+          if (!sid){ return; }
+          window.乾坤对话.会话id = sid;
+          // 如果当前没有消息，自动回放
+          if (!数据.length){
+            cmd_refresh({ 流: 流, 会话id: sid });
+          }
+        })
+        .catch(function(){ /* 静默降级 */ });
+    })();
+
+    // ── 驱动状态轮询：标题行实时反映驱动运行/空闲 ──
+    (function(){
+      var 后端 = (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.道祖) || "";
+      setInterval(function(){
+        if (!外.isConnected){ return; }
+        fetch(后端 + "/api/dev/pilot/status")
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(d){
+            if (!d){ return; }
+            var 运行 = d.运行中 || d.running;
+            设置态(运行 ? "运转中" : "空闲");
+          })
+          .catch(function(){});
+      }, 3000);
+    })();
+
     return 外;
   }
 
-  // ── 流式对话：POST /api/dev/chat/stream，按帧解析 SSE，打字机式追加 ──
+  // ── 标题状态点：发送后运转中，回复收尾后回空闲 ──
+  function 设置态(名){
+    var 态 = document.querySelector(".对话外壳 .对话标题 .态");
+    if (!态){ return; }
+    态.innerHTML = '<i class="点"></i>' + 名;
+    if (名 !== "空闲"){ 态.classList.add("忙"); } else { 态.classList.remove("忙"); }
+    // 回到空闲时自动解锁发送按钮
+    if (名 === "空闲"){
+      发送中 = false;
+      if (发按钮){ 发按钮.disabled = false; }
+    }
+  }
+
+  // ── 流式对话：POST /api/dev/chat/stream，SSE 打字机式追加 ──
   function 流式对话(后端, 文, 流, 载){
+    var 出过内容 = false; // 流中断时区分"零内容可降级重发"与"已有部分内容不可重复"
     fetch(后端 + "/api/dev/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2843,14 +3751,15 @@ window.乾坤对话 = (function(){
       var 读 = r.body.getReader();
       var 解码 = new TextDecoder("utf-8");
       var 缓冲 = "";
-      var 泡 = null;       // 回复气泡 DOM（首 delta 到达时建立）
-      var p = null;        // 气泡内 <p> 文本容器
+      var 泡 = null;
+      var p = null;
       var 回复文本 = "";
       var 任务id = null;
-      var 阶段 = "接待中";   // RUN_FINISHED 携带的会话阶段：接待中 / 待确认
+      var 阶段 = "接待中";
 
       function 建泡(){
         if (泡) return;
+        出过内容 = true;
         泡 = 渲染({ 类:"讯息", 方:"对", 名:"道祖", 时:"刚刚", 文:"" });
         流.appendChild(泡);
         p = 泡.querySelector(".气泡 p");
@@ -2863,6 +3772,7 @@ window.乾坤对话 = (function(){
       }
       function 收尾(){
         if (载 && 载.parentNode){ 载.remove(); }
+        设置态("空闲");
         if (!泡 && !任务id){
           流.appendChild(渲染({ 类:"讯息", 方:"对", 名:"道祖", 时:"刚刚", 文:"（无回复）" }));
         }
@@ -2872,9 +3782,8 @@ window.乾坤对话 = (function(){
           流.scrollTop = 流.scrollHeight;
           轮询任务卡(卡, 任务id);
         } else if (阶段 === "待确认"){
-          // 道祖已对齐需求，处于待确认：建确认卡，5 秒无人确认则自动确认发布建任务卡
-          var 确认卡 = 建待确认卡(后端, 流);
-          流.appendChild(确认卡);
+          // 建待确认卡 内含 appendChild，此处不再重复挂载
+          建待确认卡(后端, 流);
           流.scrollTop = 流.scrollHeight;
         }
       }
@@ -2885,13 +3794,13 @@ window.乾坤对话 = (function(){
           var 帧们 = 缓冲.split("\n\n");
           缓冲 = 帧们.pop() || "";
           帧们.forEach(function(帧){
-            var 数据 = "";
+            var 数据帧 = "";
             帧.split("\n").forEach(function(行){
-              if (行.indexOf("data:") === 0){ 数据 += 行.slice(5).trim(); }
+              if (行.indexOf("data:") === 0){ 数据帧 += 行.slice(5).trim(); }
             });
-            if (!数据) return;
+            if (!数据帧) return;
             try {
-              var ev = JSON.parse(数据);
+              var ev = JSON.parse(数据帧);
               if (ev.type === "TEXT_MESSAGE_CONTENT" && ev.delta){ 追加(ev.delta); }
               else if (ev.type === "RUN_FINISHED"){
                 任务id = ev.任务id || null;
@@ -2905,12 +3814,17 @@ window.乾坤对话 = (function(){
       return 泵();
     })
     .catch(function(){
-      // 降级：回退原同步 /api/dev/chat（整体返回）
+      // 已有部分流内容：只收尾不重发，避免同步降级再追加一条重复回复
+      if (出过内容){
+        if (载 && 载.parentNode){ 载.remove(); }
+        设置态("空闲");
+        return;
+      }
       同步对话(后端, 文, 流, 载);
     });
   }
 
-  // ── 同步对话：原 /api/dev/chat 整体返回（流式不可用时的降级路径） ──
+  // ── 同步对话：流式不可用时的降级路径 ──
   function 同步对话(后端, 文, 流, 载){
     fetch(后端 + "/api/dev/chat", {
       method: "POST",
@@ -2920,6 +3834,7 @@ window.乾坤对话 = (function(){
     .then(function(r){ if (!r.ok){ throw new Error("HTTP " + r.status); } return r.json(); })
     .then(function(d){
       载.remove();
+      设置态("空闲");
       流.appendChild(渲染({ 类:"讯息", 方:"对", 名:"道祖", 时:"刚刚", 文:净化(d.回复 || "（无回复）") }));
       流.scrollTop = 流.scrollHeight;
       if (d.任务id){
@@ -2928,12 +3843,12 @@ window.乾坤对话 = (function(){
         流.scrollTop = 流.scrollHeight;
         轮询任务卡(卡, d.任务id);
       } else if (d.阶段 === "待确认"){
-        var 确认卡 = 建待确认卡(后端, 流);
-        // 建待确认卡 内含 appendChild；此处理 5 秒自动确认
+        建待确认卡(后端, 流);
       }
     })
     .catch(function(){
       载.remove();
+      设置态("空闲");
       流.appendChild(渲染({
         类:"讯息", 方:"对", 名:"道祖", 时:"刚刚",
         文:"（道祖暂未在线：需后端 run_dev_agent=true 且配置 LLM 密钥）请检查数据服务后重试。"
@@ -2946,21 +3861,8 @@ window.乾坤对话 = (function(){
   function 加载中(){
     var 容 = document.createElement("div");
     容.className = "讯息 对";
-    容.innerHTML = '<div class="谁"><b class="名">道祖</b><span class="时">思考中…</span></div><div class="气泡 载">· · ·</div>';
+    容.innerHTML = '<div class="谁"><b class="名">道祖</b><span class="时">思考中…</span></div><div class="气泡 载"><span class="跳"><i></i><i></i><i></i></span></div>';
     return 容;
-  }
-
-  // ── 净化回复：转义 HTML + 折叠 <think> 思考段 + 换行转 <br> ──
-  function 净化(文本){
-    var 转义 = String(文本)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-    转义 = 转义.replace(/&lt;think&gt;([\s\S]*?)&lt;\/think&gt;/g, function(全, 内){
-      return '<details class="思"><summary>思考过程</summary><div>' + 内.replace(/\n/g, "<br>") + '</div></details>';
-    });
-    转义 = 转义.replace(/\n/g, "<br>");
-    return 转义;
   }
 
   // ── 单条消息渲染 ──
@@ -2971,7 +3873,6 @@ window.乾坤对话 = (function(){
       s.innerHTML = '<span>' + m.时 + '</span>' + m.文本;
       return s;
     }
-    // 讯息
     var 容 = document.createElement("div");
     容.className = "讯息 " + (m.方 === "己" ? "己" : "对");
 
@@ -2979,7 +3880,7 @@ window.乾坤对话 = (function(){
     谁.className = "谁";
     var 像 = document.createElement("span");
     像.className = "像";
-    像.innerHTML = m.方 === "己" ? (m.字 || "道") : I.智;
+    像.innerHTML = m.方 === "己" ? (m.字 || "界") : I.智;
     谁.appendChild(像);
     var 名 = document.createElement("b");
     名.className = "名";
@@ -2990,7 +3891,10 @@ window.乾坤对话 = (function(){
     时.textContent = m.时;
     谁.appendChild(时);
     if (m.方 === "对"){
-      谁.innerHTML += '<span class="徽">火</span>';
+      var 徽 = document.createElement("span");
+      徽.className = "徽";
+      徽.textContent = "火";
+      谁.appendChild(徽);
     }
     容.appendChild(谁);
 
@@ -2999,61 +3903,11 @@ window.乾坤对话 = (function(){
     var p = document.createElement("p");
     p.innerHTML = m.文;
     泡.appendChild(p);
-
-    if (m.文追){
-      var p2 = document.createElement("p");
-      p2.innerHTML = m.文追;
-      泡.appendChild(p2);
-    }
-
-    if (m.工具){
-      m.工具.forEach(function(t){
-        var 卡 = document.createElement("div");
-        卡.className = "工具";
-        var 头 = document.createElement("header");
-        var 图 = t.名 === "编辑文件" ? I.编 : (t.名 === "运行测试" ? I.查 : I.查);
-        头.innerHTML = 图 + '<span class="名">' + t.名 + '</span>';
-        var 状 = document.createElement("span");
-        状.className = "状 " + (t.状类 || "");
-        状.innerHTML = (t.状类 === "行" ? '<i class="轮"></i>' : '') + t.状;
-        头.appendChild(状);
-        var 耗 = document.createElement("span");
-        耗.className = "ms";
-        耗.textContent = (t.耗 || "");
-        头.appendChild(耗);
-        卡.appendChild(头);
-
-        if (t.测){
-          var ul = document.createElement("ul");
-          ul.className = "测";
-          t.测.forEach(function(行){
-            var li = document.createElement("li");
-            li.innerHTML = '<i></i>' + 行;
-            ul.appendChild(li);
-          });
-          卡.appendChild(ul);
-        } else {
-          var pre = document.createElement("pre");
-          pre.innerHTML = t.码;
-          卡.appendChild(pre);
-        }
-        泡.appendChild(卡);
-      });
-    }
-
-    if (m.审批){
-      var 审 = document.createElement("div");
-      审.className = "审批";
-      审.innerHTML = '<header><span class="叹">!</span>需要决策者确认 · Diff 在右侧呈现</header><div class="描">' + m.审批.描 + '</div><div class="排"><button class="准">批准执行</button><button class="否">驳回</button><button>查看 Diff →</button></div>';
-      泡.appendChild(审);
-    }
-
     容.appendChild(泡);
     return 容;
   }
 
   // ── 五行任务进度卡 ──
-  // 状态→五行阶段映射：木(道祖) 火(圣人) 土(大罗) 金(准圣) 水(太乙)
   var 阶段表 = [
     { 五行:"木", 名:"道祖", 状态:["待受理","待道祖澄清","道祖澄清中"] },
     { 五行:"火", 名:"圣人", 状态:["待圣人设计","圣人设计中","待重新设计"] },
@@ -3061,7 +3915,6 @@ window.乾坤对话 = (function(){
     { 五行:"金", 名:"准圣", 状态:["待准圣验收","准圣验收中","待道祖终审","道祖终审中","待重新验收","已完成"] },
     { 五行:"水", 名:"太乙", 状态:["待清理","清理中","待重新清理","清理完成"] },
   ];
-  var 五行色 = { 木:"#6fbf73", 火:"#e87a4a", 土:"#d8b36a", 金:"#c8c8d4", 水:"#6fb0d3" };
 
   function 状态到阶段(状态){
     for (var i=0; i<阶段表.length; i++){
@@ -3076,8 +3929,7 @@ window.乾坤对话 = (function(){
     return "等待";
   }
 
-  // ── 待确认卡片：道祖已对齐需求，等待用户确认（批准/驳回 + 5 秒自动确认） ──
-  // 无人操作时 5 秒后自动调 /api/dev/chat/confirm 确认发布建任务卡（默认确认）。
+  // ── 待确认卡片：批准/驳回 + 5 秒自动确认 ──
   function 建待确认卡(后端, 流){
     var 卡 = document.createElement("div");
     卡.className = "任务卡 待确认";
@@ -3088,7 +3940,6 @@ window.乾坤对话 = (function(){
       '<div class="排"><button class="准">确认发布</button><button class="否">驳回</button></div>';
     流.appendChild(卡);
 
-    // 确认发布：调 confirm 接口，成功后建任务卡并轮询
     function 确认发布(){
       卡.querySelector(".状").textContent = "发布中…";
       fetch(后端 + "/api/dev/chat/confirm", { method: "POST" })
@@ -3099,13 +3950,9 @@ window.乾坤对话 = (function(){
           var 排 = 卡.querySelector(".排");
           if (排) 排.remove();
           var 新卡 = 建任务卡(d.任务id);
-          新卡.style.display = "none";
           流.appendChild(新卡);
-          新卡.style.display = "";
           轮询任务卡(新卡, d.任务id);
           流.scrollTop = 流.scrollHeight;
-          // 需求已确认发布，看板同步刷新（若界面在看板页）
-          if (window.乾坤界面 && window.乾坤界面.切换) { /* 看板页自行刷新 */ }
         })
         .catch(function(e){
           卡.querySelector(".状").textContent = "发布失败";
@@ -3135,7 +3982,7 @@ window.乾坤对话 = (function(){
     卡.className = "任务卡";
     卡.setAttribute("data-任务id", 任务id);
     var 行 = 阶段表.map(function(s, i){
-      var 色 = 五行色[s.五行];
+      var 色 = "var(--" + s.五行 + ")";
       return '<div class="阶段" data-序="'+i+'">'+
         '<span class="点" style="background:'+色+'"></span>'+
         '<span class="名">'+s.五行+"·"+s.名+'</span>'+
@@ -3150,13 +3997,19 @@ window.乾坤对话 = (function(){
 
   function 轮询任务卡(卡, 任务id){
     var 后端 = (typeof window.乾坤配置 !== "undefined" && window.乾坤配置.道祖) || "";
-    // 过程事件游标：SSE 与短轮询共用，序号单调递增，重连时据此去重
     var 事件游标 = 0;
     var 过程源 = null;      // EventSource 句柄（SSE 路径）
     var 事件计时器 = null;  // 短轮询回退句柄
+    var 状态计时器 = null;
     var 过程区 = 卡.querySelector(".过程");
 
-    // 渲染一条过程事件：按任务过滤 + 序号去重（防 SSE 重连重复推送）
+    // 停止一切：卡片已被移除（/清空）或任务终态时调用，杜绝幽灵轮询
+    function 全停(){
+      if (状态计时器){ clearInterval(状态计时器); 状态计时器 = null; }
+      if (事件计时器){ clearInterval(事件计时器); 事件计时器 = null; }
+      if (过程源){ 过程源.close(); 过程源 = null; }
+    }
+
     function 渲染过程行(ev){
       if (!过程区) return;
       if (ev.任务id && ev.任务id !== 任务id) return;
@@ -3166,7 +4019,7 @@ window.乾坤对话 = (function(){
       行.className = "过程行 " + (ev.类型 || "");
       var 角色 = ev.角色 || "";
       var 工具 = ev.工具名 ? " · " + ev.工具名 : "";
-      var 内容 = (ev.内容 || "").replace(/</g,"&lt;").replace(/\n/g,"<br>");
+      var 内容 = (ev.内容 || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/\n/g,"<br>");
       行.innerHTML = '<span class="标">'+角色+工具+'</span><span class="内">'+内容+'</span>';
       过程区.appendChild(行);
     }
@@ -3175,6 +4028,7 @@ window.乾坤对话 = (function(){
     function 回退过程轮询(){
       if (事件计时器) return;
       事件计时器 = setInterval(function(){
+        if (!卡.isConnected){ 全停(); return; }
         fetch(后端 + "/api/dev/pilot/process?since=" + 事件游标)
           .then(function(r){ if(!r.ok) throw 0; return r.json(); })
           .then(function(d){
@@ -3185,7 +4039,7 @@ window.乾坤对话 = (function(){
       }, 2000);
     }
 
-    // AG-UI 渲染器：按 type 分发，三段式聚合为思考块/工具卡/答复块（消费 /api/dev/stream/agui 标准词）
+    // AG-UI 渲染器：按 type 分发聚合为思考块/工具卡/答复块
     function 建agui渲染器(过程区){
       var 块 = { 思:null, 具:null, 复:null, 复文:"" };
       function 新行(cls, 标){
@@ -3199,6 +4053,7 @@ window.乾坤对话 = (function(){
         return 行;
       }
       return function(ev){
+        if (!卡.isConnected){ 全停(); return; }
         switch(ev.type){
           case "REASONING_MESSAGE_START":
             块.思 = 新行("思考", "思考");
@@ -3259,12 +4114,13 @@ window.乾坤对话 = (function(){
       };
     }
 
-    // 订阅过程事件 SSE 长连接（AG-UI 标准词）；失败降级短轮询（中文词）
+    // 订阅过程事件 SSE；失败降级短轮询
     function 订阅过程流(){
       if (typeof EventSource === "undefined"){ 回退过程轮询(); return; }
       var 渲染agui = 建agui渲染器(过程区);
       过程源 = new EventSource(后端 + "/api/dev/stream/agui?since=" + 事件游标);
       过程源.onmessage = function(e){
+        if (!卡.isConnected){ 全停(); return; }
         try {
           渲染agui(JSON.parse(e.data));
           if (过程区) 过程区.scrollTop = 过程区.scrollHeight;
@@ -3272,12 +4128,13 @@ window.乾坤对话 = (function(){
       };
       过程源.onerror = function(){
         if (过程源){ 过程源.close(); 过程源 = null; }
-        回退过程轮询();
+        if (卡.isConnected){ 回退过程轮询(); }
       };
     }
 
-    // 1. 轮询任务状态（每3秒）：驱动五行阶段卡（保留任务详情兜底，阶段推进本身为秒级）
-    var 状态计时器 = setInterval(function(){
+    // 1. 轮询任务状态（每3秒）驱动五行阶段卡
+    状态计时器 = setInterval(function(){
+      if (!卡.isConnected){ 全停(); return; }
       fetch(后端 + "/api/board/" + 任务id)
         .then(function(r){ if(!r.ok) throw 0; return r.json(); })
         .then(function(t){
@@ -3294,16 +4151,14 @@ window.乾坤对话 = (function(){
             else { el.className = "阶段"; 态.textContent = "等待"; }
           });
           if (状态 === "已完成" || 状态 === "清理完成"){
-            if (头) 头.textContent = "✅ " + 状态;
-            clearInterval(状态计时器);
-            if (过程源){ 过程源.close(); 过程源 = null; }
-            if (事件计时器){ clearInterval(事件计时器); 事件计时器 = null; }
+            if (头) 头.textContent = "✓ " + 状态;
+            全停();
           }
         })
         .catch(function(){});
     }, 3000);
 
-    // 2. 订阅执行过程事件：优先 SSE 长连接，降级短轮询
+    // 2. 订阅执行过程事件
     订阅过程流();
   }
 
@@ -3322,9 +4177,11 @@ window.乾坤对话 = (function(){
 
 // 经挂载契约入园（主区）
 乾坤界面.挂载("主区", 乾坤对话.建);
+
 /* ═══════════════════════════════════════════════════════════
    乾坤 · 功能组件-殿 —— 主区任务看板 实现
-   职责：拉取 GET /api/board 真实任务，按五行层级（木火土金水）分列渲染，
+   职责：拉取 GET /api/board 真实任务，按五行层级（木火土金水）分列渲染；
+   卡片点击弹出详情弹层（GET /api/board/{id}）；驱动按钮带加载态与状态条。
    经挂载契约进入主区槽位；监听「乾坤图标」在对话/看板间切换。
    ═══════════════════════════════════════════════════════════ */
 window.乾坤看板 = (function(){
@@ -3343,22 +4200,24 @@ window.乾坤看板 = (function(){
 
   // ── 五行列定义（相生顺序：木→火→土→金→水）──
   var 五行列 = [
-    { 层:"木", 名:"木 · 需求", 角:"道祖",     色:"var(--木色)" },
-    { 层:"火", 名:"火 · 设计", 角:"圣人",     色:"var(--火色)" },
-    { 层:"土", 名:"土 · 实现", 角:"大罗金仙", 色:"var(--土色)" },
-    { 层:"金", 名:"金 · 验收", 角:"准圣",     色:"var(--金色)" },
-    { 层:"水", 名:"水 · 清理", 角:"太乙金仙", 色:"var(--水色)" }
+    { 层:"木", 名:"木 · 需求", 角:"道祖",     色:"var(--木)" },
+    { 层:"火", 名:"火 · 设计", 角:"圣人",     色:"var(--火)" },
+    { 层:"土", 名:"土 · 实现", 角:"大罗金仙", 色:"var(--土)" },
+    { 层:"金", 名:"金 · 验收", 角:"准圣",     色:"var(--金)" },
+    { 层:"水", 名:"水 · 清理", 角:"太乙金仙", 色:"var(--水)" }
   ];
 
-  // 刷新图标
   var 刷 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>';
-  // 驱动图标（闪电）
   var 驱 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>';
-  // 驱动到空闲图标（双箭头快进）
   var 疾 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M4 7l5 5-5 5M13 7l5 5-5 5"/></svg>';
+  var 关图标 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
   var 列体集合 = {};
   var 计数集合 = {};
+  var 驱动条 = null;      // 状态条节点
+  var 钮集合 = [];        // [刷新钮, 驱动钮, 疾钮]
+  var 轮询句柄 = null;    // 驱动状态轮询定时器
+  var 数据缓存 = {};      // id → 任务（弹层兜底用）
 
   function 建(){
     var 外 = document.createElement("div");
@@ -3371,14 +4230,19 @@ window.乾坤看板 = (function(){
     头.className = "看板头";
     头.innerHTML = '<span class="标">任务看板</span><span class="次">五行相生 · 任务流转</span>';
     var 刷新钮 = 按钮(刷 + "刷新", 载看板);
-    头.appendChild(刷新钮);
     var 驱动钮 = 按钮(驱 + "驱动", function(){ 驱动(false); });
     驱动钮.classList.add("主");
-    头.appendChild(驱动钮);
     var 疾钮 = 按钮(疾 + "驱动到空闲", function(){ 驱动(true); });
     疾钮.classList.add("主");
-    头.appendChild(疾钮);
+    头.appendChild(刷新钮); 头.appendChild(驱动钮); 头.appendChild(疾钮);
+    钮集合 = [刷新钮, 驱动钮, 疾钮];
     外.appendChild(头);
+
+    // ── 驱动状态条 ──
+    驱动条 = document.createElement("div");
+    驱动条.className = "驱动条";
+    驱动条.innerHTML = '<span class="灯"></span><span class="文">正在探测驱动台…</span>';
+    外.appendChild(驱动条);
 
     // ── 列组 ──
     var 列组 = document.createElement("div");
@@ -3419,8 +4283,8 @@ window.乾坤看板 = (function(){
       }
     });
 
-    // 初始载入一次（即便隐藏也预载，切换时数据就绪）
     载看板();
+    刷状态();
     return 外;
   }
 
@@ -3434,9 +4298,9 @@ window.乾坤看板 = (function(){
     fetch(后端() + "/api/board")
       .then(function(r){ if (!r.ok){ throw new Error("HTTP " + r.status); } return r.json(); })
       .then(function(任务){
-        // 按五行归组
         var 组 = { 木:[], 火:[], 土:[], 金:[], 水:[] };
         (任务 || []).forEach(function(t){
+          数据缓存[t.id] = t;
           var 层 = 五行映射[t.status] || "木";
           (组[层] = 组[层] || []).push(t);
         });
@@ -3452,9 +4316,7 @@ window.乾坤看板 = (function(){
             体.appendChild(空);
             return;
           }
-          列表.forEach(function(t){
-            体.appendChild(卡片(t, 列));
-          });
+          列表.forEach(function(t){ 体.appendChild(卡片(t, 列)); });
         });
       })
       .catch(function(){
@@ -3477,8 +4339,98 @@ window.乾坤看板 = (function(){
         (t.优先级 ? '<span class="优">' + 转(t.优先级) + '</span>' : '') +
         (t.当前承接人 && t.当前承接人 !== "道祖" ? '<span class="承">' + 转(t.当前承接人) + '</span>' : '') +
       '</span>';
-    卡.title = "任务 #" + t.id;
+    卡.title = "任务 #" + t.id + " · 点击查看详情";
+    卡.addEventListener("click", function(){ 弹层(t.id); });
     return 卡;
+  }
+
+  // ── 卡片详情弹层：优先取详情接口，失败回退列表缓存 ──
+  function 弹层(id){
+    var 罩 = document.createElement("div");
+    罩.className = "看板弹罩";
+    var 层 = document.createElement("div");
+    层.className = "看板弹层";
+    层.innerHTML = '<div class="弹头"><span class="弹标">任务 #' + 转(id) + '</span><span class="弹载">加载中…</span></div>';
+    罩.appendChild(层);
+    document.body.appendChild(罩);
+
+    // 关闭统一收口：摘除 Esc 监听 + 幂等移除节点（避免监听器堆积与重复关闭抛错）
+    function esc(e){ if (e.key === "Escape"){ 关(); } }
+    function 关(){
+      document.removeEventListener("keydown", esc);
+      if (罩.parentNode){ 罩.parentNode.removeChild(罩); }
+    }
+    罩.addEventListener("click", function(e){ if (e.target === 罩){ 关(); } });
+    document.addEventListener("keydown", esc);
+
+    var 本地 = 数据缓存[id];
+    fetch(后端() + "/api/board/" + id)
+      .then(function(r){ if (!r.ok){ throw new Error("HTTP " + r.status); } return r.json(); })
+      .catch(function(){ if (本地){ return 本地; } throw new Error("无数据"); })
+      .then(function(t){ 渲染弹层(层, t, 关); })
+      .catch(function(){
+        层.innerHTML = '<div class="弹头"><span class="弹标">任务 #' + 转(id) + '</span></div>' +
+          '<div class="弹空">详情读取失败 · 需数据服务在线</div>';
+      });
+  }
+
+  function 渲染弹层(层, t, 关){
+    var 状 = String(t.status || "—");
+    var 色 = 五行列.filter(function(c){ return c.层 === (五行映射[状] || "木"); })[0].色;
+    var 历史 = (t.状态历史 || []).map(function(h){
+      return '<div class="史行"><span class="史迁">' + 转(h.原状态) + ' → ' + 转(h.新状态) + '</span>' +
+        '<span class="史者">' + 转(h.操作者) + '</span>' +
+        '<span class="史时">' + 时间(h.时间) + '</span>' +
+        (h.备注 ? '<span class="史注">' + 转(h.备注) + '</span>' : '') + '</div>';
+    }).join("");
+    var 回退 = t.回退来源
+      ? '<div class="弹块"><div class="块题">回退来源</div><div class="回退行">' +
+        '<span class="史迁">' + 转(t.回退来源.来源层级) + ' → ' + 转(t.回退来源.目标层级) + '</span>' +
+        '<span class="史注">' + 转(t.回退来源.原因) + '</span>' +
+        '<span class="史时">' + 时间(t.回退来源.回退时间) + '</span></div></div>'
+      : "";
+    var 澄清 = t.澄清记录
+      ? '<div class="弹块"><div class="块题">澄清记录</div><div class="史注">' + 转(t.澄清记录.结论) +
+        ' · ' + (t.澄清记录.继续 ? "继续推进" : "已终止") + ' · ' + 时间(t.澄清记录.时间) + '</div></div>'
+      : "";
+    var 扫尾 = t.扫尾记录
+      ? '<div class="弹块"><div class="块题">交付核验</div><div class="史注">变更 ' + t.扫尾记录.变更总数 +
+        ' · 兑现 ' + t.扫尾记录.兑现数 + ' · 未兑现 ' + t.扫尾记录.未兑现数 +
+        (t.扫尾记录.说明 ? ' · ' + 转(t.扫尾记录.说明) : '') + '</div></div>'
+      : "";
+    var 承接 = (t.承接历史 && t.承接历史.length)
+      ? '<div class="弹块"><div class="块题">承接历史</div><div class="史注">' +
+        t.承接历史.map(转).join(" · ") + '</div></div>'
+      : "";
+
+    层.innerHTML =
+      '<div class="弹头">' +
+        '<span class="弹标">任务 #' + 转(t.id) + '</span>' +
+        '<span class="弹状" style="color:' + 色 + ';border-color:' + 色 + '">' + 转(状) + '</span>' +
+        '<button class="弹关" title="关闭（Esc）">' + 关图标 + '</button>' +
+      '</div>' +
+      '<div class="弹体">' +
+        '<div class="弹题">' + 转(t.title || "（无标题）") + '</div>' +
+        '<div class="弹描">' + (t.description ? 转(t.description) : '<span class="弱">无描述</span>') + '</div>' +
+        '<div class="弹表">' +
+          元("场景", t.场景) + 元("优先级", t.优先级) +
+          元("发起人", t.发起人) + 元("承接人", t.当前承接人) +
+          元("总令牌", t.总令牌 ? Number(t.总令牌).toLocaleString() : "—") +
+          元("修复轮次", t.修复轮次 || "—") +
+          元("创建", 时间(t.created_at)) + 元("更新", 时间(t.updated_at)) +
+        '</div>' + 回退 + 澄清 + 扫尾 + 承接 +
+        (历史 ? '<div class="弹块"><div class="块题">状态历史</div><div class="弹史">' + 历史 + '</div></div>' : '') +
+      '</div>';
+    层.querySelector(".弹关").addEventListener("click", 关);
+  }
+
+  function 元(名, 值){
+    return '<div class="元项"><span class="元名">' + 名 + '</span><span class="元值">' + 转(值 == null || 值 === "" ? "—" : 值) + '</span></div>';
+  }
+
+  function 时间(秒){
+    if (!秒){ return "—"; }
+    try { return new Date(秒 * 1000).toLocaleString(); } catch(e){ return "—"; }
   }
 
   function 转(s){
@@ -3494,23 +4446,81 @@ window.乾坤看板 = (function(){
     return b;
   }
 
-  // ── 驱动：触发看板驱动台，随后轮询刷新直到空闲 ──
+  // ── 驱动：触发看板驱动台；期间按钮进入加载态并轮询状态条 ──
   function 驱动(到空闲){
+    if (钮集合[1].disabled){ return; } // 已有驱动进行中
+    设加载(true, 到空闲 ? "正在受理驱动到空闲…" : "正在受理驱动…");
     var 地址 = 后端() + (到空闲 ? "/api/dev/pilot/drain" : "/api/dev/pilot");
     var 体 = 到空闲 ? JSON.stringify({ 上限: 20 }) : undefined;
     fetch(地址, { method: "POST", headers: { "Content-Type": "application/json" }, body: 体 })
-      .then(function(r){ if (!r.ok){ throw new Error("HTTP " + r.status); } return r.json(); })
-      .then(function(){ 轮询驱动(); })
-      .catch(function(){ 载看板(); });
+      .then(function(r){
+        if (r.status === 409){ 条文("已有驱动执行中，正在跟随进度…", "讯"); return null; }
+        if (r.status === 503){ 条文("驱动台未就绪：需配置 LLM_API_KEY 并开启 run_dev_agent 后重启", "险"); 设加载(false); return null; }
+        if (!r.ok){ throw new Error("HTTP " + r.status); }
+        条文(到空闲 ? "已受理：驱动到空闲执行中…" : "已受理：驱动一轮执行中…", "行");
+        return r.json();
+      })
+      .then(function(d){ if (d){ 轮状态(); } })
+      .catch(function(){ 条文("驱动请求失败 · 需数据服务在线", "险"); 设加载(false); 载看板(); });
   }
 
-  // 每 2 秒刷新看板 + 驱动状态，直到驱动空闲
-  function 轮询驱动(){
-    载看板();
+  // 每 2 秒刷新状态条与看板，直到驱动空闲后恢复按钮
+  function 轮状态(){
+    if (轮询句柄){ return; }
+    var 步 = function(){
+      fetch(后端() + "/api/dev/pilot/status")
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d && d.运行中){
+            条文("驱动执行中" + (d.最近结果 ? " · " + d.最近结果 : ""), "行");
+            载看板();
+            轮询句柄 = setTimeout(步, 2000);
+          } else {
+            轮询句柄 = null;
+            设加载(false);
+            条文(d && d.最近结果 ? "驱动完成 · " + d.最近结果 : "驱动完成 · 驱动台空闲", "成");
+            载看板();
+          }
+        })
+        .catch(function(){
+          轮询句柄 = null;
+          设加载(false);
+          条文("驱动状态探测失败 · 需数据服务在线", "险");
+        });
+    };
+    步();
+  }
+
+  // 一次性探测驱动台就绪状态（建园时与驱动结束后复用）
+  function 刷状态(){
     fetch(后端() + "/api/dev/pilot/status")
       .then(function(r){ return r.json(); })
-      .then(function(d){ if (d && d.运行中){ setTimeout(轮询驱动, 2000); } })
-      .catch(function(){});
+      .then(function(d){
+        if (d && d.运行中){
+          设加载(true);
+          条文("驱动执行中" + (d.最近结果 ? " · " + d.最近结果 : ""), "行");
+          轮状态();
+        } else if (d && d.就绪){
+          条文("驱动台就绪 · 空闲", "闲");
+        } else {
+          条文("驱动台未就绪：需配置 LLM_API_KEY 并开启 run_dev_agent", "险");
+        }
+      })
+      .catch(function(){ 条文("驱动状态未知 · 需数据服务在线", "险"); });
+  }
+
+  function 设加载(中, 文案){
+    钮集合.forEach(function(b, i){
+      b.disabled = 中;
+      b.classList.toggle("载", 中 && i > 0);
+    });
+    if (中 && 文案){ 条文(文案, "行"); }
+  }
+
+  function 条文(文, 态){
+    if (!驱动条){ return; }
+    驱动条.className = "驱动条 态-" + (态 || "闲");
+    驱动条.querySelector(".文").textContent = 文;
   }
 
   return { 建: 建 };
@@ -3572,7 +4582,17 @@ window.乾坤视图 = (function(){
   var 题 = 抽屉.querySelector(".视图-题");
   var 数 = 抽屉.querySelector(".视图-数");
   var 体 = 抽屉.querySelector(".视图-体");
-  抽屉.querySelector(".视图-关").addEventListener("click", 收起);
+
+  // 当前抽屉展示键（空 = 收起）；重复点击同键 → 收起并复位图标高亮
+  var 当前键 = "";
+  function 复位收起(键){
+    当前键 = "";
+    抽屉.classList.remove("开");
+    if (键){
+      document.dispatchEvent(new CustomEvent("乾坤图标复位", { detail: { 键: 键 } }));
+    }
+  }
+  抽屉.querySelector(".视图-关").addEventListener("click", function(){ 复位收起(当前键); });
 
   function 收起(){ 抽屉.classList.remove("开"); }
   function 打开(标题){ 题.textContent = 标题; 数.textContent = ""; 抽屉.classList.add("开"); }
@@ -3654,15 +4674,16 @@ window.乾坤视图 = (function(){
       });
   }
 
-  // ── 事件路由：图标键 → 视图动作 ──
+  // ── 事件路由：图标键 → 视图动作（重复点击同键 = 收起）──
   document.addEventListener("乾坤图标", function(e){
     var 键 = e.detail && e.detail.键;
-    if (键 === "记忆"){ 载记忆(); }
-    else if (键 === "图谱"){ 载图谱(); }
-    else if (键 === "传承殿"){ 载文件("传承殿", "传承殿"); }
-    else if (键 === "门禁"){ 载文件("门禁", "门禁"); }
-    else if (键 === "架构"){ 载文件("架构", "架构"); }
-    else { 收起(); }
+    if (键 && 键 === 当前键){ 复位收起(键); return; }
+    if (键 === "记忆"){ 当前键 = 键; 载记忆(); }
+    else if (键 === "图谱"){ 当前键 = 键; 载图谱(); }
+    else if (键 === "传承殿"){ 当前键 = 键; 载文件("传承殿", "传承殿"); }
+    else if (键 === "门禁"){ 当前键 = 键; 载文件("门禁", "门禁"); }
+    else if (键 === "架构"){ 当前键 = 键; 载文件("架构", "架构"); }
+    else { 当前键 = ""; 收起(); }
   });
 
   // ── 文件视图：传承殿（文档）/ 门禁（-门禁）/ 架构（架构图）──

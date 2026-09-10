@@ -155,26 +155,42 @@ pub struct 道祖确认响应 {
     pub 任务id: u64,
 }
 
-/// POST /api/dev/chat：道祖接待用户消息（闲聊/澄清/对齐）
+/// POST /api/dev/chat：道祖接待同步对话（整体返回，闲聊/澄清/对齐）。
+///
+/// 接待 LLM 调用为同步阻塞（ureq）且持 std Mutex，不直接在 async 上下文执行——
+/// 与流式版一致放入 blocking 线程，避免阻塞 tokio worker 线程饿死其它请求。
 pub async fn 道祖对话接口(
     状态: State<数据服务状态>,
     Json(请求): Json<道祖对话请求>,
 ) -> Result<Json<道祖对话响应>, (StatusCode, Json<受理错误响应>)> {
-    // 1. 道祖接待用户消息（锁内调LLM）
-    let 接待 = 状态.道祖接待.as_ref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(受理错误响应 { 错误: "道祖未上线：需配置 LLM 并开启 run_dev_agent".into() }),
-    ))?;
-    let (阶段, 回复, 需求) = {
-        let 接待锁 = 接待.lock().expect("道祖接待锁中毒");
-        let 响应 = 接待锁.接待(请求.消息).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(受理错误响应 { 错误: e.to_string() }),
-            )
-        })?;
-        (响应.阶段, 响应.回复, 响应.需求)
+    // 1. 道祖接待用户消息（LLM 同步调用放 blocking 线程：std 锁不适合 async）
+    let Some(接待) = 状态.道祖接待.clone() else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(受理错误响应 { 错误: "道祖未上线：需配置 LLM 并开启 run_dev_agent".into() }),
+        ));
     };
+    let 消息 = 请求.消息;
+    let 响应 = tokio::task::spawn_blocking(move || {
+        let 接待锁 = 接待.lock().expect("道祖接待锁中毒");
+        接待锁.接待(消息)
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(受理错误响应 { 错误: format!("道祖接待线程异常: {e}") }),
+        )
+    })?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(受理错误响应 { 错误: e.to_string() }),
+        )
+    })?;
+    let 阶段 = 响应.阶段;
+    let 回复 = 响应.回复;
+    let 需求 = 响应.需求;
 
     // 2. 道祖对齐完需求 → 停留「待确认」，等待用户确认（/api/dev/chat/confirm）后才发布看板
     //    不再自动发布；若驱动台忙等异常也留待确认，由确认接口统一处理。
@@ -191,10 +207,14 @@ pub async fn 道祖对话接口(
 /// POST /api/dev/chat/stream：道祖接待流式（SSE）。
 /// 事件序列：RUN_STARTED → TEXT_MESSAGE_CONTENT×N → TEXT_MESSAGE_END → RUN_FINISHED。
 /// 接待 LLM 调用在 blocking 线程执行（std 锁不适合 async），增量经 mpsc 通道转交 SSE 推送。
+/// 并发超限返回 429。
 pub async fn 道祖对话流式接口(
     状态: State<数据服务状态>,
     Json(请求): Json<道祖对话请求>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    let Ok(许可) = 状态.sse信号量.clone().try_acquire_owned() else {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    };
     let 状态克隆 = 状态.clone();
     let (发送端, mut 接收端) = tokio::sync::mpsc::channel::<serde_json::Value>(64);
     let _处理 = tokio::task::spawn_blocking(move || {
@@ -237,11 +257,12 @@ pub async fn 道祖对话流式接口(
         发帧(json!({"type": "RUN_FINISHED", "阶段": 阶段, "任务id": 任务id}));
     });
     let 流 = async_stream::stream! {
+        let _持有 = 许可;
         while let Some(帧) = 接收端.recv().await {
             yield Ok(Event::default().data(帧.to_string()));
         }
     };
-    Sse::new(流).keep_alive(KeepAlive::default())
+    Ok(Sse::new(流).keep_alive(KeepAlive::default()))
 }
 
 /// POST /api/dev/chat/confirm：确认发布对齐需求（落看板 + 写记忆 + 自动驱动）

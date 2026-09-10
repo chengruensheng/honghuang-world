@@ -3,7 +3,11 @@ use serde::{Deserialize, Serialize};
 
 /// 任务清单项的载荷键常量（与工具 schema 的 property 名一致，中文为规范键）
 pub const 清单项键_内容: &str = "内容";
+/// 清单项内容字段的英文别名（LLM 偶用 `content`，解析层容错，与「状态」字段英文别名同策略）
+pub const 清单项键_内容_英: &str = "content";
 pub const 清单项键_状态: &str = "状态";
+/// 清单项状态字段的英文别名（LLM 偶用 `status`，解析层容错，与「内容」字段英文别名同策略）
+pub const 清单项键_状态_英: &str = "status";
 /// 任务项状态值常量（与 schema 的 enum 一致，中文为规范值）
 pub const 状态_待办: &str = "待办";
 pub const 状态_进行中: &str = "进行中";
@@ -34,11 +38,16 @@ pub fn 解析任务清单(清单值: &serde_json::Value) -> Result<Vec<任务项
     for 项 in 数组 {
         let 内容 = 项
             .get(清单项键_内容)
+            .or_else(|| 项.get(清单项键_内容_英))
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| Error::缺少参数("清单项.内容".into()))?
             .to_string();
-        let 状态 = 解析状态(项.get(清单项键_状态).and_then(|v| v.as_str()));
+        let 状态 = 解析状态(
+            项.get(清单项键_状态)
+                .or_else(|| 项.get(清单项键_状态_英))
+                .and_then(|v| v.as_str()),
+        );
         结果.push(任务项 { 内容, 状态 });
     }
     Ok(结果)

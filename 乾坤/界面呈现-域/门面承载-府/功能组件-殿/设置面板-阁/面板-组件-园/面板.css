@@ -14,7 +14,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 8, 12, .62);
+  background: var(--遮罩);
   backdrop-filter: blur(3px);
   opacity: 0;
   pointer-events: none;
@@ -33,7 +33,7 @@
   border: 1px solid var(--线二);
   border-radius: var(--圆中);
   background: var(--面一);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+  box-shadow: var(--影二);
   font-family: var(--字族);
   color: var(--字二);
 }
@@ -167,92 +167,4 @@
   padding: 4px 0;
 }
 
-/* ── 智能体入口（挪入设置）── */
-.设置-智能体{
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--线二);
-  border-radius: var(--圆小);
-  background: var(--面二);
-  color: var(--字二);
-  font-family: var(--字族);
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color var(--速), background var(--速);
-}
-.设置-智能体:hover{
-  border-color: var(--契);
-  background: var(--面三);
-}
-.设置-智能体 svg{
-  width: 18px;
-  height: 18px;
-  color: var(--契);
-}
-.设置-智能体 .设置-智能体-右{
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-.设置-智能体 .设置-智能体-右 em{
-  font-style: normal;
-  font-size: 11px;
-  color: var(--字四);
-}
-
-/* ── 开关行 ── */
-.设置-开关行{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 0;
-  font-size: 13px;
-}
-.设置-开关行 .设置-开关{
-  margin-left: auto;
-}
-.设置-开关{
-  position: relative;
-  width: 34px;
-  height: 18px;
-  border-radius: 99px;
-  background: var(--面四);
-  border: none;
-  cursor: pointer;
-  transition: background var(--速);
-}
-.设置-开关::after{
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--字三);
-  transition: transform var(--速), background var(--速);
-}
-.设置-开关.开{
-  background: var(--契);
-}
-.设置-开关.开::after{
-  transform: translateX(16px);
-  background: #fff;
-}
-
-/* ── 滑动条行 ── */
-.设置-滑行{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--字三);
-}
-.设置-滑行 input{
-  flex: 1;
-  accent-color: var(--契);
-}
+/* ── 智能体绑定区（样式见 接入.css）── */

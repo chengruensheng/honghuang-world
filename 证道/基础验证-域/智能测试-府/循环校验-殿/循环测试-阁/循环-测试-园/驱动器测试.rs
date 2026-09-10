@@ -141,7 +141,7 @@ mod tests {
         看板.发布任务(task).expect("发布应成功");
         let (驱动器, 看板) = 新驱动器(
             看板,
-            vec![模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] }],
+            vec![模型响应 { 思考: None, 内容: Some(设计样例().into()), 工具调用: vec![] }],
             &临时路径("ctx-圣人"),
         );
 
@@ -166,7 +166,7 @@ mod tests {
         看板.发布任务(task).expect("发布应成功");
         let (驱动器, 看板) = 新驱动器(
             看板,
-            vec![模型响应 { 内容: Some(实现样例().into()), 工具调用: vec![] }],
+            vec![模型响应 { 思考: None, 内容: Some(实现样例().into()), 工具调用: vec![] }],
             &临时路径("ctx-大罗金仙"),
         );
 
@@ -191,7 +191,7 @@ mod tests {
         看板.发布任务(task).expect("发布应成功");
         let (驱动器, 看板) = 新驱动器(
             看板,
-            vec![模型响应 { 内容: Some(验收样例(false).into()), 工具调用: vec![] }],
+            vec![模型响应 { 思考: None, 内容: Some(验收样例(false).into()), 工具调用: vec![] }],
             &临时路径("ctx-准圣"),
         );
 
@@ -213,7 +213,7 @@ mod tests {
         看板.发布任务(task).expect("发布应成功");
         let (驱动器, 看板) = 新驱动器(
             看板,
-            vec![模型响应 { 内容: Some(终审样例(true).into()), 工具调用: vec![] }],
+            vec![模型响应 { 思考: None, 内容: Some(终审样例(true).into()), 工具调用: vec![] }],
             &临时路径("ctx-道祖"),
         );
 
@@ -233,11 +233,11 @@ mod tests {
         task.status = TaskStatus::待圣人设计;
         看板.发布任务(task).expect("发布应成功");
         let 序列 = vec![
-            模型响应 { 内容: Some(设计样例().into()), 工具调用: vec![] },
-            模型响应 { 内容: Some(实现样例().into()), 工具调用: vec![] },
-            模型响应 { 内容: Some(验收样例(true).into()), 工具调用: vec![] },
-            模型响应 { 内容: Some(终审样例(true).into()), 工具调用: vec![] },
-            模型响应 { 内容: Some(r#"{"清理项":[{"项":"临时文件","结果":"已清理"}],"归档完成":true}"#.into()), 工具调用: vec![] },
+            模型响应 { 思考: None, 内容: Some(设计样例().into()), 工具调用: vec![] },
+            模型响应 { 思考: None, 内容: Some(实现样例().into()), 工具调用: vec![] },
+            模型响应 { 思考: None, 内容: Some(验收样例(true).into()), 工具调用: vec![] },
+            模型响应 { 思考: None, 内容: Some(终审样例(true).into()), 工具调用: vec![] },
+            模型响应 { 思考: None, 内容: Some(r#"{"清理项":[{"项":"临时文件","结果":"已清理"}],"归档完成":true}"#.into()), 工具调用: vec![] },
         ];
         let (驱动器, 看板) = 新驱动器(看板, 序列, &临时路径("ctx-完整"));
 
@@ -252,6 +252,76 @@ mod tests {
         assert!(任务.验收文档.is_some(), "验收文档应写入");
         assert!(任务.终审文档.is_some(), "终审文档应写入");
         assert_eq!(任务.承接历史.len(), 5, "五角色各承接一次");
+    }
+
+    /// 模拟执行器变体：按名找文件 返回工作区残留（模拟清理不彻底的现场）
+    struct 模拟执行器_带残留;
+
+    impl Component for 模拟执行器_带残留 {
+        fn name(&self) -> &'static str { "模拟执行器_带残留" }
+    }
+
+    impl 执行器 for 模拟执行器_带残留 {
+        fn 读文件(&self, _路径: &str) -> Result<String> { Ok("文件内容".to_string()) }
+        fn 写文件(&self, _路径: &str, _内容: &str) -> Result<()> { Ok(()) }
+        fn 运行命令(&self, _命令: &str) -> Result<String> { Ok("命令输出".to_string()) }
+        fn 列目录(&self, _路径: &str) -> Result<String> { Ok("（空目录）".to_string()) }
+        fn 按名找文件(&self, _模式: &str) -> Result<String> {
+            // 清理核验扫描 *.bak/*.tmp 时发现残留，模拟模型「自报清理完成但产物真实残留」
+            Ok("crates/x/src/lib.rs.bak".to_string())
+        }
+        fn 搜索内容(&self, _关键词: &str) -> Result<String> { Ok("（无匹配）".to_string()) }
+        fn 精确编辑(&self, _路径: &str, _旧: &str, _新: &str) -> Result<String> { Ok("替换成功（1 处）".to_string()) }
+    }
+
+    #[test]
+    fn 驱动器_清理核验有残留_拒绝推进保持待清理() {
+        let 看板 = Arc::new(Mutex::new(TaskBoard::新建(临时路径("清理核验残留"))));
+        {
+            let mut 看板 = 看板.lock().expect("看板锁");
+            let mut task = 造任务("残留任务");
+            task.status = TaskStatus::待清理;
+            看板.发布任务(task).expect("发布应成功");
+        }
+        let 上下文 = Arc::new(Mutex::new(ContextManager::新(临时路径("ctx-清理核验残留"))));
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 思考: None, 内容: Some(r#"{"清理项":[{"项":"临时文件","结果":"已清理"}],"归档完成":true}"#.into()), 工具调用: vec![] },
+        ]));
+        let 执行器: Arc<dyn 执行器> = Arc::new(模拟执行器_带残留);
+        let 驱动器 = 五层协作驱动器::新(看板.clone(), 上下文, 对话器, 执行器, 10);
+
+        // 模型宣告清理完成，但执行器实扫发现 .bak 残留 → 核验门应拒绝推进
+        let 结果 = 驱动器.执行一轮();
+        assert!(结果.is_err(), "有残留时清理核验应拒绝推进，实际: {结果:?}");
+        assert!(
+            结果.expect_err("应报错").to_string().contains("清理残留核验未通过"),
+            "错误应说明残留核验未通过"
+        );
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待清理, "核验未通过不得推进到清理完成");
+        assert!(任务.承接历史.is_empty(), "核验未通过不应记录承接");
+    }
+
+    #[test]
+    fn 驱动器_清理核验无残留_正常推进清理完成() {
+        let mut 看板 = TaskBoard::新建(临时路径("清理核验干净"));
+        let mut task = 造任务("干净任务");
+        task.status = TaskStatus::待清理;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 思考: None, 内容: Some(r#"{"清理项":[{"项":"临时文件","结果":"已清理"}],"归档完成":true}"#.into()), 工具调用: vec![] }],
+            &临时路径("ctx-清理核验干净"),
+        );
+
+        let 结果 = 驱动器.执行一轮().expect("无残留时清理应正常推进");
+        assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::太乙金仙, 新状态: TaskStatus::清理完成 });
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::清理完成);
     }
 
     #[test]
@@ -279,9 +349,9 @@ mod tests {
         let (驱动器, 看板) = 新驱动器(
             看板,
             vec![
-                模型响应 { 内容: Some(验收样例(false).into()), 工具调用: vec![] }, // 准圣：验收不通过 → 回退+召回
-                模型响应 { 内容: Some(实现样例().into()), 工具调用: vec![] },     // 大罗金仙：修复
-                模型响应 { 内容: Some(验收样例(true).into()), 工具调用: vec![] },  // 准圣：重新验收通过 → 解除召回
+                模型响应 { 思考: None, 内容: Some(验收样例(false).into()), 工具调用: vec![] }, // 准圣：验收不通过 → 回退+召回
+                模型响应 { 思考: None, 内容: Some(实现样例().into()), 工具调用: vec![] },     // 大罗金仙：修复
+                模型响应 { 思考: None, 内容: Some(验收样例(true).into()), 工具调用: vec![] },  // 准圣：重新验收通过 → 解除召回
             ],
             &临时路径("ctx-召回闭环"),
         );
@@ -311,7 +381,7 @@ mod tests {
         看板.发布任务(task).expect("发布应成功");
         let (驱动器, 看板) = 新驱动器(
             看板,
-            vec![模型响应 { 内容: Some("抱歉我无法输出 JSON".into()), 工具调用: vec![] }],
+            vec![模型响应 { 思考: None, 内容: Some("抱歉我无法输出 JSON".into()), 工具调用: vec![] }],
             &临时路径("ctx-坏产出"),
         );
 

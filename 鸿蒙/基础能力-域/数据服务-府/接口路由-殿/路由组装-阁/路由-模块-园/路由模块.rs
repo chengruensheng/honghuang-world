@@ -14,6 +14,7 @@ use crate::{
     会话清单接口, 会话回放接口, 会话恢复接口, 会话分叉接口,
     模型状态接口, 模型列表接口, 模型选择接口,
     模型模板接口, 模型探测接口, 模型接入接口,
+    智能体清单接口, 智能体绑定接口, 智能体解绑接口,
     文件清单接口, 文件内容接口,
     工作区查询, 工作区设置,
 };
@@ -69,32 +70,50 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/llm/templates", get(模型模板接口))
         .route("/api/llm/discover", post(模型探测接口))
         .route("/api/llm/connect", post(模型接入接口))
+        .route("/api/llm/agents", get(智能体清单接口))
+        .route("/api/llm/agent/bind", post(智能体绑定接口))
+        .route("/api/llm/agent/unbind", post(智能体解绑接口))
         .route("/api/files", get(文件清单接口))
         .route("/api/files/content", get(文件内容接口))
         .route("/api/workspace", get(工作区查询).post(工作区设置))
         .fallback_service(ServeDir::new(静态目录))
-        .layer(CorsLayer::permissive())
+        .layer(axum::extract::DefaultBodyLimit::max(512 * 1024))
+        .layer(
+            CorsLayer::new()
+                .allow_origin([
+                    "http://127.0.0.1:8321".parse::<axum::http::HeaderValue>().unwrap(),
+                    "http://localhost:8321".parse::<axum::http::HeaderValue>().unwrap(),
+                    "tauri://localhost".parse::<axum::http::HeaderValue>().unwrap(),
+                ])
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any),
+        )
         .layer(middleware::from_fn_with_state(鉴权令牌, 鉴权层))
         .with_state(状态)
 }
 
 /// 根路径重定向到前端入口页
 async fn 重定向入口() -> Redirect {
-    Redirect::permanent("/index.html")
+    Redirect::permanent("/门面.html")
 }
 
-/// 写接口鉴权中间件：GET 请求放行；非 GET 需携带 Authorization: Bearer <令牌>
+/// 写接口鉴权中间件：GET 请求放行（SSE 流端点除外）；非 GET 与 SSE 需携带 Authorization: Bearer <令牌>。
+/// SSE 端点额外接受 ?token=<令牌> 查询参数（EventSource 无法携带请求头）。
 async fn 鉴权层(State(令牌): State<Option<String>>, req: Request, next: Next) -> Result<Response, StatusCode> {
-    if req.method() == axum::http::Method::GET {
+    let 路径 = req.uri().path();
+    let 是流端点 = 路径.starts_with("/api/dev/stream") || 路径 == "/api/dev/chat/stream";
+    if req.method() == axum::http::Method::GET && !是流端点 {
         return Ok(next.run(req).await);
     }
     match 令牌 {
         Some(t) => {
-            let auth = match req.headers().get("Authorization").and_then(|v| v.to_str().ok()) {
-                Some(s) => s,
-                None => return Err(StatusCode::UNAUTHORIZED),
-            };
-            if auth == format!("Bearer {t}") {
+            let 头令牌 = req.headers().get("Authorization").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+            let 查令牌 = req.uri().query().and_then(|q| {
+                q.split('&').find_map(|对| 对.strip_prefix("token=").map(|v| v.to_string()))
+            });
+            let 匹配 = 头令牌.as_deref() == Some(format!("Bearer {t}").as_str())
+                || 查令牌.as_deref() == Some(t.as_str());
+            if 匹配 {
                 Ok(next.run(req).await)
             } else {
                 Err(StatusCode::UNAUTHORIZED)

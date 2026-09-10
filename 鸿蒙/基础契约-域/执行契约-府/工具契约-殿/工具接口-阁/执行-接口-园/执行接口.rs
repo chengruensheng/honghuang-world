@@ -1,5 +1,5 @@
 use hm_contract::Component;
-use hm_error::Result;
+use hm_error::{Error, Result};
 
 /// 执行器契约：为自主智能体提供文件读写与命令执行能力。
 ///
@@ -20,4 +20,9 @@ pub trait 执行器: Component {
     fn 搜索内容(&self, 关键词: &str) -> Result<String>;
     /// 将文件中唯一匹配的「旧」字符串替换为「新」（多处匹配报错要求更精确）
     fn 精确编辑(&self, 路径: &str, 旧: &str, 新: &str) -> Result<String>;
+    /// 删除工作区内的文件（仅沙箱内清理临时/备份产物用）。
+    /// 默认实现返回「不支持」，生产执行器（工作区沙箱）覆盖为真实删除，测试 mock 无需改动。
+    fn 删除文件(&self, 路径: &str) -> Result<String> {
+        Err(Error::Config(format!("此执行器不支持删除文件: {路径}")))
+    }
 }

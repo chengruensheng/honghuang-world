@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -18,6 +19,8 @@ pub struct LLM池 {
     /// 供应商表（接入向导需运行时增删 → Mutex；生成时锁内快照克隆）
     pub(super) 供应商们: Arc<Mutex<Vec<池内供应商>>>,
     pub(super) 选择: Arc<Mutex<池选择>>,
+    /// 智能体绑定表：智能体身份 → 指定模型选择（覆盖全局选择；详见 绑定.rs）
+    pub(super) 绑定: Arc<Mutex<HashMap<String, 池选择>>>,
     pub(super) 状态文件: Option<PathBuf>,
 }
 
@@ -73,11 +76,16 @@ impl LLM池 {
         let 池 = LLM池 {
             供应商们: Arc::new(Mutex::new(供应商们)),
             选择: Arc::new(Mutex::new(默认选择)),
+            绑定: Arc::new(Mutex::new(HashMap::new())),
             状态文件,
         };
         // 运行时选择文件（存在则覆盖配置默认；损坏忽略回退默认）
         if let Err(失败) = 池.加载选择文件() {
             tracing::warn!("加载 LLM 选择文件失败（回退配置默认）: {失败}");
+        }
+        // 智能体绑定文件（存在则恢复每智能体独立模型）
+        if let Err(失败) = 池.加载绑定文件() {
+            tracing::warn!("加载 LLM 绑定文件失败（回退全局选择）: {失败}");
         }
         池
     }
@@ -141,8 +149,14 @@ impl LLM池 {
             .unwrap_or(false)
     }
 
-    /// 生成主路径：选中供应商优先，按配置顺序故障转移；全失败返回最后错误。
-    fn 生成经池<T, 造, 析>(&self, 造体: &造, 解析: &析) -> Result<T>
+    /// 全局选择（锁中毒按空选择处理）
+    pub(super) fn 全局选择(&self) -> 池选择 {
+        self.当前选择()
+            .unwrap_or_else(|| 池选择 { 供应商: String::new(), 模型: String::new() })
+    }
+
+    /// 生成主路径：起始选择供应商优先（含其选中模型），按配置顺序故障转移；全失败返回最后错误。
+    fn 生成经池<T, 造, 析>(&self, 起始: &池选择, 造体: &造, 解析: &析) -> Result<T>
     where
         造: Fn(&池内供应商) -> serde_json::Value,
         析: Fn(&serde_json::Value) -> Result<T>,
@@ -155,10 +169,9 @@ impl LLM池 {
         if 供应商们.is_empty() {
             return Err(Error::模型("LLM 池无可用模型（未配置供应商）".into()));
         }
-        // 锁中毒时按空选择处理（回退配置顺序第一供应商）
-        let 当前 = self.当前选择().unwrap_or_else(|| 池选择 { 供应商: String::new(), 模型: String::new() });
+        let 当前 = 起始;
         let mut 顺序: Vec<&池内供应商> = Vec::with_capacity(供应商们.len());
-        // 选中供应商优先（含其选中模型），其余按配置顺序
+        // 起始供应商优先（含其选中模型），其余按配置顺序
         if let Some(选中) = 供应商们.iter().find(|s| s.名 == 当前.供应商) {
             顺序.push(选中);
         }
@@ -204,14 +217,8 @@ impl LLM池 {
         Err(最后一次错误.unwrap_or_else(|| Error::模型("请求模型失败".into())))
     }
 
-}
-
-impl Component for LLM池 {
-    fn name(&self) -> &'static str { "LLM池" }
-}
-
-impl 内容生成器 for LLM池 {
-    fn 生成(&self, 提示词: String) -> Result<String> {
+    /// 生成（指定起始选择）：指定供应商优先故障转移，池与绑定视图共用。
+    pub(super) fn 生成_起(&self, 起: &池选择, 提示词: String) -> Result<String> {
         let 造体 = |供应商: &池内供应商| {
             let mut body = json!({
                 "model": &供应商.模型,
@@ -229,12 +236,16 @@ impl 内容生成器 for LLM池 {
                 .map(|s| s.to_string())
                 .ok_or_else(|| Error::模型("模型响应缺少 choices[0].message.content".into()))
         };
-        self.生成经池(&造体, &解析)
+        self.生成经池(起, &造体, &解析)
     }
-}
 
-impl 工具对话器 for LLM池 {
-    fn 对话(&self, 消息: Vec<对话消息>, 工具: Vec<serde_json::Value>) -> Result<模型响应> {
+    /// 工具对话（指定起始选择）：池与绑定视图共用。
+    pub(super) fn 对话_起(
+        &self,
+        起: &池选择,
+        消息: Vec<对话消息>,
+        工具: Vec<serde_json::Value>,
+    ) -> Result<模型响应> {
         let 消息json: Vec<serde_json::Value> = 消息.iter().map(消息转json).collect();
         let 造体 = |供应商: &池内供应商| json!({
             "model": &供应商.模型,
@@ -242,19 +253,26 @@ impl 工具对话器 for LLM池 {
             "tools": &工具,
         });
         let 解析 = |值: &serde_json::Value| {
+            // 打印LLM返回的完整响应，调试思考内容字段
+            println!("[调试] LLM响应message: {}", &值["choices"][0]["message"]);
             let message = &值["choices"][0]["message"];
+            // 提取思考内容（reasoning_content / reasoning）
+            let 思考 = message["reasoning_content"].as_str()
+                .or_else(|| message["reasoning"].as_str())
+                .map(|s| s.to_string());
             Ok(模型响应 {
                 内容: message["content"].as_str().map(|s| s.to_string()),
                 工具调用: 解析工具调用(message),
+                思考,
             })
         };
-        self.生成经池(&造体, &解析)
+        self.生成经池(起, &造体, &解析)
     }
-}
 
-impl 流式对话器 for LLM池 {
-    fn 对话流式(
+    /// 流式对话（指定起始选择）：起始供应商优先故障转移，池与绑定视图共用。
+    pub(super) fn 对话流式_起(
         &self,
+        起: &池选择,
         消息: Vec<对话消息>,
         工具: Vec<serde_json::Value>,
         on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), Error>,
@@ -268,9 +286,9 @@ impl 流式对话器 for LLM池 {
         if 供应商们.is_empty() {
             return Err(Error::模型("LLM 池无可用模型（未配置供应商）".into()));
         }
-        let 当前 = self.当前选择().unwrap_or_else(|| 池选择 { 供应商: String::new(), 模型: String::new() });
+        let 当前 = 起;
         let mut 顺序: Vec<&池内供应商> = Vec::with_capacity(供应商们.len());
-        // 选中供应商优先（含其选中模型），其余按配置顺序
+        // 起始供应商优先（含其选中模型），其余按配置顺序
         if let Some(选中) = 供应商们.iter().find(|s| s.名 == 当前.供应商) {
             顺序.push(选中);
         }
@@ -296,6 +314,37 @@ impl 流式对话器 for LLM池 {
             }
         }
         Err(最后错误.unwrap_or_else(|| Error::模型("LLM 池流式生成失败".into())))
+    }
+
+}
+
+impl Component for LLM池 {
+    fn name(&self) -> &'static str { "LLM池" }
+}
+
+impl 内容生成器 for LLM池 {
+    fn 生成(&self, 提示词: String) -> Result<String> {
+        let 起 = self.全局选择();
+        self.生成_起(&起, 提示词)
+    }
+}
+
+impl 工具对话器 for LLM池 {
+    fn 对话(&self, 消息: Vec<对话消息>, 工具: Vec<serde_json::Value>) -> Result<模型响应> {
+        let 起 = self.全局选择();
+        self.对话_起(&起, 消息, 工具)
+    }
+}
+
+impl 流式对话器 for LLM池 {
+    fn 对话流式(
+        &self,
+        消息: Vec<对话消息>,
+        工具: Vec<serde_json::Value>,
+        on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), Error>,
+    ) -> Result<模型响应> {
+        let 起 = self.全局选择();
+        self.对话流式_起(&起, 消息, 工具, on_chunk)
     }
 }
 

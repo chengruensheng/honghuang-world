@@ -33,16 +33,37 @@ pub struct 本地执行器 {
     最大输出字节: u64,
 }
 
+/// 工作区规范化：相对路径（如配置 `./工作区`）锚定进程 cwd 转绝对，再经 components 重组剥掉 `.` 冗余组件。
+///
+/// 为什么必须：`按名找文件` 用 glob 匹配后以 `strip_prefix(工作区)` 截相对路径；
+/// glob 返回的路径不含 `./`（被 glob 规范化），而根含 `CurDir` 组件时组件逐一比对失配，
+/// 匹配项被静默丢弃 → 感知工具在生产配置下永远返回「（无匹配）」。
+pub fn 规范化工作区(路径: PathBuf) -> PathBuf {
+    let 绝对 = if 路径.is_absolute() {
+        路径
+    } else {
+        match std::env::current_dir() {
+            Ok(当前) => 当前.join(路径),
+            Err(_) => 路径,
+        }
+    };
+    绝对.components().collect()
+}
+
 impl 本地执行器 {
     /// 以指定工作区根构造本地执行器（采用写死默认值：超时 30 秒、最大输出 64 KiB）。
     /// 配置化场景请改用 `new_with_limits` 或链式 `设置命令超时` / `设置最大输出`。
     /// 构造时自动创建工作区目录，确保命令执行与文件操作有有效目录（P0 修复：目录不存在导致全部工具调用失败）。
+    ///
+    /// 工作区规范化（P1 修复）：相对路径（如配置 `./工作区`）一律转绝对路径并剥掉 `.` 组件。
+    /// 否则 `按名找文件` 中 glob 返回的规范化路径与相对根做 `strip_prefix` 时组件失配，
+    /// 匹配项被静默丢弃，感知工具在生产环境永远返回「（无匹配）」。
     pub fn new(工作区: impl Into<PathBuf>) -> Self {
         let 路径 = 工作区.into();
         if let Err(e) = std::fs::create_dir_all(&路径) {
             eprintln!("警告：无法创建工作区目录 {}: {}", 路径.display(), e);
         }
-        本地执行器 { 工作区: 路径, 命令超时秒: 默认命令超时秒, 最大输出字节: 默认最大输出字节 }
+        本地执行器 { 工作区: 规范化工作区(路径), 命令超时秒: 默认命令超时秒, 最大输出字节: 默认最大输出字节 }
     }
 
     /// 以指定工作区根与显式上限构造本地执行器（从配置注入超时与输出上限，替代写死默认值）
@@ -51,7 +72,7 @@ impl 本地执行器 {
         if let Err(e) = std::fs::create_dir_all(&路径) {
             eprintln!("警告：无法创建工作区目录 {}: {}", 路径.display(), e);
         }
-        本地执行器 { 工作区: 路径, 命令超时秒, 最大输出字节 }
+        本地执行器 { 工作区: 规范化工作区(路径), 命令超时秒, 最大输出字节 }
     }
 
     /// 设置命令超时（秒），链式构造
@@ -156,10 +177,11 @@ impl 本地执行器 {
 
 /// 判断目录是否应跳过（构建产物、仓库元数据、依赖目录，避免误搜噪声）
 fn 应跳过目录(路径: &Path) -> bool {
+    let 名 = 路径.file_name().and_then(|n| n.to_str());
     matches!(
-        路径.file_name().and_then(|n| n.to_str()),
+        名,
         Some("target") | Some(".git") | Some("node_modules")
-    )
+    ) || 名.is_some_and(|n| n.eq_ignore_ascii_case(super::删除防护::回收站名))
 }
 
 impl Component for 本地执行器 {
@@ -243,6 +265,11 @@ impl 执行器 for 本地执行器 {
             match 项 {
                 Ok(路径) if 路径.is_file() => {
                     if let Ok(相对) = 路径.strip_prefix(&self.工作区) {
+                        // 回收站内是已删除文件，不属于工作区残留：感知扫描排除，
+                        // 否则已删除文件被当残留 → 清理核验门永远驳回 → 清理死循环
+                        if super::删除防护::是回收站条目(相对) {
+                            continue;
+                        }
                         结果.push(相对.to_string_lossy().into_owned());
                     }
                 }
@@ -291,6 +318,11 @@ impl 执行器 for 本地执行器 {
         Ok("替换成功（1 处）".to_string())
     }
 
+    fn 删除文件(&self, 路径: &str) -> Result<String> {
+        // 安全删除四步闭环（预审→名册→移入回收站→复核）在删除防护能力文件中内聚实现
+        super::删除防护::安全删除(&self.工作区, 路径)
+    }
+
 }
 
 /// 生成备份路径：原文件名追加 ".bak" 后缀
@@ -305,7 +337,7 @@ fn 命令不在白名单(命令: &str) -> bool {
     if 命令.contains('^') {
         return true;
     }
-    for 子命令 in 命令.split(['&', '|']).filter(|s| !s.trim().is_empty()) {
+    for 子命令 in 拆命令段(命令) {
         let 命令名 = match 子命令.trim().split_whitespace().next() {
             Some(s) => s.trim_matches('"'),
             None => continue,
@@ -319,6 +351,89 @@ fn 命令不在白名单(命令: &str) -> bool {
         }
     }
     false
+}
+
+/// 按 cmd 语义把命令拆为独立子命令段。
+///
+/// 只认真正的命令分隔符：`&`、`&&`、`|`、`||`、`;`。
+/// 重定向（`2>&1`、`1>&2`、`>file`、`>>file`、`<file` 等）不是分隔，
+/// 其内部的 `&`（如 `2>&1`）不得触发拆分——否则会把 `1` 误判成一条独立命令而误拦。
+fn 拆命令段(命令: &str) -> Vec<String> {
+    let 字符集: Vec<char> = 命令.chars().collect();
+    let mut 结果: Vec<String> = Vec::new();
+    let mut 段 = String::new();
+    let mut i = 0;
+    while i < 字符集.len() {
+        match 字符集[i] {
+            // 引号内的分隔符/重定向均按字面处理
+            '"' => {
+                段.push('"');
+                i += 1;
+                while i < 字符集.len() && 字符集[i] != '"' {
+                    段.push(字符集[i]);
+                    i += 1;
+                }
+                if i < 字符集.len() {
+                    段.push('"');
+                    i += 1;
+                }
+            }
+            '>' | '<' => {
+                // 重定向开始：跳过其目标（文件 / & 数字合并符 / 引号文件名），整体不作为命令
+                i += 1;
+                while i < 字符集.len() {
+                    let d = 字符集[i];
+                    if d == '>' || d == '<' {
+                        i += 1;
+                        continue;
+                    }
+                    if d == '"' {
+                        i += 1;
+                        while i < 字符集.len() && 字符集[i] != '"' {
+                            i += 1;
+                        }
+                        if i < 字符集.len() {
+                            i += 1;
+                        }
+                        continue;
+                    }
+                    if d == '&' {
+                        // 仅当 & 后紧跟数字才是 2>&1 式合并重定向；否则视为命令分隔，交给外层处理
+                        if i + 1 < 字符集.len() && 字符集[i + 1].is_ascii_digit() {
+                            i += 2;
+                            continue;
+                        }
+                        break;
+                    }
+                    if d.is_whitespace() || d == '|' || d == ';' {
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            '&' | '|' | ';' => {
+                if !段.trim().is_empty() {
+                    结果.push(std::mem::take(&mut 段));
+                } else {
+                    段.clear();
+                }
+                // `&&` / `||` 双字符分隔符一次跳过
+                if 字符集[i] != ';' && i + 1 < 字符集.len() && 字符集[i + 1] == 字符集[i] {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            _ => {
+                段.push(字符集[i]);
+                i += 1;
+            }
+        }
+    }
+    if !段.trim().is_empty() {
+        结果.push(段);
+    }
+    结果
 }
 
 /// 从命令名中提取文件名部分并去掉 .exe 扩展名（如 `cargo.exe` → `cargo`）

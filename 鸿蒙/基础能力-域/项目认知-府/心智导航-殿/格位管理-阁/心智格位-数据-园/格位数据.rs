@@ -125,6 +125,23 @@ pub enum 严重度 {
     红线,
 }
 
+/// 规则层级：三态分层（大道/天道/临时），决定注入时机与生命周期
+/// - 大道：全局铁律，推态常驻注入，不可纠错，永久生效
+/// - 天道：语言/框架级约束，拉态按需检索，长期有效
+/// - 临时：任务级约束，流态过程注入，任务结束清除
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum 规则层级 {
+    大道,
+    天道,
+    临时,
+}
+
+impl Default for 规则层级 {
+    fn default() -> Self {
+        规则层级::天道
+    }
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 维度载荷变体（统一骨架 + 维度变体，对齐原型）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -153,6 +170,9 @@ pub struct 执行载荷 {
 /// 规则载荷：「规则」维度格位持有
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct 规则载荷 {
+    /// 三态层级：大道（常驻）/ 天道（按需）/ 临时（任务级）
+    #[serde(default)]
+    pub 层级: 规则层级,
     pub 触发条件: String,
     pub 严重度: 严重度,
     #[serde(default)]
@@ -164,6 +184,7 @@ pub struct 规则载荷 {
 impl Default for 规则载荷 {
     fn default() -> Self {
         规则载荷 {
+            层级: 规则层级::default(),
             触发条件: String::new(),
             严重度: 严重度::警告,
             例外条款: Vec::new(),

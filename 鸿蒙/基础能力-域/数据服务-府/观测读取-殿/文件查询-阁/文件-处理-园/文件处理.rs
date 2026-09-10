@@ -137,7 +137,14 @@ pub async fn 文件内容接口(
     }
     let 根 = 状态.扫描根.lock().expect("扫描根锁中毒");
     let 全路径 = std::path::Path::new(根.as_str()).join(相对);
-    let 内容 = std::fs::read_to_string(&全路径).map_err(|_| StatusCode::NOT_FOUND)?;
+    // canonicalize 解析符号链接与 .. 等，验证最终真实路径仍在扫描根内（防符号链接逃逸）
+    let 规范根 = std::path::Path::new(根.as_str()).canonicalize().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let 规范路径 = 全路径.canonicalize().map_err(|_| StatusCode::NOT_FOUND)?;
+    if !规范路径.starts_with(&规范根) {
+        tracing::warn!("文件读取路径逃逸拦截: {:?} 不在 {:?} 内", 规范路径, 规范根);
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let 内容 = std::fs::read_to_string(&规范路径).map_err(|_| StatusCode::NOT_FOUND)?;
     if 内容.len() > 内容上限 {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }

@@ -115,6 +115,7 @@ pub fn 流式解析_sse<R: std::io::BufRead>(
 ) -> Result<模型响应> {
     let mut 行 = String::new();
     let mut 内容 = String::new();
+    let mut 思考 = String::new();
     let mut 调用们: Vec<工具调用> = Vec::new();
     let mut 原始 = String::new();
     let mut 见到data = false;
@@ -139,6 +140,17 @@ pub fn 流式解析_sse<R: std::io::BufRead>(
             }
             let 值: serde_json::Value = serde_json::from_str(数据)
                 .map_err(|e| Error::模型(format!("解析流式块失败: {e}")))?;
+            // 思考内容（reasoning_content / reasoning）
+            if let Some(思考块) = 值["choices"][0]["delta"]["reasoning_content"].as_str() {
+                if !思考块.is_empty() {
+                    思考.push_str(思考块);
+                }
+            }
+            if let Some(思考块) = 值["choices"][0]["delta"]["reasoning"].as_str() {
+                if !思考块.is_empty() {
+                    思考.push_str(思考块);
+                }
+            }
             if let Some(delta) = 值["choices"][0]["delta"]["content"].as_str() {
                 if !delta.is_empty() {
                     内容.push_str(delta);
@@ -181,6 +193,7 @@ pub fn 流式解析_sse<R: std::io::BufRead>(
     Ok(模型响应 {
         内容: if 内容.is_empty() { None } else { Some(内容) },
         工具调用: 调用们,
+        思考: if 思考.is_empty() { None } else { Some(思考) },
     })
 }
 
@@ -348,6 +361,7 @@ impl 工具对话器 for 对话生成器 {
             Ok(模型响应 {
                 内容: message["content"].as_str().map(|s| s.to_string()),
                 工具调用: 解析工具调用(message),
+                思考: None,
             })
         };
         self.逐个生成(&造体, &解析)
