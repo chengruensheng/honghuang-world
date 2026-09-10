@@ -3,9 +3,6 @@ name = "qk-mirror"
 version = "0.1.0"
 edition = "2021"
 
-# 自根 crate：不注册进工作区成员表（零影响现有构建链路）
-[workspace]
-
 [lib]
 path = "模块.rs"
 

@@ -68,6 +68,11 @@ window.水镜长河 = (function(){
         if (m1){ m1.在流 = false; }
         break;
       }
+      case "己言": {
+        var m0 = 开消息(ev.消息id, "己方", "界主");
+        m0.段.push({ 类: "正文", 文: ev.文 || "" });
+        break;
+      }
       case "思考开始": {
         var m2 = 开消息(ev.消息id, "对方", "道祖");
         m2.在流 = true;

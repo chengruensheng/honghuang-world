@@ -4,7 +4,7 @@ use hm_cognition::{图谱, 心智地图, 过程上下文};
 use hm_content::LLM池;
 use hm_agent::{道祖接待, 认知注入};
 use hm_log::运行日志记录器;
-use crate::{开发执行台, 看板驱动台, 扫尾执行者};
+use crate::{开发执行台, 看板驱动台, 扫尾执行者, 长河总线};
 use tc_task::{Task, TaskStatus, TaskBoard};
 use lj_iteration::{Iteration, Version};
 use qk_memory::Memory;
@@ -46,6 +46,8 @@ pub struct 数据服务状态 {
     pub 扫描根: Arc<Mutex<String>>,
     /// SSE 并发连接许可（所有 SSE 流共享，防止无限连接耗尽资源）
     pub sse信号量: Arc<tokio::sync::Semaphore>,
+    /// 长河总线（水镜统一通道单一真相源：环形河 + 全局游标）
+    pub 长河总线: Arc<长河总线>,
 }
 
 /// SSE 最大并发连接数（超出时新连接立即返回 429）
@@ -90,6 +92,7 @@ impl 数据服务状态 {
             扫尾执行者: None,
             扫描根: Arc::new(Mutex::new(String::from("./"))),
             sse信号量: Arc::new(tokio::sync::Semaphore::new(SSE最大连接数)),
+            长河总线: Arc::new(长河总线::新(2000)),
         }
     }
 

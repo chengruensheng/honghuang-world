@@ -11,6 +11,7 @@ use crate::{
     看板驱动接口, 看板驱动到空闲接口, 看板驱动状态接口, 看板驱动事件接口, 看板驱动过程接口,
     看板驱动过程流接口, 看板驱动阶段流接口,
     看板驱动过程流_agui接口, 看板驱动阶段流_agui接口,
+    长河接待流接口, 长河过程流接口, 长河事件查询接口,
     会话清单接口, 会话回放接口, 会话恢复接口, 会话分叉接口,
     模型状态接口, 模型列表接口, 模型选择接口,
     模型模板接口, 模型探测接口, 模型接入接口,
@@ -60,6 +61,9 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/dev/stream/state", get(看板驱动阶段流接口))
         .route("/api/dev/stream/agui", get(看板驱动过程流_agui接口))
         .route("/api/dev/stream/agui/state", get(看板驱动阶段流_agui接口))
+        .route("/api/river/chat", post(长河接待流接口))
+        .route("/api/river/stream", get(长河过程流接口))
+        .route("/api/river/events", get(长河事件查询接口))
         .route("/api/dev/sessions", get(会话清单接口))
         .route("/api/dev/sessions/{id}", get(会话回放接口))
         .route("/api/dev/sessions/{id}/resume", post(会话恢复接口))
@@ -101,7 +105,7 @@ async fn 重定向入口() -> Redirect {
 /// SSE 端点额外接受 ?token=<令牌> 查询参数（EventSource 无法携带请求头）。
 async fn 鉴权层(State(令牌): State<Option<String>>, req: Request, next: Next) -> Result<Response, StatusCode> {
     let 路径 = req.uri().path();
-    let 是流端点 = 路径.starts_with("/api/dev/stream") || 路径 == "/api/dev/chat/stream";
+    let 是流端点 = 路径.starts_with("/api/dev/stream") || 路径 == "/api/dev/chat/stream" || 路径 == "/api/river/stream";
     if req.method() == axum::http::Method::GET && !是流端点 {
         return Ok(next.run(req).await);
     }

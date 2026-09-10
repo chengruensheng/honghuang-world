@@ -1559,6 +1559,7 @@ dependencies = [
  "hm-log",
  "lj-iteration",
  "qk-memory",
+ "qk-mirror",
  "serde",
  "serde_json",
  "tc-task",
@@ -2914,6 +2915,15 @@ dependencies = [
  "serde",
  "toml 0.8.23",
  "tracing",
+]
+
+[[package]]
+name = "qk-mirror"
+version = "0.1.0"
+dependencies = [
+ "hm-error",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
