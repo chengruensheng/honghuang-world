@@ -480,4 +480,7 @@ mod tests {
 
     #[path = "agui端点.rs"]
     mod agui端点;
+
+    #[path = "长河端点.rs"]
+    mod 长河端点;
 }
