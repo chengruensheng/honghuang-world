@@ -1,0 +1,80 @@
+/* ============================================================
+   洪荒·世界 · 观星呈现-域 · 底座骨架-府 · 骨架样式
+   设计方向：精密仪器感的东方观测台（古观星台 × 现代仪表盘）
+   本文件只装「骨架」：变量 / 重置 / 背景 / 布局 / 顶栏 / 视图容器 / 两栏 / 滚动条。
+   骨架必须静态成立——不得依赖任何 JS（见 rules/呈现域规则.md 四·1）。
+   ============================================================ */
+
+:root{
+  --木:#3FA76B; --火:#D6593B; --土:#C89B4A; --金:#C9CDD4; --水:#5B7FB8;
+  --底:#0C0E11; --底二:#12151A; --底三:#181C22; --线:#23282F; --线亮:#333A44;
+  --字:#E4E7EB; --字二:#98A1AC; --字三:#5E6772;
+  --宋:"Noto Serif SC","Source Han Serif SC","STZhongsong","SimSun",serif;
+  --黑:"Noto Sans SC","Source Han Sans SC","Microsoft YaHei","PingFang SC",sans-serif;
+  --等:"JetBrains Mono","Cascadia Code","Consolas","SF Mono",monospace;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--底);color:var(--字);font-family:var(--黑);font-size:13px;line-height:1.65;overflow:hidden;-webkit-font-smoothing:antialiased}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    radial-gradient(circle at 20% 8%, rgba(91,127,184,.055), transparent 42%),
+    radial-gradient(circle at 86% 88%, rgba(63,167,107,.04), transparent 46%),
+    linear-gradient(var(--线) 1px, transparent 1px),
+    linear-gradient(90deg, var(--线) 1px, transparent 1px);
+  background-size:100% 100%,100% 100%,64px 64px,64px 64px;
+  opacity:.26;
+}
+
+.布局{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column}
+
+/* ---------- 顶栏 ---------- */
+.顶栏{
+  height:52px;flex:0 0 52px;display:flex;align-items:center;gap:20px;padding:0 20px;
+  border-bottom:1px solid var(--线);
+  background:linear-gradient(180deg,rgba(18,21,26,.92),rgba(12,14,17,.92));backdrop-filter:blur(8px);
+}
+.印记{font-family:var(--宋);font-size:17px;letter-spacing:.16em;font-weight:600;color:var(--字)}
+.印记 span{color:var(--水);font-size:11px;letter-spacing:.3em;margin-left:8px;font-family:var(--等)}
+.栏目导航{display:flex;gap:2px;margin-left:12px}
+.栏目导航 button{
+  background:none;border:none;color:var(--字三);font-family:var(--黑);font-size:12.5px;
+  padding:6px 16px;cursor:pointer;border-radius:3px;letter-spacing:.08em;transition:.18s;
+}
+.栏目导航 button:hover{color:var(--字二);background:var(--底三)}
+.栏目导航 button.当前{color:var(--字);background:var(--底三);box-shadow:inset 0 -2px 0 var(--水)}
+.栏目导航 button.待建{color:#3B424B;cursor:not-allowed;position:relative}
+.栏目导航 button.待建::after{content:"待建";position:absolute;top:1px;right:3px;font-size:7.5px;color:#3B424B;transform:scale(.9)}
+.间隔{flex:1}
+.状态灯{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--字二);font-family:var(--等)}
+.点{width:7px;height:7px;border-radius:50%;background:var(--木);box-shadow:0 0 8px var(--木);animation:呼吸 2.4s ease-in-out infinite}
+@keyframes 呼吸{0%,100%{opacity:1}50%{opacity:.35}}
+.模式切换{display:flex;border:1px solid var(--线);border-radius:3px;overflow:hidden}
+.模式切换 button{background:var(--底二);border:none;color:var(--字三);font-size:11.5px;padding:5px 12px;cursor:pointer;font-family:var(--黑);letter-spacing:.06em;transition:.18s}
+.模式切换 button.选{background:var(--水);color:#fff}
+
+/* ---------- 视图容器 ---------- */
+.视图{display:none;flex:1;min-height:0;animation:浮现 .28s ease}
+.视图.显{display:flex}
+#视图-观星台.显{display:grid}
+
+/* ---------- 主界面两栏 ---------- */
+.两栏{grid-template-columns:1fr 1.08fr;gap:0;min-height:0}
+.栏{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--线)}
+.栏:last-child{border-right:none}
+.栏头{flex:0 0 auto;height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--线);background:var(--底二)}
+.栏头 h2{font-family:var(--宋);font-size:13px;font-weight:600;letter-spacing:.12em;color:var(--字)}
+.栏头 .注{font-size:10.5px;color:var(--字三);font-family:var(--等);margin-left:auto}
+.栏身{flex:1;overflow-y:auto;min-height:0}
+
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--线亮);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#414a56}
+::-webkit-scrollbar-track{background:transparent}
+
+/* 浮现：骨架与各府内容共用的入场动画，所以归骨架（各府引用同名关键帧即可） */
+@keyframes 浮现{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+@media(max-width:1100px){ .两栏{grid-template-columns:1fr} }

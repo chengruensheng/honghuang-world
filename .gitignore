@@ -14,13 +14,6 @@
 # 实验脚本临时物（英文命名，非项目 Rust 代码）
 /_memory_experiment/
 
-# Tauri 工具自动生成的 schema（随 dev/build 自动生成，非手写）
-/鸿蒙/系统装配-域/桌面封装-府/src-tauri/gen/
-
-# 前端依赖（npm install 生成，不入库；当前前端位于 artifacts/agent-workspace，trae 编辑中）
-/乾坤/node_modules/
-/artifacts/agent-workspace/node_modules/
-
 # 本地运行日志（每次启动生成，非项目代码）
 /启动日志.txt
 /启动错误.txt

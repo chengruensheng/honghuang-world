@@ -1,0 +1,35 @@
+/* ============================================================
+   洪荒·世界 · 观星呈现-域 · 看板流转-府 · 看板样式
+   看板全屏视图：看板头 + 五层泳道 + 任务卡 + 态签 + 回顾展开。
+   静态引入（<link>），不经 JS——本府装载失败也不影响观星台。
+   ============================================================ */
+
+/* ---------- 看板全屏视图 ---------- */
+#视图-看板{flex-direction:column;padding:0}
+.看板头{flex:0 0 auto;height:44px;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--线);background:var(--底二)}
+.看板头 h2{font-family:var(--宋);font-size:14px;font-weight:600;letter-spacing:.14em}
+.看板头 .统{font-size:11px;color:var(--字三);font-family:var(--等)}
+.看板头 .注{margin-left:auto;font-size:10.5px;color:var(--字三);font-family:var(--等)}
+.泳道区{flex:1;display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--线);padding:1px;min-height:0}
+.泳道{background:var(--底);display:flex;flex-direction:column;min-height:0}
+.泳道头{flex:0 0 auto;padding:12px 14px 11px;border-bottom:1px solid var(--线);background:var(--底二);display:flex;align-items:center;gap:8px}
+.泳道头 .徽{width:3px;height:15px;border-radius:2px}
+.泳道头 .职{font-family:var(--宋);font-size:13px;letter-spacing:.1em;color:var(--字)}
+.泳道头 .责{font-size:10px;color:var(--字三);font-family:var(--等);margin-left:2px}
+.泳道头 .数{margin-left:auto;font-family:var(--等);font-size:11px;color:var(--字三)}
+.泳道身{flex:1;overflow-y:auto;padding:11px;display:flex;flex-direction:column;gap:10px;min-height:0}
+
+.卡{display:block;background:var(--底二);border:1px solid var(--线);border-radius:3px;padding:11px 12px;cursor:pointer;transition:.18s;animation:浮现 .3s ease}
+.卡:hover{border-color:var(--线亮);transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.卡.活{border-color:var(--水);box-shadow:0 0 0 1px rgba(91,127,184,.22)}
+.卡 .号{font-family:var(--等);font-size:10px;color:var(--字三);letter-spacing:.06em}
+.卡 .题{font-size:13px;margin:5px 0 9px;line-height:1.5;color:var(--字)}
+.卡 .底{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.卡 .轮{font-size:10px;color:var(--字三);font-family:var(--等);margin-left:auto}
+.态{font-size:10px;padding:1.5px 7px;border-radius:2px;font-family:var(--等);border:1px solid currentColor;opacity:.92}
+.态.行{color:var(--木)} .态.等{color:var(--字三)} .态.退{color:var(--火)} .态.清{color:var(--土)} .态.成{color:var(--木);border-style:double} .态.败{color:var(--火);border-style:dashed}
+.卡 .回顾{margin-top:9px;padding-top:9px;border-top:1px dashed var(--线);display:none}
+.卡.开 .回顾{display:block}
+.卡 .回顾 .项{font-size:11.5px;color:var(--字二);display:flex;gap:9px;margin-bottom:6px;line-height:1.6}
+.卡 .回顾 .项 i{font-style:normal;color:var(--字三);flex:0 0 46px;font-family:var(--等);font-size:10px;padding-top:2px}
+.回退{color:var(--火);font-size:10.5px;font-family:var(--等);display:flex;align-items:center;gap:4px;margin-top:6px}

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洪荒·世界 · 观星台</title>
+<!--
+  静态骨架：背景、顶栏、两栏栅格、看板容器全部写死在此，样式用 <link> 静态引入。
+  不经任何 JS 生成——JS 全崩时，骨架与布局依然成立（见 rules/呈现域规则.md 四·1）。
+-->
+<link rel="stylesheet" href="/底座骨架-府/台面框架-殿/台面涂装-阁/骨架-样式-园/骨架样式.css">
+<link rel="stylesheet" href="/观测台面-府/万仙对话-殿/消息涂装-阁/对话-样式-园/对话样式.css">
+<link rel="stylesheet" href="/观测台面-府/天机事件-殿/事件涂装-阁/天机-样式-园/天机样式.css">
+<link rel="stylesheet" href="/看板流转-府/泳道绘现-殿/泳道涂装-阁/看板-样式-园/看板样式.css">
+</head>
+<body>
+<div class="布局">
+
+  <header class="顶栏">
+    <div class="印记">洪荒<span>·世界</span></div>
+    <div class="栏目导航">
+      <button id="签观星台" class="当前">观星台</button>
+      <button id="签看板">看板</button>
+      <button class="待建" disabled title="尚未接入契约 · 待后续版本">五行盘</button>
+      <button class="待建" disabled title="尚未接入契约 · 待后续版本">时间轴</button>
+    </div>
+    <div class="间隔"></div>
+    <div class="状态灯"><span class="点"></span><span id="连接语">演示数据 · 契约对齐</span></div>
+    <div class="模式切换">
+      <button id="钮演示" class="选">演示</button>
+      <button id="钮实时">实时</button>
+    </div>
+  </header>
+
+  <!-- ============ 视图一：观星台（对话 + 天机） ============ -->
+  <div class="视图 显 两栏" id="视图-观星台">
+
+    <!-- 左：万仙对话（全角色共享入口） -->
+    <section class="栏">
+      <div class="栏头"><h2>万仙对话</h2><span class="注">/api/dev/chat</span></div>
+      <div class="角色入口" id="角色入口"></div>
+      <div class="栏身"><div class="对话流" id="对话流"></div></div>
+      <div class="输入区">
+        <textarea id="输入" placeholder="向主控（道祖）描述你要建造的东西……"></textarea>
+        <div class="行">
+          <span class="提">Enter 发送 · Shift+Enter 换行</span>
+          <button class="发送" id="发送">呈 上</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右：天机 · 事件流 -->
+    <section class="栏">
+      <div class="栏头"><h2>天机 · 事件流</h2><span class="注">/api/dev/stream/agui</span></div>
+      <div class="天机筛" id="天机筛"></div>
+      <div id="阶段条" class="阶段条" style="display:none"></div>
+      <div class="栏身"><div class="事件流" id="事件流"></div></div>
+    </section>
+
+  </div>
+
+  <!-- ============ 视图二：看板（全屏独占） ============ -->
+  <div class="视图" id="视图-看板">
+    <div class="看板头">
+      <h2>看板 · 五层流转</h2>
+      <span class="统" id="看板统"></span>
+      <span class="注">/api/board</span>
+    </div>
+    <div class="泳道区" id="泳道区"></div>
+  </div>
+
+</div>
+
+<!-- 装配入口：逐府动态装载，单府失败不影响骨架与其它府（见 rules/呈现域规则.md 四·2） -->
+<script type="module" src="/底座骨架-府/台面框架-殿/视图装配-阁/装配-逻辑-园/装配入口.js"></script>
+</body>
+</html>
