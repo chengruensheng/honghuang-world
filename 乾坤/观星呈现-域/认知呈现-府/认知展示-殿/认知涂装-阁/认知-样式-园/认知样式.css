@@ -1,0 +1,49 @@
+/* ============================================================
+   洪荒·世界 · 观星呈现-域 · 认知呈现-府 · 认知样式
+   格位视图（36 格位心智地图）+ 道规视图（大道/天道规则，只读）。
+   静态引入（<link>），不经 JS——本府装载失败也不影响观星台。
+   ============================================================ */
+
+/* 两个认知视图都是「看板头 + 滚动内容」纵向结构，复用看板头的样式 */
+#视图-格位, #视图-道规{flex-direction:column;padding:0}
+
+/* ---------- 格位视图：6 维度 × 6 格位 ---------- */
+.格位区{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.维组{border:1px solid var(--线);border-radius:6px;background:var(--底二);overflow:hidden}
+.维组头{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--线);background:var(--底三)}
+.维名{font-family:var(--宋);font-size:13px;font-weight:600;letter-spacing:.1em;color:var(--字)}
+.维数{margin-left:auto;font-family:var(--等);font-size:11px;color:var(--字三)}
+.维身{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--线)}
+.格位卡{padding:10px 12px;background:var(--底二);min-height:88px;display:flex;flex-direction:column;gap:6px}
+.格位卡.未填{opacity:.55}
+.格名{font-weight:600;font-size:12.5px;color:var(--字)}
+.格摘要{font-size:11px;color:var(--字二);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:22px}
+.格位卡.未填 .格摘要{color:var(--字三)}
+.格底{display:flex;align-items:center;gap:6px;margin-top:auto}
+.信条{flex:1;height:4px;background:var(--线);border-radius:2px;overflow:hidden}
+.信条 i{display:block;height:100%;background:var(--木)}
+.信数{font-family:var(--等);font-size:10px;color:var(--字二);min-width:34px;text-align:right}
+.证数{font-family:var(--等);font-size:10px;color:var(--字三)}
+
+/* ---------- 道规视图：大道 / 天道 分组 ---------- */
+.道规区{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.道规组{border:1px solid var(--线);border-radius:6px;background:var(--底二);overflow:hidden}
+.道规组头{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--线);background:var(--底三)}
+.层徽{width:18px;height:18px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--宋);font-size:11px;font-weight:700;color:#fff}
+.层徽.红{background:var(--火)}
+.层徽.黄{background:var(--土)}
+.层名{font-family:var(--宋);font-size:13px;font-weight:600;letter-spacing:.1em;color:var(--字)}
+.层数{margin-left:auto;font-family:var(--等);font-size:11px;color:var(--字三)}
+.道规身{display:flex;flex-direction:column}
+.道规项{border-bottom:1px solid var(--线)}
+.道规项:last-child{border-bottom:none}
+.规头{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer}
+.规头:hover{background:var(--底三)}
+.规名{font-weight:600;font-size:12.5px;color:var(--字);white-space:nowrap}
+.规摘要{flex:1;font-size:11px;color:var(--字二);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.规箭头{font-family:var(--等);font-size:11px;color:var(--字三)}
+.规全文{display:none;padding:0 14px 12px}
+.道规项.开 .规全文{display:block}
+.规文{font-family:var(--等);font-size:11.5px;line-height:1.7;color:var(--字二);white-space:pre-wrap;word-break:break-word;max-height:420px;overflow-y:auto;background:var(--底);padding:12px;border-radius:4px;border:1px solid var(--线)}
+.规加载{font-size:11px;color:var(--字三);padding:8px 0}
+.规错{font-size:11px;color:var(--火);padding:8px 0}

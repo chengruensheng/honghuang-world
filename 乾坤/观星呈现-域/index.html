@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="/观测台面-府/万仙对话-殿/消息涂装-阁/对话-样式-园/对话样式.css">
 <link rel="stylesheet" href="/观测台面-府/天机事件-殿/事件涂装-阁/天机-样式-园/天机样式.css">
 <link rel="stylesheet" href="/看板流转-府/泳道绘现-殿/泳道涂装-阁/看板-样式-园/看板样式.css">
+<link rel="stylesheet" href="/认知呈现-府/认知展示-殿/认知涂装-阁/认知-样式-园/认知样式.css">
 </head>
 <body>
 <div class="布局">
@@ -35,6 +36,12 @@
       <button id="轨看板" class="轨钮" title="看板" aria-label="看板">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4.5" width="4.2" height="15" rx="1"/><rect x="9.9" y="4.5" width="4.2" height="15" rx="1"/><rect x="15.8" y="4.5" width="4.2" height="15" rx="1"/></svg>
       </button>
+      <button id="轨格位" class="轨钮" title="格位 · 36 格位展示" aria-label="格位">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="4.6" width="14.8" height="14.8" rx="1.4"/><path d="M9.53 4.6v14.8M14.47 4.6v14.8M4.6 9.53h14.8M4.6 14.47h14.8"/></svg>
+      </button>
+      <button id="轨道规" class="轨钮" title="道规 · 大道/天道规则" aria-label="道规">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.2" y="5.2" width="13.6" height="13.6" rx="1.6"/><path d="M9 9.2h6M9 12h6M9 14.8h3.6"/></svg>
+      </button>
       <span class="轨隔"></span>
       <button class="轨钮 面钮" data-面板="门禁" title="门禁" aria-label="门禁" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l6.8 2.5v4.7c0 4.2-2.8 7.2-6.8 9.1-4-1.9-6.8-4.9-6.8-9.1V6.1z"/><circle cx="12" cy="10.4" r="1.25"/><path d="M12 11.6v2.5"/></svg>
@@ -44,12 +51,6 @@
       </button>
       <button class="轨钮 面钮" data-面板="记忆" title="记忆" aria-label="记忆" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6.2" rx="6.8" ry="2.5"/><path d="M5.2 6.2v11.6c0 1.4 3 2.5 6.8 2.5s6.8-1.1 6.8-2.5V6.2"/><path d="M5.2 12c0 1.4 3 2.5 6.8 2.5s6.8-1.1 6.8-2.5"/></svg>
-      </button>
-      <button class="轨钮 面钮" data-面板="格位" title="格位" aria-label="格位" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="4.6" width="14.8" height="14.8" rx="1.4"/><path d="M9.53 4.6v14.8M14.47 4.6v14.8M4.6 9.53h14.8M4.6 14.47h14.8"/></svg>
-      </button>
-      <button class="轨钮 面钮" data-面板="道规" title="道规" aria-label="道规" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.2" y="5.2" width="13.6" height="13.6" rx="1.6"/><path d="M9 9.2h6M9 12h6M9 14.8h3.6"/></svg>
       </button>
     </nav>
 
@@ -99,6 +100,26 @@
           <span class="注">/api/board</span>
         </div>
         <div class="泳道区" id="泳道区"></div>
+      </div>
+
+      <!-- 视图三：格位（6 维度 × 6 格位名 = 36 格位心智地图） -->
+      <div class="视图" id="视图-格位">
+        <div class="看板头">
+          <h2>格位 · 心智地图</h2>
+          <span class="统" id="格位统"></span>
+          <span class="注">/api/cognition/cells</span>
+        </div>
+        <div class="格位区" id="格位区"></div>
+      </div>
+
+      <!-- 视图四：道规（大道/天道规则条文，只读） -->
+      <div class="视图" id="视图-道规">
+        <div class="看板头">
+          <h2>道规 · 大道 / 天道</h2>
+          <span class="统" id="道规统"></span>
+          <span class="注">rules/*.md</span>
+        </div>
+        <div class="道规区" id="道规区"></div>
       </div>
 
     </main>
