@@ -1,5 +1,5 @@
 use axum::{Json, extract::{Path, State}};
-use hm_http::{数据服务状态, 看板发布, 看板查询, 看板定向回退, 定向回退请求, 发布任务请求};
+use hm_http::{数据服务状态, 看板发布, 看板查询, 看板定向回退, 看板影响分析, 定向回退请求, 恢复方式, 发布任务请求};
 use tc_task::{DesignDoc, ImplementationDoc, TaskStatus};
 
 use super::*;
@@ -51,6 +51,7 @@ async fn rollback接口_建议土层级直接回退() {
         Json(定向回退请求 {
             错误描述: "函数返回值不对".into(),
             建议根源层级: Some("土".into()),
+            恢复方式: 恢复方式::回退并召回,
         }),
     )
     .await
@@ -81,6 +82,7 @@ async fn rollback接口_建议火层级回退到设计() {
         Json(定向回退请求 {
             错误描述: "循环依赖".into(),
             建议根源层级: Some("火".into()),
+            恢复方式: 恢复方式::回退并召回,
         }),
     )
     .await
@@ -108,6 +110,7 @@ async fn rollback接口_无建议自动追溯() {
         Json(定向回退请求 {
             错误描述: "验收不通过".into(),
             建议根源层级: None,
+            恢复方式: 恢复方式::回退并召回,
         }),
     )
     .await
@@ -131,6 +134,7 @@ async fn rollback接口_任务不存在404() {
         Json(定向回退请求 {
             错误描述: "不存在".into(),
             建议根源层级: Some("土".into()),
+            恢复方式: 恢复方式::回退并召回,
         }),
     )
     .await;
@@ -161,6 +165,7 @@ async fn rollback接口_触发连带召回() {
         Json(定向回退请求 {
             错误描述: "验收不通过".into(),
             建议根源层级: Some("土".into()),
+            恢复方式: 恢复方式::回退并召回,
         }),
     )
     .await
@@ -174,4 +179,144 @@ async fn rollback接口_触发连带召回() {
     let 依赖 = board.查询(依赖id).expect("依赖任务应存在");
     assert_eq!(依赖.status, TaskStatus::待重新验收, "已完成的依赖者被召回为待重新验收");
     assert!(依赖.召回标记, "应打召回标记");
+}
+
+/// 测试6：恢复方式=仅回退——只回退当前任务，不召回下游
+#[tokio::test]
+async fn rollback接口_仅回退不召回() {
+    let 状态 = 构造状态();
+    let 基础id = 发布(&状态).await;
+    let 依赖id = 发布(&状态).await;
+    {
+        let mut board = 状态.任务看板.lock().expect("看板锁中毒");
+        let 基础uuid = board.查询(基础id).expect("基础任务").任务标识.任务id;
+        let 依赖uuid = board.查询(依赖id).expect("依赖任务").任务标识.任务id;
+        board
+            .按标识改写(&依赖uuid, |t| {
+                t.任务标识.依赖任务 = vec![基础uuid];
+                t.status = TaskStatus::已完成;
+            })
+            .expect("改写应成功");
+    }
+
+    let Json(响应) = 看板定向回退(
+        State(状态.clone()),
+        Path(基础id),
+        Json(定向回退请求 {
+            错误描述: "验收不通过".into(),
+            建议根源层级: Some("土".into()),
+            恢复方式: 恢复方式::仅回退,
+        }),
+    )
+    .await
+    .expect("回退应成功");
+
+    assert!(响应.成功);
+    assert_eq!(响应.回退到, "待修复");
+    assert_eq!(响应.影响任务数, 0, "仅回退不召回下游");
+
+    let board = 状态.任务看板.lock().expect("看板锁中毒");
+    let 依赖 = board.查询(依赖id).expect("依赖任务应存在");
+    assert_eq!(依赖.status, TaskStatus::已完成, "依赖者状态不应被改变");
+    assert!(!依赖.召回标记, "仅回退不应对依赖者打召回标记");
+}
+
+/// 测试7：恢复方式=仅标记——只写回退记录，不改任务状态与当前层级
+#[tokio::test]
+async fn rollback接口_仅标记不改状态() {
+    let 状态 = 构造状态();
+    let id = 发布(&状态).await;
+    let 初始状态 = 状态.任务看板.lock().expect("看板锁中毒").查询(id).expect("任务").status;
+
+    let Json(响应) = 看板定向回退(
+        State(状态.clone()),
+        Path(id),
+        Json(定向回退请求 {
+            错误描述: "先标记问题，暂不回退".into(),
+            建议根源层级: Some("土".into()),
+            恢复方式: 恢复方式::仅标记,
+        }),
+    )
+    .await
+    .expect("标记应成功");
+
+    assert!(响应.成功);
+    assert_eq!(响应.回退到, "土", "仅标记回退到字段显示根源层级名");
+    assert_eq!(响应.回退次数, 1);
+    assert_eq!(响应.影响任务数, 0);
+
+    let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
+        panic!("查询应成功");
+    };
+    assert_eq!(任务.status, 初始状态, "仅标记不改变任务状态");
+    let 回退 = 任务.回退来源.as_ref().expect("应写回退记录");
+    assert_eq!(回退.回退次数, 1);
+    assert_eq!(回退.目标层级, tc_task::五行层级::土);
+}
+
+/// 测试8：恢复方式=取消——不做任何变更
+#[tokio::test]
+async fn rollback接口_取消不变更() {
+    let 状态 = 构造状态();
+    let id = 发布(&状态).await;
+    let 初始状态 = 状态.任务看板.lock().expect("看板锁中毒").查询(id).expect("任务").status;
+
+    let Json(响应) = 看板定向回退(
+        State(状态.clone()),
+        Path(id),
+        Json(定向回退请求 {
+            错误描述: "放弃本次恢复".into(),
+            建议根源层级: Some("土".into()),
+            恢复方式: 恢复方式::取消,
+        }),
+    )
+    .await
+    .expect("取消应成功");
+
+    assert!(响应.成功);
+    assert_eq!(响应.回退到, "未变更");
+    assert_eq!(响应.回退次数, 0);
+    assert_eq!(响应.影响任务数, 0);
+
+    let Ok(Json(任务)) = 看板查询(State(状态), Path(id)).await else {
+        panic!("查询应成功");
+    };
+    assert_eq!(任务.status, 初始状态, "取消不改变任务状态");
+    assert!(任务.回退来源.is_none(), "取消不写回退记录");
+}
+
+/// 测试9：影响分析接口——只读预览会被连带召回的任务，不改变任何状态
+#[tokio::test]
+async fn 影响分析接口_预览受影响任务() {
+    let 状态 = 构造状态();
+    let 基础id = 发布(&状态).await;
+    let 依赖id = 发布(&状态).await;
+    {
+        let mut board = 状态.任务看板.lock().expect("看板锁中毒");
+        let 基础uuid = board.查询(基础id).expect("基础任务").任务标识.任务id;
+        let 依赖uuid = board.查询(依赖id).expect("依赖任务").任务标识.任务id;
+        board
+            .按标识改写(&依赖uuid, |t| {
+                t.任务标识.依赖任务 = vec![基础uuid];
+                t.status = TaskStatus::已完成;
+            })
+            .expect("改写应成功");
+    }
+
+    let Json(响应) = 看板影响分析(State(状态.clone()), Path(基础id))
+        .await
+        .expect("影响分析应成功");
+
+    assert_eq!(响应.任务id, 基础id);
+    assert_eq!(响应.影响任务.len(), 1, "应预览到 1 个被依赖任务");
+    let 项 = &响应.影响任务[0];
+    assert_eq!(项.任务id, 依赖id);
+    assert_eq!(项.当前状态, TaskStatus::已完成);
+    assert_eq!(项.将变更为, TaskStatus::待重新验收, "已完成的依赖者将被召回为待重新验收");
+
+    // 纯只读：依赖者状态与召回标记均未被改变
+    let board = 状态.任务看板.lock().expect("看板锁中毒");
+    let 依赖 = board.查询(依赖id).expect("依赖任务应存在");
+    assert_eq!(依赖.status, TaskStatus::已完成, "影响分析不改变状态");
+    assert!(!依赖.召回标记, "影响分析不写召回标记");
 }

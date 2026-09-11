@@ -36,6 +36,9 @@
 .卡 .回顾 .项{font-size:11.5px;color:var(--字二);display:flex;gap:9px;margin-bottom:6px;line-height:1.6}
 .卡 .回顾 .项 i{font-style:normal;color:var(--字三);flex:0 0 46px;font-family:var(--等);font-size:10px;padding-top:2px}
 .回退{color:var(--火);font-size:10.5px;font-family:var(--等);display:flex;align-items:center;gap:4px;margin-top:6px}
+/* 召回标记 / 当前层级 徽签 */
+.卡 .召{font-size:9.5px;color:var(--火);font-family:var(--等);border:1px solid currentColor;padding:.5px 6px;border-radius:2px}
+.卡 .层{font-size:9.5px;color:var(--水);font-family:var(--等);border:1px solid currentColor;padding:.5px 6px;border-radius:2px}
 
 /* ---------- 待人工验收 · 审核操作区 ---------- */
 .审{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px;padding-top:9px;border-top:1px dashed var(--线)}
@@ -48,3 +51,20 @@
 .审因{flex:1;min-width:110px;font-family:var(--等);font-size:10.5px;padding:3px 6px;border:1px solid var(--线);border-radius:2px;background:var(--底);color:var(--字二)}
 .审因:focus{outline:none;border-color:var(--水)}
 .审错{flex-basis:100%;font-size:10px;color:var(--火);font-family:var(--等);line-height:1.5;margin-top:2px}
+
+/* ---------- 失败恢复 · 恢复操作区 ---------- */
+.恢{display:flex;flex-direction:column;gap:6px;margin-top:9px;padding-top:9px;border-top:1px dashed var(--线)}
+.恢因{width:100%;box-sizing:border-box;font-family:var(--等);font-size:10.5px;padding:5px 7px;border:1px solid var(--线);border-radius:2px;background:var(--底);color:var(--字二);resize:vertical;min-height:40px}
+.恢因:focus{outline:none;border-color:var(--水)}
+.恢行{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.恢式{flex:1;min-width:130px;font-family:var(--等);font-size:10.5px;padding:3px 6px;border:1px solid var(--线);border-radius:2px;background:var(--底);color:var(--字二)}
+.恢式:focus{outline:none;border-color:var(--水)}
+.恢 button{font-family:var(--等);font-size:10.5px;padding:3px 10px;border-radius:2px;border:1px solid currentColor;background:none;cursor:pointer;transition:.15s;line-height:1.4}
+.恢览{color:var(--水)}
+.恢览:hover{background:var(--水);border-color:var(--水);color:#fff}
+.恢执{color:var(--火)}
+.恢执:hover{background:var(--火);border-color:var(--火);color:#fff}
+.恢 button:disabled{opacity:.38;cursor:not-allowed}
+.恢影{display:flex;flex-direction:column;gap:4px}
+.影项{font-size:10.5px;color:var(--字二);font-family:var(--等);line-height:1.5}
+.恢错{font-size:10px;color:var(--火);font-family:var(--等);line-height:1.5}

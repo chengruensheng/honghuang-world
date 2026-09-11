@@ -57,7 +57,9 @@ function 适配任务(t){
     轮次: t.修复轮次 || 0,
     阶段,
     承接历史: t.承接历史 || [],
-    回退: 回 ? {次:回.回退次数, 由:层级角色[回.来源层级] || 回.来源层级, 至:层级角色[回.目标层级] || 回.目标层级, 因:回.原因} : null,
+    回退: 回 ? {次:回.回退次数, 由:层级角色[回.来源层级] || 回.来源层级, 至:层级角色[回.目标层级] || 回.目标层级, 因:回.原因, 目标层:回.目标层级} : null,
+    召回标记: !!t.召回标记,
+    当前层级: t.当前层级 || null,
     动态: 历史.slice(-5).map(h=>({时:时钟(h.时间), 事:`${h.原状态} → ${h.新状态}（${h.操作者}${h.备注 ? " · " + h.备注 : ""}）`})),
   };
 }
@@ -116,9 +118,10 @@ function 建卡(t){
   卡.innerHTML = `
     <div class="号">#${转义(t.id)}</div>
     <div class="题">${转义(t.title)}</div>
-    <div class="底"><span class="态 ${态类(t.status)}">${转义(t.status)}</span><span class="轮">第${转义(t.轮次)}轮</span></div>
+    <div class="底"><span class="态 ${态类(t.status)}">${转义(t.status)}</span>${t.召回标记 ? `<span class="召">⚠ 召回中</span>` : ""}${t.当前层级 ? `<span class="层">${转义(t.当前层级)}层</span>` : ""}<span class="轮">第${转义(t.轮次)}轮</span></div>
     ${t.回退 ? `<div class="回退">↩ 第${转义(t.回退.次)}次回退 · ${转义(t.回退.由)} → ${转义(t.回退.至)}</div>` : ""}
     ${t.status === "待人工验收" ? 审核区() : ""}
+    ${t.回退 ? 恢复区(t) : ""}
     <div class="回顾">
       <div class="项"><i>阶段</i><span style="font-family:var(--等);font-size:10.5px">${阶段链}</span></div>
       <div class="项"><i>承接</i><span>${转义((t.承接历史||[]).join(" → "))}</span></div>
@@ -133,6 +136,13 @@ function 建卡(t){
     区.querySelector(".审通过").addEventListener("click", ()=>审核(t.id, true, null, 区));
     区.querySelector(".审驳回").addEventListener("click", ()=>审核(t.id, false, 区.querySelector(".审因").value, 区));
   }
+  // 失败恢复操作区：仅回退过（有回退记录）的任务落「恢复方式四选一」；操作不触发卡片展开
+  if(t.回退){
+    const 区 = 卡.querySelector(".恢");
+    区.addEventListener("click", (e)=>e.stopPropagation());
+    区.querySelector(".恢览").addEventListener("click", ()=>预览影响(t.id, 区));
+    区.querySelector(".恢执").addEventListener("click", ()=>执行恢复(t.id, 区));
+  }
   return 卡;
 }
 
@@ -145,6 +155,82 @@ function 审核区(){
     <select class="审因">${选项}</select>
     <button class="审驳回" type="button">✗ 驳回</button>
   </div>`;
+}
+
+/** 失败恢复操作区：看到失败 → 了解原因（回顾区「回退因」）→ 选择恢复方式（四选一）→ 预览影响范围 → 执行。
+    恢复方式与后端「定向回退请求.恢复方式」枚举同源（回退并召回/仅回退/仅标记/取消）。 */
+function 恢复区(){
+  const 方式 = [
+    ["回退并召回", "回退当前 + 召回下游"],
+    ["仅回退", "仅回退当前任务"],
+    ["仅标记", "仅标记问题，不改状态"],
+    ["取消", "取消本次恢复"],
+  ];
+  const 选项 = 方式.map(([值,名])=>`<option value="${值}">${名}</option>`).join("");
+  return `<div class="恢">
+    <textarea class="恢因" placeholder="失败原因（错误描述）"></textarea>
+    <div class="恢行">
+      <select class="恢式">${选项}</select>
+      <button class="恢览" type="button">影响预览</button>
+      <button class="恢执" type="button">执行恢复</button>
+    </div>
+    <div class="恢影"></div>
+    <div class="恢错"></div>
+  </div>`;
+}
+
+/** 影响范围预览：GET /api/board/{id}/impact → 只读展示会被连带召回的任务（当前状态 → 将变更为），不执行召回 */
+async function 预览影响(任务id, 区){
+  const 影位 = 区.querySelector(".恢影");
+  影位.textContent = "正在分析影响范围…";
+  try{
+    const 响应 = await fetch(`/api/board/${任务id}/impact`);
+    if(!响应.ok) throw new Error("HTTP " + 响应.status);
+    const 数据 = await 响应.json();
+    const 影响 = 数据.影响任务 || [];
+    影位.textContent = "";
+    if(影响.length === 0){
+      影位.textContent = "无连带受影响任务";
+    }else{
+      影响.forEach(x=>{
+        const 项 = document.createElement("div");
+        项.className = "影项";
+        项.textContent = `#${x.任务id} ${x.标题}：${x.当前状态} → ${x.将变更为}`;
+        影位.appendChild(项);
+      });
+    }
+  }catch(错){
+    影位.textContent = "影响预览失败：" + 错.message;
+  }
+}
+
+/** 执行恢复：POST /api/board/{id}/rollback（恢复方式四选一）→ 成功后重拉看板；失败原因内联，不静默 */
+async function 执行恢复(任务id, 区){
+  const 因 = 区.querySelector(".恢因").value.trim();
+  const 式 = 区.querySelector(".恢式").value;
+  const 控件 = 区.querySelectorAll("button,select,textarea");
+  控件.forEach(b=>b.disabled = true);
+  const 错位 = 区.querySelector(".恢错");
+  错位.textContent = "";
+  try{
+    const 响应 = await fetch(`/api/board/${任务id}/rollback`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({错误描述: 因, 恢复方式: 式}),
+    });
+    if(!响应.ok){
+      let 说明 = "HTTP " + 响应.status;
+      try{
+        const 体 = await 响应.json();
+        if(typeof 体 === "string" && 体) 说明 = 体;
+      }catch(_){}
+      throw new Error(说明);
+    }
+    拉看板();   // 恢复成功：回到后端权威数据（卡片随新状态自然迁移）
+  }catch(错){
+    错位.textContent = "恢复失败：" + 错.message;
+    控件.forEach(b=>b.disabled = false);
+  }
 }
 
 /** 人工覆盖最终审核结论：POST /api/board/{id}/review → 成功后重拉看板；失败原因内联在操作区，不静默 */

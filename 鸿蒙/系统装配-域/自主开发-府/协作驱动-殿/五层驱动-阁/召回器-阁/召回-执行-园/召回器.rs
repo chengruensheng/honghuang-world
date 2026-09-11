@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use serde::Serialize;
 use uuid::Uuid;
 use hm_contract::当前时间戳;
 use tc_task::{StatusChange, TaskBoard, TaskStatus, 五行层级, 任务依赖图, 状态层级标签};
@@ -26,6 +27,24 @@ impl 召回器 {
             结果.truncate(10);
         }
         结果
+    }
+
+    /// 影响预览：回退任务上游「实际会被召回」的任务结构化快照（纯只读，不变更任何状态）。
+    /// 仅返回当前状态可被召回（目标召回状态非空）的任务，供影响范围预览 API 直接呈现。
+    pub fn 影响预览(&self, 回退任务id: Uuid, 依赖图: &任务依赖图, 看板: &TaskBoard) -> Vec<影响项> {
+        self.影响分析(回退任务id, 依赖图)
+            .into_iter()
+            .filter_map(|uuid| {
+                let task = 看板.查询标识(&uuid)?;
+                let 将变更为 = 目标召回状态(&task.status)?;
+                Some(影响项 {
+                    任务id: task.id,
+                    标题: task.title.clone(),
+                    当前状态: task.status,
+                    将变更为,
+                })
+            })
+            .collect()
     }
 
     /// 执行召回：对每个受影响任务按其当前状态置为「待重新*」状态 + 召回标记=true，
@@ -144,4 +163,15 @@ fn 解除映射(状态: &TaskStatus) -> Option<TaskStatus> {
         待重新清理 => Some(待清理),
         _ => None,
     }
+}
+
+/// 影响预览项：回退任务上游某受影响任务的结构化快照（只读，供 /impact 影响范围预览 API）。
+#[derive(Debug, Clone, Serialize)]
+pub struct 影响项 {
+    /// 看板任务序号（u64，与 /api/board 列表 id 一致）
+    pub 任务id: u64,
+    pub 标题: String,
+    pub 当前状态: TaskStatus,
+    /// 若执行召回，该任务将变更到的「待重新*」状态
+    pub 将变更为: TaskStatus,
 }

@@ -39,13 +39,30 @@ pub struct 提交任务请求 {
     pub next_status: String,
 }
 
+/// 恢复方式：失败任务恢复时的策略选择
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+pub enum 恢复方式 {
+    /// 回退当前任务并沿依赖图召回下游（现行为，默认）
+    #[default]
+    回退并召回,
+    /// 仅回退当前任务，不召回下游
+    仅回退,
+    /// 仅写回退记录标记问题，不改变任务状态
+    仅标记,
+    /// 取消本次恢复，不做任何变更
+    取消,
+}
+
 /// 定向回退请求体
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct 定向回退请求 {
     pub 错误描述: String,
     /// 可选的建议根源层级；缺省时由追溯器按任务阶段文档纯规则判定
     #[serde(default)]
     pub 建议根源层级: Option<String>,
+    /// 恢复方式（默认「回退并召回」保持现行为）
+    #[serde(default)]
+    pub 恢复方式: 恢复方式,
 }
 
 /// 定向回退响应
@@ -210,43 +227,116 @@ pub async fn 看板提交(
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
-/// POST /api/board/{id}/rollback — 定向回退（提供建议根源层级则直接回退；否则追溯器按任务阶段文档纯规则判定）
+/// POST /api/board/{id}/rollback — 定向回退（按「恢复方式」四选一执行）
+///
+/// 恢复方式：
+/// - 回退并召回（默认）：定向回退当前任务 + 沿依赖图召回上游受影响任务
+/// - 仅回退：仅定向回退当前任务，不召回下游
+/// - 仅标记：仅写回退记录标记问题，不改变任务状态
+/// - 取消：不做任何变更
+/// 提供建议根源层级则直接回退；否则追溯器按任务阶段文档纯规则判定。
 pub async fn 看板定向回退(
     State(状态): State<数据服务状态>,
     Path(id): Path<u64>,
     Json(请求): Json<定向回退请求>,
 ) -> Result<Json<定向回退响应>, (StatusCode, String)> {
+    let 任务uuid = {
+        let board = 状态.任务看板.lock().expect("看板锁中毒");
+        board
+            .查询(id)
+            .map(|t| t.任务标识.任务id)
+            .ok_or((StatusCode::NOT_FOUND, format!("任务 {id} 不存在")))?
+    };
+    // 取消：不做任何变更（用户显式放弃本次恢复）
+    if 请求.恢复方式 == 恢复方式::取消 {
+        return Ok(Json(定向回退响应 {
+            成功: true,
+            回退到: "未变更".into(),
+            回退次数: 0,
+            影响任务数: 0,
+        }));
+    }
     let 建议 = 请求.建议根源层级.as_deref().and_then(解析层级);
-    let (根源层级, 任务uuid) = {
+    let 根源层级 = {
         let board = 状态.任务看板.lock().expect("看板锁中毒");
         let 任务 = board
             .查询(id)
             .ok_or((StatusCode::NOT_FOUND, format!("任务 {id} 不存在")))?;
-        let uuid = 任务.任务标识.任务id;
-        let 层级 = match 建议 {
+        match 建议 {
             Some(层级) => 层级,
             None => hm_agent::追溯器::新()
-                .追溯(uuid, &请求.错误描述, 任务.设计文档.as_ref(), 任务.实现文档.as_ref(), &任务.description)
+                .追溯(任务uuid, &请求.错误描述, 任务.设计文档.as_ref(), 任务.实现文档.as_ref(), &任务.description)
                 .根源层级,
-        };
-        (层级, uuid)
+        }
     };
     let mut board = 状态.任务看板.lock().expect("看板锁中毒");
-    let (回退到, 次数) = board
-        .定向回退(id, 根源层级, &请求.错误描述)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    // 与驱动器内自动回退一致：沿依赖图召回受影响任务（依赖本任务的上游任务）
-    let 召回器 = hm_agent::召回器::新();
-    let 图 = board.构建依赖图();
-    let 影响 = 召回器.影响分析(任务uuid, &图);
-    let 事件们 = 召回器.执行召回(任务uuid, 影响, &请求.错误描述, &mut board);
-    let 影响任务数 = 事件们.iter().map(|e| e.影响任务.len()).sum();
-    Ok(Json(定向回退响应 {
-        成功: true,
-        回退到: format!("{回退到:?}"),
-        回退次数: 次数,
-        影响任务数,
-    }))
+    match 请求.恢复方式 {
+        恢复方式::仅标记 => {
+            let 次数 = board
+                .标记回退(id, 根源层级, &请求.错误描述)
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            Ok(Json(定向回退响应 {
+                成功: true,
+                回退到: 根源层级.名().to_string(),
+                回退次数: 次数,
+                影响任务数: 0,
+            }))
+        }
+        恢复方式::仅回退 => {
+            let (回退到, 次数) = board
+                .定向回退(id, 根源层级, &请求.错误描述)
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            Ok(Json(定向回退响应 {
+                成功: true,
+                回退到: format!("{回退到:?}"),
+                回退次数: 次数,
+                影响任务数: 0,
+            }))
+        }
+        恢复方式::回退并召回 => {
+            let (回退到, 次数) = board
+                .定向回退(id, 根源层级, &请求.错误描述)
+                .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+            // 与驱动器内自动回退一致：沿依赖图召回受影响任务（依赖本任务的上游任务）
+            let 召回器 = hm_agent::召回器::新();
+            let 图 = board.构建依赖图();
+            let 影响 = 召回器.影响分析(任务uuid, &图);
+            let 事件们 = 召回器.执行召回(任务uuid, 影响, &请求.错误描述, &mut board);
+            let 影响任务数 = 事件们.iter().map(|e| e.影响任务.len()).sum();
+            Ok(Json(定向回退响应 {
+                成功: true,
+                回退到: format!("{回退到:?}"),
+                回退次数: 次数,
+                影响任务数,
+            }))
+        }
+        恢复方式::取消 => unreachable!("取消已在入口短路"),
+    }
+}
+
+/// 影响分析响应：回退任务上游受影响任务的结构化预览（纯只读）
+#[derive(Serialize)]
+pub struct 影响分析响应 {
+    pub 任务id: u64,
+    pub 影响任务: Vec<hm_agent::影响项>,
+}
+
+/// GET /api/board/{id}/impact — 影响范围预览（纯只读，不执行召回）
+///
+/// 给定任务 id，返回若对其定向回退，将连带召回的受影响任务清单（id/标题/当前状态/将变更为）。
+/// 复用召回器「影响分析 + 目标召回状态」纯规则，不改变任何任务状态。
+pub async fn 看板影响分析(
+    State(状态): State<数据服务状态>,
+    Path(id): Path<u64>,
+) -> Result<Json<影响分析响应>, (StatusCode, String)> {
+    let board = 状态.任务看板.lock().expect("看板锁中毒");
+    let 任务 = board
+        .查询(id)
+        .ok_or((StatusCode::NOT_FOUND, format!("任务 {id} 不存在")))?;
+    let 任务uuid = 任务.任务标识.任务id;
+    let 依赖图 = board.构建依赖图();
+    let 影响任务 = hm_agent::召回器::新().影响预览(任务uuid, &依赖图, &board);
+    Ok(Json(影响分析响应 { 任务id: id, 影响任务 }))
 }
 
 /// POST /api/board/{id}/clean — 太乙金仙一键清理（前置交付核验门禁 + 承接+提交）
