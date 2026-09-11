@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 # 故此处直接拒绝运行并明确声明须用 pwsh 7+（而非仅告警后继续跑、崩在解码处）。
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     Write-Host "✗ 检测到 PowerShell $($PSVersionTable.PSVersion.ToString())（低于 7），本脚本需 pwsh 7+。" -ForegroundColor Red
-    Write-Host "  请改用：pwsh -ExecutionPolicy Bypass -File .\传承殿\端到端基准.ps1" -ForegroundColor Yellow
+    Write-Host "  请改用：pwsh -ExecutionPolicy Bypass -File .\.传承\门禁\端到端基准.ps1" -ForegroundColor Yellow
     exit 1
 }
 
