@@ -13,6 +13,30 @@ const 工具_闲聊: &str = "闲聊";
 const 工具_追问澄清: &str = "追问澄清";
 const 工具_对齐总结: &str = "对齐总结";
 
+/// 工具对外名（function calling 里 `function.name` 实际发给网关的值）。
+///
+/// 与自主开发循环同理：部分 OpenAI 兼容网关会把 `function.name` 中的非 ASCII 字符
+/// 逐字替换成下划线，中文名发出去模型收到的是一串下划线，道祖会认不出自己的工具、
+/// 静默退化成闲聊（需求识别失效）。故对外用 ASCII 别名，解析时再还原成中文规范名。
+fn 对外工具名(规范名: &str) -> &'static str {
+    match 规范名 {
+        工具_闲聊 => "chat",
+        工具_追问澄清 => "ask_clarify",
+        工具_对齐总结 => "align_summary",
+        _ => "unknown_tool",
+    }
+}
+
+/// 还原工具名：ASCII 别名或未被网关改写的中文规范名，都映射回本地规范名
+fn 还原工具名(模型给的名: &str) -> &str {
+    match 模型给的名 {
+        "chat" => 工具_闲聊,
+        "ask_clarify" => 工具_追问澄清,
+        "align_summary" => 工具_对齐总结,
+        其它 => 其它,
+    }
+}
+
 /// 工具参数载荷键常量（与函数定义 schema 的 property 名一致）
 const 键_回复: &str = "回复";
 const 键_问题: &str = "问题";
@@ -55,6 +79,9 @@ pub struct 接待响应 {
     pub 阶段: 会话阶段,
     pub 回复: String,
     pub 需求: Option<需求摘要>,
+    /// 模型思考（上游 reasoning_content / reasoning 字段）。
+    /// 与「回复」分列：思考是过程证据，走独立通道呈现，不得混进回复正文。
+    pub 思考: Option<String>,
 }
 
 /// 会话消息：澄清会话历史的一条（可序列化持久化）
@@ -297,7 +324,7 @@ impl 道祖接待 {
             会话.待确认需求 = 需求.clone();
         }
         self.保存()?;
-        Ok(接待响应 { 阶段, 回复, 需求 })
+        Ok(接待响应 { 阶段, 回复, 需求, 思考: 响应.思考.clone() })
     }
 }
 
@@ -332,7 +359,7 @@ fn 解析意图(响应: &模型响应) -> Result<(String, Option<需求摘要>)>
     };
     let 参数: serde_json::Value = serde_json::from_str(&调用.参数)
         .map_err(|e| Error::反序列化(format!("解析工具参数失败: {e}")))?;
-    match 调用.名称.as_str() {
+    match 还原工具名(&调用.名称) {
         工具_闲聊 => Ok((取字符串(&参数, 键_回复).unwrap_or_default(), None)),
         工具_追问澄清 => Ok((取字符串(&参数, 键_问题).unwrap_or_default(), None)),
         工具_对齐总结 => 解析对齐总结(&参数),
@@ -378,7 +405,7 @@ fn 工具定义() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": 工具_闲聊,
+                "name": 对外工具名(工具_闲聊),
                 "description": "来访者只是在闲聊或非任务，给出自然回应",
                 "parameters": {
                     "type": "object",
@@ -390,7 +417,7 @@ fn 工具定义() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": 工具_追问澄清,
+                "name": 对外工具名(工具_追问澄清),
                 "description": "任务需求不够清晰，提出关键澄清问题",
                 "parameters": {
                     "type": "object",
@@ -402,7 +429,7 @@ fn 工具定义() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": 工具_对齐总结,
+                "name": 对外工具名(工具_对齐总结),
                 "description": "任务需求已清晰，给出结构化需求摘要（系统自动发布）",
                 "parameters": {
                     "type": "object",

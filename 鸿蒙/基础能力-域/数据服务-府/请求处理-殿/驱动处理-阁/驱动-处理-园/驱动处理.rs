@@ -286,6 +286,11 @@ pub async fn 看板驱动过程流_agui接口(
                     if let Some(角色) = &事件.角色 {
                         载荷json["角色"] = serde_json::Value::String(角色.clone());
                     }
+                    // 任务号：天机视图靠它把「棒」锚到看板那张卡（标题、状态流转、承接历史都在看板）。
+                    // 前端取不到就只显示「任务 #N」，绝不编标题。
+                    if let Some(任务id) = 事件.任务id {
+                        载荷json["任务id"] = serde_json::Value::from(任务id);
+                    }
                     let 载荷 = serde_json::to_string(&载荷json).unwrap_or_else(|_| "{}".into());
                     yield Ok(Event::default().data(载荷));
                 }
@@ -321,6 +326,10 @@ pub async fn 看板驱动阶段流_agui接口(
                     // （实测：太乙金仙「清理完成」被配成大罗金仙的「待准圣验收」）。
                     if let Some(角色) = &事件.角色 {
                         载荷json["角色"] = serde_json::Value::String(角色.clone());
+                    }
+                    // 与过程流同理：阶段帧也带任务号，便于前端把收尾帧与棒的看板锚点对齐。
+                    if let Some(任务id) = 事件.任务id {
+                        载荷json["任务id"] = serde_json::Value::from(任务id);
                     }
                     let 载荷 = serde_json::to_string(&载荷json).unwrap_or_else(|_| "{}".into());
                     yield Ok(Event::default().data(载荷));

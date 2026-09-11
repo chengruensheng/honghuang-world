@@ -25,19 +25,23 @@ export function 收帧(ev){
 }
 
 /** 收尾帧 → 终态语。落帧各分支与「暂存后补收」共用同一口径，避免两处措辞漂移。 */
-function 收尾语(ev){
-  if(ev.type === "STEP_FINISHED") return {语: ev.stepName ? `已提交 · ${ev.stepName}` : "已提交", 败: false};
-  if(ev.type === "RUN_FINISHED")  return {语: ev.result ? `${ev.result.新状态} · 产出 ${ev.result.产出}` : "运行结束", 败: false};
+function 收尾语(ev, d){
+  if(ev.type === "STEP_FINISHED"){
+    // 真实「下一步」来自状态机的 STATE_DELTA（新状态），它先到、已记在该棒上。
+    // 取不到就只说「已提交」——stepName 是「角色 · 职责」，不是交接目标，不能拿来充数。
+    return {语: (d && d.交接) ? `已交出 · ${d.交接}` : "已提交", 败: false};
+  }
+  if(ev.type === "RUN_FINISHED") return {语: "运行结束", 败: false};
   const 因 = `${ev.message || "未知错误"}${ev.code ? ` [${ev.code}]` : ""}`;
   return {语: `运行错误 · ${因}`, 败: true};
 }
 
-/** 该角色第一根尚未收尾的棒。
+/** 该角色「当前这一段任期」：第一根尚未收尾的棒，或收尾了但只是**占位**、真终态还在路上的那根。
     同一角色可有多根（回退重跑时大罗金仙会再来一轮）；阶段帧在其角色内按序号到达，
     与棒的建立顺序一一对应——取最近一根会把早先几轮的终态全挤到最后一根上。 */
 function 取待收尾棒(角){
   const 列 = 运行时.角色棒.get(角) || [];
-  return 列.find(棒=>!棒.数据.完成) || null;
+  return 列.find(棒=>!棒.数据.完成 || 棒.数据.占位) || null;
 }
 
 /** 收尾帧 = 阶段流来的「这段任期结束了」：STEP_FINISHED / RUN_FINISHED / RUN_ERROR。
@@ -54,19 +58,23 @@ export function 落帧(ev){
   //   ② 角色字段变了 —— 兼容未发 RUN_STARTED 的服务（角色一换，就是另一段任期）。
   // 收尾帧不参与②：它的角色指向已结束的棒，不是当前活动角色。
   if(ev.type === "RUN_STARTED"){
-    收尾棒(运行时.棒表.get(运行时.当前run), "已交接下一棒");   // 下一棒已开头，即上一棒已收尾（由更晚的事实推出）
+    收尾棒(运行时.棒表.get(运行时.当前run), "已交接下一棒", false, true);   // 占位：下一棒已开头，即上一棒已收尾（由更晚的事实推出）
     运行时.当前run = ev.runId;
     运行时.当前角色 = 角;
-    建棒(ev.runId, 角 || "系统");
+    // 任务号把这一棒锚到看板那张卡：实时在顶层（适配器透传），演示语料放在 input 里（契约样例）。
+    建棒(ev.runId, 角 || "系统", ev.任务id || (ev.input && ev.input.任务id));
   }else if(!收尾 && 角 && 角 !== 运行时.当前角色){
-    收尾棒(运行时.棒表.get(运行时.当前run), "已交接下一棒");
+    收尾棒(运行时.棒表.get(运行时.当前run), "已交接下一棒", false, true);
     运行时.当前角色 = 角;
     运行时.当前run = `段-${++运行时.段序号}-${角}`;
     建棒(运行时.当前run, 角);
   }
-  // 收尾帧按角色归位到「该角色第一根未收尾的棒」；其余帧归「当前棒」。
+  // 收尾帧与状态流转帧都按角色归位到「该角色当前那一段」；其余帧归「当前棒」。
+  // STATE_DELTA 也按角色：它是「这一段任期交出了什么」的凭据，两条流到达顺序不保证，
+  // 若按「当前棒」收，晚到的状态流转会记到下一棒的账上。
   // 无角色时（演示流 / 旧服务）退回当前棒，行为与修复前一致。
-  const 棒 = 收尾 && 角 ? 取待收尾棒(角) : 运行时.棒表.get(运行时.当前run);
+  const 归位按角色 = (收尾 || ev.type === "STATE_DELTA") && 角;
+  const 棒 = 归位按角色 ? 取待收尾棒(角) : 运行时.棒表.get(运行时.当前run);
   if(!棒){
     // 该角色的棒尚未建出来（回放时阶段流可能先于过程流到达）：暂存终态语，等建棒时补收。
     if(收尾 && 角) 运行时.待收尾.set(角, 收尾语(ev));
@@ -79,11 +87,14 @@ export function 落帧(ev){
       break;   // 建棒已在上方完成，此处仅标记为已处理
     case "STEP_STARTED":
       棒.数据.标题 = ev.stepName || "";
-      棒.行名.textContent = 棒.数据.标题;
+      // 棒名这一位归「本次目标」：已有任务号时不让阶段名顶掉它——阶段名由阶段条表达，
+      // 两处都写只会互相覆盖（先前实测：目标刚显示出来就被冲掉）。
+      if(!棒.数据.任务id) 棒.行名.textContent = 棒.数据.标题;
       显阶段(ev.stepName);
       break;
     case "REASONING_MESSAGE_CONTENT":
-      if(!棒.数据.首句) 棒.数据.首句 = ev.delta;   // 无工具动作时的摘要兜底
+      // 推理只进「推 理」条。不参与「首句」——首句是棒头摘要的来源，而摘要要回答
+      // 「这一棒给了什么答复」；推理先于正文到达，让它占住首句，等于摘要通篇是草稿。
       // 连续推理合成一条，避免一棒几十个碎块
       if(棒.当前条 && 棒.当前条.dataset.类 === "推理"){
         棒.当前条.querySelector(".条文").textContent += ev.delta;
@@ -118,10 +129,17 @@ export function 落帧(ev){
       if(条) 落结果(条, ev.content || "");
       break;
     }
-    case "STATE_DELTA":
-      建条(棒, "状态", "状 态", (ev.delta||[]).map(d=>`${d.path} → ${d.value}`).join("；"), "");
+    case "STATE_DELTA":{
+      const 项 = (ev.delta || []).filter(d=>d && typeof d.path === "string");
+      // 「下一步」= 状态机对 status 的那一次流转。它是这一棒**交出**的结果，不是模型自述，
+      // 故可作权威；取不到就不写，界面上「→ 下一步」宁可空着。
+      const 状 = 项.find(d=>d.path.endsWith("/status"));
+      if(状 && 状.value) 棒.数据.交接 = 状.value;
+      // op=remove 的补丁没有 value，照实写「移除」——不给界面留一个 undefined。
+      建条(棒, "状态", "状 态", 项.map(d=>d.value === undefined ? `${d.path}（移除）` : `${d.path} → ${d.value}`).join("；"), "");
       棒.当前条 = null;
       break;
+    }
     case "STATE_SNAPSHOT":
       建条(棒, "状态", "状 态 快 照", "", "（整体快照）");
       棒.当前条 = null;
@@ -149,7 +167,7 @@ export function 落帧(ev){
        后端可能不发 RUN_FINISHED（实测「空闲」阶段事件缺席），这条是最强的收尾信号，必须用上，
        否则最后一根棒会永远停在「进行中」——界面看起来像卡死，而任务其实早已推进。 */
     case "STEP_FINISHED":{
-      const 终 = 收尾语(ev);
+      const 终 = 收尾语(ev, 棒.数据);
       if(ev.stepName) 显阶段(ev.stepName);
       收尾棒(棒, 终.语, 终.败);
       if(运行时.模式 === "实时") 广播(总线.请求拉看板);   // 状态已推进，看板立即跟上真实数据

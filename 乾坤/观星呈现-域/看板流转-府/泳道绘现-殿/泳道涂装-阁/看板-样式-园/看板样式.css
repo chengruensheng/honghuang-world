@@ -22,6 +22,9 @@
 .卡{display:block;background:var(--底二);border:1px solid var(--线);border-radius:3px;padding:11px 12px;cursor:pointer;transition:.18s;animation:浮现 .3s ease}
 .卡:hover{border-color:var(--线亮);transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.35)}
 .卡.活{border-color:var(--水);box-shadow:0 0 0 1px rgba(91,127,184,.22)}
+/* 从棒头点任务号跳过来时闪一下：定位得让人看得见是哪张卡（沿用天机「闪」的时长口径） */
+.卡.闪{animation:卡闪 1.1s ease}
+@keyframes 卡闪{0%{background:rgba(91,127,184,.28)}60%{background:rgba(91,127,184,.12)}100%{background:var(--底二)}}
 .卡 .号{font-family:var(--等);font-size:10px;color:var(--字三);letter-spacing:.06em}
 .卡 .题{font-size:13px;margin:5px 0 9px;line-height:1.5;color:var(--字)}
 .卡 .底{display:flex;align-items:center;gap:6px;flex-wrap:wrap}

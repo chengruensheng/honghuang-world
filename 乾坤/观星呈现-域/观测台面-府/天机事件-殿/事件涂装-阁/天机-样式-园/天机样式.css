@@ -14,7 +14,15 @@
 .棒头:hover{background:var(--底二)}
 .棒.开 .棒头{background:var(--底二)}
 .棒.行 .棒头{background:linear-gradient(90deg,rgba(63,167,107,.08),transparent)}
-.棒名{font-size:12.5px;color:var(--字);letter-spacing:.04em;flex:0 0 auto;white-space:nowrap}
+/* 棒名这一位现在放「任务 #N · 标题」，标题长短不可控：允许收缩并省略，
+   不许 nowrap 撑开整行、把后面的摘要挤没。 */
+.棒名{font-size:12.5px;color:var(--字);letter-spacing:.04em;flex:0 1 auto;min-width:0;max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 任务号能对上看板那张卡时，它是个入口：明显的可点态，别让人以为只是文案 */
+.棒名.链{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.棒名.链:hover{color:var(--水)}
+/* 「→ 下一步」：这一棒交出的新状态。空着时宽度为零，不占位 */
+.棒交{font-size:11px;color:var(--水);font-family:var(--等);flex:0 0 auto;white-space:nowrap}
+.棒交:empty{display:none}
 .棒摘{flex:1 1 auto;min-width:0;font-family:var(--等);font-size:11px;color:var(--字三);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .棒.行 .棒摘{color:var(--字二)}
 .棒计{font-family:var(--等);font-size:10.5px;color:var(--字三);flex:0 0 auto}
@@ -61,6 +69,11 @@
 .锚{margin-left:auto;background:transparent;border:1px dashed var(--线亮);color:var(--字三);font-family:var(--等);font-size:10px;padding:1px 7px;border-radius:2px;cursor:pointer;letter-spacing:.04em;transition:.16s}
 .锚:hover{color:var(--水);border-color:var(--水);border-style:solid}
 /* 接力结论：正文是人话摘要，模型原文折叠在后——摘要只管好读，证据不能丢 */
+/* 轮次标：左栏结论按棒分组的分隔。一颗 run 一根棒，顺序标出来，
+   回退重跑的第二轮才不会与第一轮长得一模一样。 */
+.轮标{display:flex;align-items:center;gap:9px;font-family:var(--等);font-size:10.5px;color:var(--字三);letter-spacing:.1em}
+.轮标::before{content:"";width:12px;height:1px;background:var(--线亮)}
+.轮标::after{content:"";flex:1;height:1px;background:var(--线)}
 .结句{font-size:12.5px;line-height:1.75}
 .原文{margin-top:8px;border-top:1px dashed var(--线);padding-top:6px}
 .原文>summary{font-size:10.5px;color:var(--字三);font-family:var(--等);letter-spacing:.04em;cursor:pointer;list-style:none;opacity:.85}

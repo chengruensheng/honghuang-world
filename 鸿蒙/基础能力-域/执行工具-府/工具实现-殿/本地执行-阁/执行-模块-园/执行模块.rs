@@ -213,6 +213,11 @@ impl 执行器 for 本地执行器 {
         let mut 子进程 = Command::new("cmd")
             .args(["/C", 命令])
             .current_dir(&self.工作区)
+            // 从源头关闭子进程彩色/光标输出（cargo 认 CARGO_TERM_COLOR，通用 CLI 认 NO_COLOR/CLICOLOR），
+            // 避免 ANSI 转义序列进入天机流形成乱码；输出边界另有 剥终端转义 兜底（见 读流）。
+            .env("CARGO_TERM_COLOR", "never")
+            .env("NO_COLOR", "1")
+            .env("CLICOLOR", "0")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -456,11 +461,12 @@ fn 收集输出(标准输出: Option<ChildStdout>, 标准错误: Option<ChildStd
     (输出, 错误)
 }
 
-/// 读取流内容并截断到上限字节（尽力读取，读取失败仅返回已读部分）
+/// 读取流内容并截断到上限字节，再剥离 ANSI 转义序列（尽力读取，读取失败仅返回已读部分）
 fn 读流<R: Read>(流: R, 上限: u64) -> String {
     let mut 缓冲 = Vec::new();
     if let Err(失败) = 流.take(上限).read_to_end(&mut 缓冲) {
         tracing::warn!("读取子进程输出失败: {失败}");
     }
-    String::from_utf8_lossy(&缓冲).to_string()
+    let 原文 = String::from_utf8_lossy(&缓冲);
+    super::输出净化::剥终端转义(&原文)
 }

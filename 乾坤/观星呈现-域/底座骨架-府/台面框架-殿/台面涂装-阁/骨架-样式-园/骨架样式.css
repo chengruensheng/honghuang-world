@@ -12,6 +12,11 @@
   --宋:"Noto Serif SC","Source Han Serif SC","STZhongsong","SimSun",serif;
   --黑:"Noto Sans SC","Source Han Sans SC","Microsoft YaHei","PingFang SC",sans-serif;
   --等:"JetBrains Mono","Cascadia Code","Consolas","SF Mono",monospace;
+  /* 布局尺寸单点定义：改框架高矮宽窄只动这四个令牌 */
+  --顶高:52px;      /* 顶栏 */
+  --底高:30px;      /* 底栏 */
+  --轨宽:52px;      /* 最左基础图标栏（窄屏也不得隐藏——它是全部导航的唯一入口） */
+  --展宽:236px;     /* 展开栏开合宽度 */
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
@@ -30,9 +35,9 @@ body::before{
 
 .布局{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column}
 
-/* ---------- 顶栏 ---------- */
+/* ---------- 顶栏（仅印记；导航已入基础图标栏，状态已入底栏） ---------- */
 .顶栏{
-  height:52px;flex:0 0 52px;display:flex;align-items:center;gap:20px;padding:0 20px;
+  height:var(--顶高);flex:0 0 var(--顶高);display:flex;align-items:center;gap:20px;padding:0 20px;
   border-bottom:1px solid var(--线);
   background:linear-gradient(180deg,rgba(18,21,26,.92),rgba(12,14,17,.92));backdrop-filter:blur(8px);
 }
@@ -43,17 +48,54 @@ body::before{
   background:none;border:none;color:var(--字三);font-family:var(--黑);font-size:12.5px;
   padding:6px 16px;cursor:pointer;border-radius:3px;letter-spacing:.08em;transition:.18s;
 }
-.栏目导航 button:hover{color:var(--字二);background:var(--底三)}
-.栏目导航 button.当前{color:var(--字);background:var(--底三);box-shadow:inset 0 -2px 0 var(--水)}
+.栏目导航 button:hover:not(:disabled){color:var(--字二);background:var(--底三)}
 .栏目导航 button.待建{color:#3B424B;cursor:not-allowed;position:relative}
 .栏目导航 button.待建::after{content:"待建";position:absolute;top:1px;right:3px;font-size:7.5px;color:#3B424B;transform:scale(.9)}
+
+/* ---------- 躯干：基础图标栏 → 展开栏 → 内容主区 ---------- */
+.躯干{flex:1;min-height:0;display:flex;flex-direction:row}
+
+/* 基础图标栏：全部视图导航的唯一入口，任何屏宽都不得隐藏 */
+.基础栏{
+  flex:0 0 var(--轨宽);width:var(--轨宽);display:flex;flex-direction:column;align-items:center;
+  gap:5px;padding:9px 0;border-right:1px solid var(--线);background:rgba(18,21,26,.85);
+}
+.轨钮{
+  width:36px;height:36px;display:flex;align-items:center;justify-content:center;padding:0;
+  background:none;border:none;border-radius:5px;color:var(--字三);cursor:pointer;transition:.16s;position:relative;
+}
+.轨钮 svg{width:20px;height:20px}
+.轨钮:hover{color:var(--字二);background:var(--底三)}
+.轨钮.当前{color:var(--字);background:var(--底三)}
+.轨钮.当前::before{content:"";position:absolute;left:-8px;top:7px;bottom:7px;width:2px;border-radius:1px;background:var(--水);box-shadow:0 0 6px rgba(91,127,184,.7)}
+.轨钮[aria-expanded="true"]{color:var(--水);background:var(--底三)}
+.轨隔{width:22px;height:1px;background:var(--线);margin:3px 0}
+
+/* 展开栏：默认收成 0 宽，仅由展栏类图标开合；不参与视图切换 */
+.展开栏{flex:0 0 0;width:0;overflow:hidden;border-right:1px solid transparent;transition:flex-basis .22s ease,border-color .22s ease}
+.展开栏.开{flex-basis:var(--展宽);border-right-color:var(--线)}
+.展内{width:var(--展宽);height:100%;display:flex;flex-direction:column;background:rgba(14,17,21,.6)}
+.展头{flex:0 0 auto;height:38px;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid var(--线);background:var(--底二)}
+.展头 h2{font-family:var(--宋);font-size:13px;font-weight:600;letter-spacing:.12em;color:var(--字)}
+.展身{flex:1;min-height:0;overflow-y:auto}
+.展空{padding:26px 14px;font-size:11.5px;line-height:1.9;color:var(--字三);text-align:center}
+
+/* 内容主区 */
+.主区{flex:1;min-width:0;display:flex;position:relative}
+
+/* ---------- 底栏 ---------- */
+.底栏{
+  height:var(--底高);flex:0 0 var(--底高);display:flex;align-items:center;gap:12px;padding:0 14px;
+  border-top:1px solid var(--线);background:rgba(18,21,26,.92);
+  font-size:11px;color:var(--字二);
+}
+.底栏 .状态灯{display:flex;align-items:center;gap:7px;font-family:var(--等)}
+.底竖{width:1px;height:13px;background:var(--线亮)}
+.底当前{font-family:var(--等);color:var(--字二);letter-spacing:.02em}
+.底注{font-family:var(--等);font-size:10.5px;color:var(--字三);letter-spacing:.08em}
 .间隔{flex:1}
-.状态灯{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--字二);font-family:var(--等)}
 .点{width:7px;height:7px;border-radius:50%;background:var(--木);box-shadow:0 0 8px var(--木);animation:呼吸 2.4s ease-in-out infinite}
 @keyframes 呼吸{0%,100%{opacity:1}50%{opacity:.35}}
-.模式切换{display:flex;border:1px solid var(--线);border-radius:3px;overflow:hidden}
-.模式切换 button{background:var(--底二);border:none;color:var(--字三);font-size:11.5px;padding:5px 12px;cursor:pointer;font-family:var(--黑);letter-spacing:.06em;transition:.18s}
-.模式切换 button.选{background:var(--水);color:#fff}
 
 /* ---------- 视图容器 ---------- */
 .视图{display:none;flex:1;min-height:0;animation:浮现 .28s ease}
@@ -78,3 +120,5 @@ body::before{
 @keyframes 浮现{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
 @media(max-width:1100px){ .两栏{grid-template-columns:1fr} }
+/* 窄屏铁律：基础图标栏是全部导航唯一入口，只能压展宽、绝不隐藏轨道 */
+@media(max-width:760px){ :root{--展宽:196px} .底注{display:none} }

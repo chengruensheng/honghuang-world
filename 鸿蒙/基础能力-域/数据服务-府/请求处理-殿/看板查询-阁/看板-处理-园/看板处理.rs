@@ -59,15 +59,9 @@ pub struct 定向回退响应 {
     pub 影响任务数: usize,
 }
 
+/// 角色显示名 → 角色：委托 `AgentRole::从名称`，与适配器等消费方共用同一张名表。
 fn 解析角色(s: &str) -> Option<AgentRole> {
-    match s {
-        "道祖" => Some(AgentRole::道祖),
-        "圣人" => Some(AgentRole::圣人),
-        "大罗金仙" => Some(AgentRole::大罗金仙),
-        "准圣" => Some(AgentRole::准圣),
-        "太乙金仙" => Some(AgentRole::太乙金仙),
-        _ => None,
-    }
+    AgentRole::从名称(s)
 }
 
 fn 解析状态(s: &str) -> Option<TaskStatus> {

@@ -53,15 +53,44 @@ export function 追加消息(流, 角, 时, 文, 摘要, runId){
       </div>`;
     流.appendChild(卡);
   }
+  return {元, 泡};
 }
 
+/** 推理条：模型思考独立成条，挂在气泡之前，默认折叠。
+    思考是过程证据，不是答复本身——要看的人点开，不想看的人不被草稿干扰。 */
+function 挂推理条(元, 泡){
+  const 详 = document.createElement("details");
+  详.className = "推理条";
+  详.innerHTML = `<summary>推理过程 · 模型思考</summary>`;
+  const 身 = document.createElement("div");
+  身.className = "推body";
+  详.appendChild(身);
+  元.insertBefore(详, 泡);
+  return 身;
+}
+
+/* 左栏轮次的记忆：最近一次落结论所属的棒，与本屏已起过几个轮次标。
+    一颗 run = 一根棒 = 左栏一个轮次。顺序必须标出来——回退重跑时同一角色会再来一轮，
+    没有轮次标，两轮的结论在左栏长得一模一样，读者分不清哪条属于哪一轮。 */
+let 上一棒 = null;
+let 棒序 = 0;
+
 /** 追加一条「接力结论」：署名带职责，正文是人话摘要，模型原文折叠在后。
-    原文必须留——摘要只负责好读，证据不能因为摘要好看就丢掉。 */
+    原文必须留——摘要只负责好读，证据不能因为摘要好看就丢掉。
+    换棒即起一个轮次标：它与右栏那一棒是同一件事的两面，两栏据此对得上号。 */
 export function 追加结论(流, 角, 原文, runId, 摘要){
   流.querySelector(":scope > .空")?.remove();
   const {元, 泡} = 起消息(流, 角, "");
   const 责 = 职名(角);
   if(责) 元.querySelector(".名 .署").textContent = `${角} · ${责}`;
+  if(runId && runId !== 上一棒){
+    上一棒 = runId;
+    棒序++;
+    const 标 = document.createElement("div");
+    标.className = "轮标";
+    标.textContent = `第 ${棒序} 棒 · ${角}${责 ? " · " + 责 : ""}`;
+    流.insertBefore(标, 元);   // 标必须落在这条消息之前——它标的是这一棒的开头
+  }
   const 句 = document.createElement("div");
   句.className = "结句";
   句.textContent = 摘要 || 原文;
@@ -92,11 +121,15 @@ export function 渲染对话(){
   const 流 = $("#对话流");
   if(流.dataset.降级) return;   // 该栏已由顶层宣告故障：重绘不得把故障说明盖成一句空态
   流.innerHTML = "";
+  上一棒 = null; 棒序 = 0;   // 重绘即重数：序号说的是「本屏第几棒」，不是历史累计
   // 一、接待阶段：演示模式铺契约样例语料；实时模式铺真实收到的接待往返。
   //    接待走 /api/dev/chat/stream，与天机流不同源，所以单独存一份 接待记录 供重绘。
   const 接待 = 运行时.模式 === "演示" ? 对话脚本 : 运行时.接待记录;
   接待.filter(m=>运行时.筛选 === "全部" || m.角色 === 运行时.筛选 || m.角色 === "来客")
-      .forEach(条=>追加消息(流, 条.角色, 条.时, 条.文, 条.摘要));
+      .forEach(条=>{
+        const {元, 泡} = 追加消息(流, 条.角色, 条.时, 条.文, 条.摘要);
+        if(条.思考) 挂推理条(元, 泡).textContent = 条.思考;   // 重绘也要还原推理条，否则切筛选即丢证据
+      });
   // 二、五层接力结论：由 TEXT_MESSAGE_CONTENT 生成——与右栏读的是同一份事件缓冲
   let 游run = null;
   const 动表 = 聚棒动作(运行时.事件缓冲);   // 结论摘要要用，与右栏棒头同源
@@ -118,15 +151,31 @@ export function 渲染对话(){
 /* ---------- 接待往返（经总线来自 流式驱动-府） ----------
    气泡的「内容」由 流式驱动-府 决定（它才收得到 SSE），本府只负责画。
    气泡引用按 id 暂存在此处，流式增量才能找到该往哪个气泡里续写。 */
-const 接待泡 = new Map();   // 接待 id → {元, 泡}
+const 接待泡 = new Map();   // 接待 id → {元, 泡, 推}
+
+/** 对话区滚到底：新内容永远留在视野里 */
+function 滚到底(流){
+  const 区 = 流.parentElement;
+  区.scrollTop = 区.scrollHeight;
+}
 
 /** 起一条接待气泡（用户发问后，道祖那一侧的容器先立起来） */
 export function 接待开启(d){
   const 流 = $("#对话流");
   流.querySelector(":scope > .空")?.remove();
   const {元, 泡} = 起消息(流, d.角色, d.时);
-  接待泡.set(d.id, {元, 泡});
-  流.parentElement.scrollTop = 流.parentElement.scrollHeight;
+  接待泡.set(d.id, {元, 泡, 推:null});
+  滚到底(流);
+}
+
+/** 思考增量：首块建推理条，其后按最新全量续写。
+    思考不进气泡正文——同一段内容两处各说各话，才是杂质。 */
+export function 接待思考(d){
+  const 对 = 接待泡.get(d.id);
+  if(!对) return;
+  if(!对.推) 对.推 = 挂推理条(对.元, 对.泡);
+  对.推.textContent = d.文本;
+  滚到底($("#对话流"));
 }
 
 /** 流式追加：文本以最新全量为准，重复广播不会叠字 */
@@ -134,8 +183,7 @@ export function 接待增量(d){
   const 对 = 接待泡.get(d.id);
   if(!对) return;   // 气泡被整栏重绘顶掉：渲染对话 会按最新记录重建，此处无需补救
   对.泡.textContent = d.文本;
-  const 区 = 对.泡.closest("#对话流").parentElement;
-  区.scrollTop = 区.scrollHeight;
+  滚到底($("#对话流"));
 }
 
 /** 收尾：落定最终文本；道祖若已对齐完需求，顺手把确认发布入口送上 */
@@ -149,5 +197,5 @@ export function 接待收尾(d){
     const 钮 = 流.querySelector("#发布钮");
     if(钮 && !钮.dataset.绑){ 钮.dataset.绑 = "1"; 钮.addEventListener("click", 发布); }
   }
-  流.parentElement.scrollTop = 流.parentElement.scrollHeight;
+  滚到底(流);
 }

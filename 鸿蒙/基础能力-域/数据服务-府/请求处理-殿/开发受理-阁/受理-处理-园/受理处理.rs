@@ -228,22 +228,59 @@ pub async fn 道祖对话流式接口(
             发帧(json!({"type": "RUN_FINISHED", "阶段": "接待中", "任务id": null}));
             return;
         };
-        // 流式接待：锁内仅做消息组装与会话落定，LLM 增量经回调外推（不阻塞 SSE）
+        // 流式接待：锁内仅做消息组装与会话落定，LLM 增量经回调外推（不阻塞 SSE）。
+        // 增量先过「思考链过滤器」分流（口径见 协议适配.rs）再下发：推理模型会把
+        // `<think>…</think>` 直接写进正文，且标签本身可能被切在两个块里，故必须跨块有状态。
+        // 思考走 REASONING_MESSAGE_* 独立通道、正文走 TEXT_MESSAGE_CONTENT——各归其位，都不丢。
+        let mut 滤器 = crate::思考链过滤器::新();
+        let mut 推理: (Option<String>, u64) = (None, 0);   // (当前推理消息 id, 本次已开出条数)
+        let mut 已推正文 = String::new();                   // 正文通道至今吐出过什么，供收尾判断是否要补答复
         let 结果 = {
             let 接待锁 = 接待.lock().expect("道祖接待锁中毒");
             let mut 回调 = |块: String| -> Result<(), hm_error::Error> {
-                发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": 块}));
+                let 出 = 滤器.喂(&块);
+                发思考(&发帧, &mut 推理, &出.思考);
+                if !出.正文.is_empty() {
+                    收思考(&发帧, &mut 推理);   // 正文开始即推理段结束：一条消息不跨段
+                    已推正文.push_str(&出.正文);
+                    发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": 出.正文}));
+                }
                 Ok(())
             };
             match 接待锁.接待流式(请求.消息.clone(), &mut 回调) {
                 Ok(响应) => Some(响应),
                 Err(e) => {
                     tracing::warn!("道祖流式接待失败: {e}");
-                    发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": format!("（道祖未能答复：{e}）")}));
+                    收思考(&发帧, &mut 推理);
+                    let 警 = format!("（道祖未能答复：{e}）");
+                    已推正文.push_str(&警);
+                    发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": 警}));
                     None
                 }
             }
         };
+        // 收尾：暂存的尾巴已确定不是标签前缀，按当前所处段归位下发
+        let 尾 = 滤器.收尾();
+        发思考(&发帧, &mut 推理, &尾.思考);
+        if !尾.正文.is_empty() {
+            收思考(&发帧, &mut 推理);
+            已推正文.push_str(&尾.正文);
+            发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": 尾.正文}));
+        }
+        // 上游若把思考放在独立字段（reasoning_content / reasoning，MiniMax-M3 等），
+        // 云端已与 content 分列，但增量回调只推 content——此处补进同一条推理通道，不让它被丢掉。
+        if let Some(思) = 结果.as_ref().and_then(|r| r.思考.as_deref()) {
+            发思考(&发帧, &mut 推理, 思);
+        }
+        收思考(&发帧, &mut 推理);   // 流到此为止：未收的推理消息必须收，不留一个永远等不到 END 的消息
+        // 工具调用路径（闲聊/追问澄清/对齐总结）的答复由工具参数合成，不在 content 增量里——
+        // 模型在 content 里可能只留空白。若正文通道至今没吐出可见内容，就把这份权威答复补上；
+        // 否则气泡空着，等于答了却什么也没给来访者看。
+        if 已推正文.trim().is_empty() {
+            if let Some(回复) = 结果.as_ref().map(|r| r.回复.trim()).filter(|s| !s.is_empty()) {
+                发帧(json!({"type": "TEXT_MESSAGE_CONTENT", "delta": 回复}));
+            }
+        }
         // 对齐 → 停留「待确认」，由用户确认（/api/dev/chat/confirm）后才发布看板；不再自动发布。
         let mut 阶段 = "接待中";
         let 任务id: Option<u64> = None;
@@ -272,5 +309,33 @@ pub async fn 道祖确认接口(
     match crate::确认发布对齐需求(&状态) {
         Ok(id) => Ok(Json(道祖确认响应 { 任务id: id })),
         Err(失败) => Err((失败状态码(&失败), Json(受理错误响应 { 错误: 失败消息(&失败) }))),
+    }
+}
+
+/// 思考增量下发：本块无思考内容则不动；有则开（或续写）一条推理消息。
+///
+/// 游标 `.0` 为当前推理消息 id（None＝尚无开启中的推理消息），`.1` 为本接口已开出的条数。
+/// messageId 只需在单次接待内唯一（前端按 CONTENT 的 delta 累积，不靠它定位气泡）。
+fn 发思考(发帧: &dyn Fn(serde_json::Value), 游标: &mut (Option<String>, u64), 思考: &str) {
+    if 思考.is_empty() {
+        return;
+    }
+    let id = match 游标.0.clone() {
+        Some(id) => id,
+        None => {
+            游标.1 += 1;
+            let id = format!("接待推理-{}", 游标.1);
+            发帧(json!({"type": "REASONING_MESSAGE_START", "messageId": id}));
+            游标.0 = Some(id.clone());
+            id
+        }
+    };
+    发帧(json!({"type": "REASONING_MESSAGE_CONTENT", "messageId": id, "delta": 思考}));
+}
+
+/// 收束推理消息：未开启则不动作——「正文开始前」与「流结束」都会调它，故须幂等。
+fn 收思考(发帧: &dyn Fn(serde_json::Value), 游标: &mut (Option<String>, u64)) {
+    if let Some(id) = 游标.0.take() {
+        发帧(json!({"type": "REASONING_MESSAGE_END", "messageId": id}));
     }
 }

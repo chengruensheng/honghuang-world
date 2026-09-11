@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>洪荒·世界 · 观星台</title>
 <!--
-  静态骨架：背景、顶栏、两栏栅格、看板容器全部写死在此，样式用 <link> 静态引入。
+  静态骨架：背景、顶栏、基础图标栏、展开栏、主区、底栏全部写死在此，样式用 <link> 静态引入。
   不经任何 JS 生成——JS 全崩时，骨架与布局依然成立（见 rules/呈现域规则.md 四·1）。
+  布局：顶栏（印记）／躯干（基础图标栏 → 展开栏 → 内容主区）／底栏（连接状态 · 当前任务）。
 -->
 <link rel="stylesheet" href="/底座骨架-府/台面框架-殿/台面涂装-阁/骨架-样式-园/骨架样式.css">
 <link rel="stylesheet" href="/观测台面-府/万仙对话-殿/消息涂装-阁/对话-样式-园/对话样式.css">
@@ -19,55 +20,99 @@
   <header class="顶栏">
     <div class="印记">洪荒<span>·世界</span></div>
     <div class="栏目导航">
-      <button id="签观星台" class="当前">观星台</button>
-      <button id="签看板">看板</button>
       <button class="待建" disabled title="尚未接入契约 · 待后续版本">五行盘</button>
       <button class="待建" disabled title="尚未接入契约 · 待后续版本">时间轴</button>
     </div>
-    <div class="间隔"></div>
-    <div class="状态灯"><span class="点"></span><span id="连接语">演示数据 · 契约对齐</span></div>
-    <div class="模式切换">
-      <button id="钮演示" class="选">演示</button>
-      <button id="钮实时">实时</button>
-    </div>
   </header>
 
-  <!-- ============ 视图一：观星台（对话 + 天机） ============ -->
-  <div class="视图 显 两栏" id="视图-观星台">
+  <div class="躯干">
 
-    <!-- 左：万仙对话（全角色共享入口） -->
-    <section class="栏">
-      <div class="栏头"><h2>万仙对话</h2><span class="注">/api/dev/chat</span></div>
-      <div class="角色入口" id="角色入口"></div>
-      <div class="栏身"><div class="对话流" id="对话流"></div></div>
-      <div class="输入区">
-        <textarea id="输入" placeholder="向主控（道祖）描述你要建造的东西……"></textarea>
-        <div class="行">
-          <span class="提">Enter 发送 · Shift+Enter 换行</span>
-          <button class="发送" id="发送">呈 上</button>
-        </div>
+    <!-- ============ 基础图标栏：上组切主界面，下组开侧面板（活动栏模式） ============ -->
+    <nav class="基础栏" aria-label="基础导航">
+      <button id="轨观星台" class="轨钮 当前" title="观星台" aria-label="观星台">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.2l1.25 2.55L16 11l-2.75 1.25L12 14.8l-1.25-2.55L8 11l2.75-1.25z"/></svg>
+      </button>
+      <button id="轨看板" class="轨钮" title="看板" aria-label="看板">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4.5" width="4.2" height="15" rx="1"/><rect x="9.9" y="4.5" width="4.2" height="15" rx="1"/><rect x="15.8" y="4.5" width="4.2" height="15" rx="1"/></svg>
+      </button>
+      <span class="轨隔"></span>
+      <button class="轨钮 面钮" data-面板="门禁" title="门禁" aria-label="门禁" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l6.8 2.5v4.7c0 4.2-2.8 7.2-6.8 9.1-4-1.9-6.8-4.9-6.8-9.1V6.1z"/><circle cx="12" cy="10.4" r="1.25"/><path d="M12 11.6v2.5"/></svg>
+      </button>
+      <button class="轨钮 面钮" data-面板="传承" title="传承" aria-label="传承" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.6 4.6v14.8M16.4 4.6v14.8"/><path d="M6.1 4.6h1.5M6.1 19.4h1.5M16.4 4.6h1.5M16.4 19.4h1.5"/><path d="M7.6 8.4h8.8M7.6 11.7h8.8M7.6 15h5.8"/></svg>
+      </button>
+      <button class="轨钮 面钮" data-面板="记忆" title="记忆" aria-label="记忆" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6.2" rx="6.8" ry="2.5"/><path d="M5.2 6.2v11.6c0 1.4 3 2.5 6.8 2.5s6.8-1.1 6.8-2.5V6.2"/><path d="M5.2 12c0 1.4 3 2.5 6.8 2.5s6.8-1.1 6.8-2.5"/></svg>
+      </button>
+      <button class="轨钮 面钮" data-面板="格位" title="格位" aria-label="格位" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="4.6" width="14.8" height="14.8" rx="1.4"/><path d="M9.53 4.6v14.8M14.47 4.6v14.8M4.6 9.53h14.8M4.6 14.47h14.8"/></svg>
+      </button>
+      <button class="轨钮 面钮" data-面板="道规" title="道规" aria-label="道规" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.2" y="5.2" width="13.6" height="13.6" rx="1.6"/><path d="M9 9.2h6M9 12h6M9 14.8h3.6"/></svg>
+      </button>
+    </nav>
+
+    <!-- ============ 展开栏：由「面钮」开合切换，不切换主界面；各面板内容待承纳 ============ -->
+    <aside class="展开栏" id="展开栏">
+      <div class="展内">
+        <div class="展头"><h2 id="展标题">待承纳</h2></div>
+        <div class="展身"><div class="展空" id="展空">此面板由基础栏图标开启<br>内容待后续承纳</div></div>
       </div>
-    </section>
+    </aside>
 
-    <!-- 右：天机 · 事件流 -->
-    <section class="栏">
-      <div class="栏头"><h2>天机 · 事件流</h2><span class="注">/api/dev/stream/agui</span></div>
-      <div class="天机筛" id="天机筛"></div>
-      <div id="阶段条" class="阶段条" style="display:none"></div>
-      <div class="栏身"><div class="事件流" id="事件流"></div></div>
-    </section>
+    <!-- ============ 内容主区 ============ -->
+    <main class="主区">
+
+      <!-- 视图一：观星台（对话 + 天机） -->
+      <div class="视图 显 两栏" id="视图-观星台">
+
+        <!-- 左：万仙对话（全角色共享入口） -->
+        <section class="栏">
+          <div class="栏头"><h2>万仙对话</h2><span class="注">/api/dev/chat</span></div>
+          <div class="角色入口" id="角色入口"></div>
+          <div class="栏身"><div class="对话流" id="对话流"></div></div>
+          <div class="输入区">
+            <textarea id="输入" placeholder="向主控（道祖）描述你要建造的东西……"></textarea>
+            <div class="行">
+              <span class="提">Enter 发送 · Shift+Enter 换行</span>
+              <button class="发送" id="发送">呈 上</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 右：天机 · 事件流 -->
+        <section class="栏">
+          <div class="栏头"><h2>天机 · 事件流</h2><span class="注">/api/dev/stream/agui</span></div>
+          <div class="天机筛" id="天机筛"></div>
+          <div id="阶段条" class="阶段条" style="display:none"></div>
+          <div class="栏身"><div class="事件流" id="事件流"></div></div>
+        </section>
+
+      </div>
+
+      <!-- 视图二：看板（全屏独占） -->
+      <div class="视图" id="视图-看板">
+        <div class="看板头">
+          <h2>看板 · 五层流转</h2>
+          <span class="统" id="看板统"></span>
+          <span class="注">/api/board</span>
+        </div>
+        <div class="泳道区" id="泳道区"></div>
+      </div>
+
+    </main>
 
   </div>
 
-  <!-- ============ 视图二：看板（全屏独占） ============ -->
-  <div class="视图" id="视图-看板">
-    <div class="看板头">
-      <h2>看板 · 五层流转</h2>
-      <span class="统" id="看板统"></span>
-      <span class="注">/api/board</span>
-    </div>
-    <div class="泳道区" id="泳道区"></div>
-  </div>
+  <!-- ============ 底栏：连接状态（左）· 当前任务与角色（中） ============ -->
+  <footer class="底栏">
+    <span class="状态灯"><span class="点"></span><span id="连接语">实时 · 连接中…</span></span>
+    <span class="底竖"></span>
+    <span id="底栏当前" class="底当前">空闲 · 等待任务事件</span>
+    <span class="间隔"></span>
+    <span class="底注">洪荒·世界 · 观星呈现</span>
+  </footer>
 
 </div>
 

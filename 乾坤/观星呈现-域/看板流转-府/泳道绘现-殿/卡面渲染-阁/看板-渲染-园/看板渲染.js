@@ -84,6 +84,19 @@ export async function 拉看板(){
   }
 }
 
+/** 定位任务：把该任务那张卡滚进视野并闪一下——从棒头点任务号跳过来时，让眼睛知道是哪张卡。
+    找不到就什么都不做：取不到就不编，也不假装找到了。 */
+export function 定位任务(任务id){
+  const 卡 = document.querySelector(`#泳道区 .卡[data-id="${任务id}"]`);
+  if(!卡) return;
+  卡.classList.add("开");
+  卡.scrollIntoView({behavior:"smooth", block:"center"});
+  卡.classList.remove("闪");
+  void 卡.offsetWidth;   // 强制重排，让动画可重复触发
+  卡.classList.add("闪");
+  setTimeout(()=>卡.classList.remove("闪"), 1200);
+}
+
 function 态类(态){
   if(终态集.includes(态) || 态.includes("已完成")) return "成";
   if(/进行中|设计中|实现中|验收中|终审中|清理中/.test(态)) return "行";
@@ -95,6 +108,7 @@ function 态类(态){
 function 建卡(t){
   const 卡 = document.createElement("div");
   卡.className = "卡";
+  卡.dataset.id = t.id;   // 天机视图的棒按它定位到这张卡（6.5）
   const 阶段链 = Object.entries(t.阶段).map(([k,v])=>{
     const 色 = v === "✓" ? "var(--木)" : v === "进行" ? "var(--水)" : v === "不通过" ? "var(--火)" : "var(--字三)";
     return `<span style="color:${色}">${转义(k)}${转义(v)}</span>`;

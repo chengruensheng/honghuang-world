@@ -1,8 +1,9 @@
 use hm_agui::{
     Event, ReasoningMessageContent, ReasoningMessageEnd, ReasoningMessageStart, RunError,
-    RunFinished, RunStarted, StepFinished, TextMessageContent, TextMessageEnd, TextMessageStart,
-    ToolCallArgs, ToolCallEnd, ToolCallResult, ToolCallStart,
+    RunFinished, RunStarted, StateDelta, StepFinished, TextMessageContent, TextMessageEnd,
+    TextMessageStart, ToolCallArgs, ToolCallEnd, ToolCallResult, ToolCallStart,
 };
+use tc_task::AgentRole;
 use crate::{驱动过程事件, 驱动阶段事件};
 
 /// 协议适配器：把内部驱动事件翻译为 AG-UI 标准事件序列（适配器映射，非破坏）。
@@ -84,11 +85,27 @@ impl 协议适配器 {
                 }));
             }
             "任务答复" => {
-                // 推理模型（MiniMax-M3 等）把思考链直接写进 content，会随答复原样下发，
-                // 界面上就是一段 `<think>The user wants me to act as...` 的模型草稿。
-                // 骨架照发，内容必须是洗过的正文；洗空了就不发，免得多一个空气泡。
-                let 内容 = 去思考链(&事件.内容);
-                if !内容.is_empty() {
+                // 推理模型（MiniMax-M3 等）把思考链直接写进 content。它不该混在答复里，
+                // 但也不该丢——转进推理通道，正文只留对用户可见的部分：各归其位。
+                let mut 滤器 = 思考链过滤器::新();
+                let 前段 = 滤器.喂(&事件.内容);
+                let 尾段 = 滤器.收尾();
+                let mut 思 = 前段.思考;
+                思.push_str(&尾段.思考);
+                let mut 正 = 前段.正文;
+                正.push_str(&尾段.正文);
+                let 思考 = 思.trim();
+                let 正文 = 正.trim();
+                if !思考.is_empty() {
+                    let id = format!("推理-{会话id}-{序号}");
+                    出.push(Event::ReasoningMessageStart(ReasoningMessageStart { message_id: id.clone() }));
+                    出.push(Event::ReasoningMessageContent(ReasoningMessageContent {
+                        message_id: id.clone(),
+                        delta: 思考.to_string(),
+                    }));
+                    出.push(Event::ReasoningMessageEnd(ReasoningMessageEnd { message_id: id }));
+                }
+                if !正文.is_empty() {
                     let id = format!("msg-{会话id}-{序号}");
                     出.push(Event::TextMessageStart(TextMessageStart {
                         message_id: id.clone(),
@@ -96,7 +113,7 @@ impl 协议适配器 {
                     }));
                     出.push(Event::TextMessageContent(TextMessageContent {
                         message_id: id.clone(),
-                        delta: 内容,
+                        delta: 正文.to_string(),
                     }));
                     出.push(Event::TextMessageEnd(TextMessageEnd { message_id: id }));
                 }
@@ -106,14 +123,31 @@ impl 协议适配器 {
         出
     }
 
-    /// 单条阶段事件 → 一条 AG-UI 事件。
+    /// 单条阶段事件 → 一条或多条 AG-UI 事件。
     ///
-    /// 映射：阶段完成→STEP_FINISHED；空闲→RUN_FINISHED；错误→RUN_ERROR。
+    /// 映射：阶段完成→STATE_DELTA（新状态流转）+ STEP_FINISHED（步骤名）；
+    /// 空闲→RUN_FINISHED；错误→RUN_ERROR。
     pub fn 阶段事件(&self, 事件: &驱动阶段事件, 会话id: u64) -> Vec<Event> {
         match 事件.类型.as_str() {
-            "阶段完成" => vec![Event::StepFinished(StepFinished {
-                step_name: 事件.新状态.clone().unwrap_or_else(|| "阶段".into()),
-            })],
+            "阶段完成" => {
+                let mut 出: Vec<Event> = Vec::new();
+                // 「新状态」是状态机（执行推进 + TaskStatus）的确定性产物，正是 STATE_DELTA 的语义。
+                // 它此前被塞进 stepName，害得阶段条把状态名当步骤名（演示语料在这一位是「圣人 · 设计」）。
+                // 新状态改由此处承载，前端「→ 下一步」直接读 value；取不到就不发，不编。
+                if let (Some(任务id), Some(新状态)) = (事件.任务id, 事件.新状态.as_deref()) {
+                    出.push(Event::StateDelta(StateDelta {
+                        delta: vec![serde_json::json!({
+                            "op": "replace",
+                            "path": format!("/任务/{任务id}/status"),
+                            "value": 新状态,
+                        })],
+                    }));
+                }
+                出.push(Event::StepFinished(StepFinished {
+                    step_name: 步骤名(事件.角色.as_deref()),
+                }));
+                出
+            }
             "空闲" => vec![Event::RunFinished(RunFinished {
                 thread_id: format!("thread-{会话id}"),
                 run_id: format!("run-{会话id}"),
@@ -125,6 +159,17 @@ impl 协议适配器 {
             })],
             _ => vec![],
         }
+    }
+}
+
+/// 阶段步骤名：`角色 · 职责`（如「圣人 · 边界契约设计」）。
+///
+/// 职责取自 `AgentRole::职责`（与任务书提示词同一张表，不另抄一份）；
+/// 角色缺失或不在五层之列时退回「阶段」，保持非空——AG-UI 要求步骤名非空。
+fn 步骤名(角色名: Option<&str>) -> String {
+    match 角色名.and_then(AgentRole::从名称) {
+        Some(角色) => format!("{} · {}", 角色.名称(), 角色.职责()),
+        None => "阶段".into(),
     }
 }
 
@@ -141,23 +186,109 @@ fn 是思考标记(内容: &str) -> bool {
 /// 大小写不敏感、支持多段。**未闭合时连同其后内容一并丢弃**：`<think>` 一旦没有闭合标签，
 /// 其后就全是模型的思考区（上游按字节截断时最先被切掉的恰恰是闭合标签与正文），
 /// 此时"保留正文"等于把草稿原样端给用户。宁可这一条内容空着，也不显示杂质。
-/// 全程只在 ASCII 边界切分（标签是纯 ASCII），中文等多字节字符不受影响。
+/// 口径与流式版 `思考链过滤器` 共用一份实现，防止两处剥离规则各自漂移。
 fn 去思考链(文本: &str) -> String {
-    let mut 出 = String::with_capacity(文本.len());
-    let mut 剩 = 文本;
-    while let Some(起) = 找小写片段(剩, "<think>") {
-        出.push_str(&剩[..起]);
-        let 标签后 = 起 + "<think>".len();
-        match 找小写片段(&剩[标签后..], "</think>") {
-            Some(闭) => 剩 = &剩[标签后 + 闭 + "</think>".len()..],
-            None => {
-                剩 = "";
+    let mut 滤器 = 思考链过滤器::新();
+    let mut 出 = 滤器.喂(文本).正文;
+    出.push_str(&滤器.收尾().正文);
+    出.trim().to_string()
+}
+
+/// 一次投喂的分流结果：思考与正文各归其道。
+///
+/// 分流是为了「各归其位」，不是「择优保留」——思考有独立的协议通道
+/// （`REASONING_MESSAGE_*`），丢掉等于把过程证据一并丢了；混进正文则等于把草稿端给用户。
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct 分流结果 {
+    /// 思考段内容（应走 REASONING_MESSAGE_*）
+    pub 思考: String,
+    /// 正文内容（应走 TEXT_MESSAGE_*）
+    pub 正文: String,
+}
+
+/// 流式思考链过滤器：逐块喂入 LLM 增量，把思考与正文分开吐出。
+///
+/// 与 `去思考链` 同一口径（大小写不敏感、支持多段、未闭合即视其后为思考），
+/// 区别只在「逐块」。上游是按块切的，标签本身可能被切在两个块里（`…<thi` + `nk>…`），
+/// 见一块发一块必然漏标签，故把「疑似标签前缀」的尾巴暂存到下一块再判定；
+/// 流结束用 `收尾` 让出最后一段。
+pub struct 思考链过滤器 {
+    在思考段: bool,
+    暂存: String,
+}
+
+impl 思考链过滤器 {
+    /// 新建（不在思考段、无暂存）
+    pub fn 新() -> Self {
+        思考链过滤器 { 在思考段: false, 暂存: String::new() }
+    }
+
+    /// 喂入一块增量 → 分流结果（某一侧为空串＝本块没有该侧内容）
+    pub fn 喂(&mut self, 块: &str) -> 分流结果 {
+        let mut 输入 = std::mem::take(&mut self.暂存);
+        输入.push_str(块);
+        let mut 出 = 分流结果::default();
+        let mut 剩: &str = &输入;
+        loop {
+            if self.在思考段 {
+                match 找小写片段(剩, "</think>") {
+                    Some(闭) => {
+                        出.思考.push_str(&剩[..闭]);
+                        剩 = &剩[闭 + "</think>".len()..];
+                        self.在思考段 = false;
+                    }
+                    None => {
+                        // 除「可能是闭合标签前缀」的尾巴外，整段归思考
+                        match 标签前缀尾(剩, "</think>") {
+                            Some(尾) => {
+                                出.思考.push_str(&剩[..剩.len() - 尾.len()]);
+                                self.暂存 = 尾.to_string();
+                            }
+                            None => 出.思考.push_str(剩),
+                        }
+                        break;
+                    }
+                }
+            } else if let Some(起) = 找小写片段(剩, "<think>") {
+                出.正文.push_str(&剩[..起]);
+                剩 = &剩[起 + "<think>".len()..];
+                self.在思考段 = true;
+            } else {
+                match 标签前缀尾(剩, "<think>") {
+                    Some(尾) => {
+                        出.正文.push_str(&剩[..剩.len() - 尾.len()]);
+                        self.暂存 = 尾.to_string();
+                    }
+                    None => 出.正文.push_str(剩),
+                }
                 break;
             }
         }
+        出
     }
-    出.push_str(剩);
-    出.trim().to_string()
+
+    /// 流结束：暂存的尾巴已确定不是标签前缀，按当前所处段归位
+    pub fn 收尾(&mut self) -> 分流结果 {
+        let 尾 = std::mem::take(&mut self.暂存);
+        let mut 出 = 分流结果::default();
+        if self.在思考段 { 出.思考 = 尾; } else { 出.正文 = 尾; }
+        出
+    }
+}
+
+/// 文本尾是否恰为 `标签` 的一个前缀（`<`、`<t`、…、`<thin`），返回该尾巴。
+///
+/// 要求切片落在字符边界上：多字节字符（中文）若被当成标签前缀滞留，
+/// 那部分正文会白白扣在暂存里，直到下一块才吐出——短则错位，长则丢字。
+fn 标签前缀尾<'a>(文本: &'a str, 标签: &str) -> Option<&'a str> {
+    for 长 in (1..标签.len()).rev() {
+        if 文本.len() < 长 { continue; }
+        let 起 = 文本.len() - 长;
+        if 文本.is_char_boundary(起) && 文本[起..].eq_ignore_ascii_case(&标签[..长]) {
+            return Some(&文本[起..]);
+        }
+    }
+    None
 }
 
 /// 大小写不敏感地查找 ASCII 片段，返回字节起点。

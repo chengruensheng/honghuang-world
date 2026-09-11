@@ -165,8 +165,12 @@ async fn agui端点_阶段事件带角色署名() {
 
     let sse = 看板驱动阶段流_agui接口(State(状态.clone()), Query(事件游标 { since: Some(0) })).await;
     let mut body = sse.into_response().into_body();
-    let 文本 = 取帧(&mut body).await;
-    assert!(文本.contains("STEP_FINISHED"), "实际 {}", 文本);
-    assert!(文本.contains("清理完成"), "实际 {}", 文本);
-    assert!(文本.contains("\"角色\":\"太乙金仙\""), "阶段帧须带角色署名，实际 {}", 文本);
+    let 一 = 取帧(&mut body).await; // STATE_DELTA（状态机流转出的新状态）
+    let 二 = 取帧(&mut body).await; // STEP_FINISHED
+    assert!(一.contains("STATE_DELTA"), "实际 {}", 一);
+    assert!(一.contains("/任务/2/status"), "补丁须指向真实任务的状态，实际 {}", 一);
+    assert!(一.contains("清理完成"), "实际 {}", 一);
+    assert!(二.contains("STEP_FINISHED"), "实际 {}", 二);
+    assert!(二.contains("太乙金仙 · 清理与归档"), "步骤名须为「角色 · 职责」，实际 {}", 二);
+    assert!(二.contains("\"角色\":\"太乙金仙\""), "阶段帧须带角色署名，实际 {}", 二);
 }

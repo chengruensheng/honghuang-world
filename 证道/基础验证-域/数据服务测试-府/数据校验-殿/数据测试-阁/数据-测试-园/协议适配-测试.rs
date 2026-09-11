@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use hm_http::{协议适配器, 驱动过程事件, 驱动阶段事件};
+    use hm_http::{协议适配器, 思考链过滤器, 驱动过程事件, 驱动阶段事件};
     use serde_json::json;
 
     /// 断言某 AG-UI 事件序列化结果与预期 JSON 逐字节一致
@@ -127,28 +127,35 @@ mod tests {
     }
 
     #[test]
-    fn 任务答复_剥除思考链标签() {
+    fn 任务答复_思考转入推理通道正文只留可见部分() {
         let mut 适配器 = 协议适配器::新();
         let 输入 = "<think>The user wants me to act as 圣人。\n内部推理草稿</think>\n{\"结论\":\"完成\"}";
         let 结果 = 适配器.过程事件(&过程事件(7, "任务答复", 输入, ""), 42);
-        assert_eq!(结果.len(), 4);
-        断言事件!(&结果[2], json!({"type": "TEXT_MESSAGE_CONTENT", "messageId": "msg-42-7", "delta": "{\"结论\":\"完成\"}"}));
+        assert_eq!(结果.len(), 7, "思考与正文各成一条消息：推理三段 + 文本三段 + 开棒");
+        断言事件!(&结果[0], json!({"type": "RUN_STARTED", "threadId": "thread-42", "runId": "run-42-1"}));
+        断言事件!(&结果[1], json!({"type": "REASONING_MESSAGE_START", "messageId": "推理-42-7"}));
+        断言事件!(&结果[2], json!({"type": "REASONING_MESSAGE_CONTENT", "messageId": "推理-42-7", "delta": "The user wants me to act as 圣人。\n内部推理草稿"}));
+        断言事件!(&结果[3], json!({"type": "REASONING_MESSAGE_END", "messageId": "推理-42-7"}));
+        断言事件!(&结果[5], json!({"type": "TEXT_MESSAGE_CONTENT", "messageId": "msg-42-7", "delta": "{\"结论\":\"完成\"}"}));
     }
 
     #[test]
-    fn 任务答复_全是思考链则不下发空答复() {
+    fn 任务答复_全是思考链则只发推理段不发空答复() {
         let mut 适配器 = 协议适配器::新();
         let 结果 = 适配器.过程事件(&过程事件(8, "任务答复", "<think>只有草稿，没有正文</think>", ""), 42);
-        assert_eq!(结果.len(), 1, "洗空后只剩开棒，不得下发一个空答复");
+        assert_eq!(结果.len(), 4, "正文为空则不发文本消息；思考仍进推理通道，不丢弃");
         断言事件!(&结果[0], json!({"type": "RUN_STARTED", "threadId": "thread-42", "runId": "run-42-1"}));
+        断言事件!(&结果[1], json!({"type": "REASONING_MESSAGE_START", "messageId": "推理-42-8"}));
+        断言事件!(&结果[2], json!({"type": "REASONING_MESSAGE_CONTENT", "messageId": "推理-42-8", "delta": "只有草稿，没有正文"}));
     }
 
     #[test]
-    fn 任务答复_未闭合思考链整段丢弃() {
+    fn 任务答复_未闭合思考链其后内容归入推理段不作正文() {
         let mut 适配器 = 协议适配器::新();
         let 结果 = 适配器.过程事件(&过程事件(10, "任务答复", "<think>草稿被截断，闭合标签也一起没了", ""), 42);
-        assert_eq!(结果.len(), 1, "未闭合的思考链此后全是草稿，不得当正文下发");
+        assert_eq!(结果.len(), 4, "未闭合即视其后为思考：不得当正文下发，但也须留证");
         断言事件!(&结果[0], json!({"type": "RUN_STARTED", "threadId": "thread-42", "runId": "run-42-1"}));
+        断言事件!(&结果[2], json!({"type": "REASONING_MESSAGE_CONTENT", "messageId": "推理-42-10", "delta": "草稿被截断，闭合标签也一起没了"}));
     }
 
     #[test]
@@ -157,6 +164,70 @@ mod tests {
         let 结果 = 适配器.过程事件(&过程事件(9, "思考", "<THINK>大写标签也要剥</THINK>真正要说的", ""), 42);
         assert_eq!(结果.len(), 4);
         断言事件!(&结果[2], json!({"type": "REASONING_MESSAGE_CONTENT", "messageId": "msg-42-9", "delta": "真正要说的"}));
+    }
+
+    /// 逐块喂入流式过滤器，拼出（思考、正文）两侧的完整分流结果（含收尾）
+    fn 流式分流(块s: &[&str]) -> (String, String) {
+        let mut 滤器 = 思考链过滤器::新();
+        let mut 思 = String::new();
+        let mut 正 = String::new();
+        for 块 in 块s {
+            let 出 = 滤器.喂(块);
+            思.push_str(&出.思考);
+            正.push_str(&出.正文);
+        }
+        let 尾 = 滤器.收尾();
+        思.push_str(&尾.思考);
+        正.push_str(&尾.正文);
+        (思, 正)
+    }
+
+    #[test]
+    fn 流式分流_标签跨块时思考与正文各归其位() {
+        // 上游按块切：`<think>` 成了 `<thi`+`nk>`，`</think>` 成了 `</thi`+`nk>`
+        assert_eq!(
+            流式分流(&["<thi", "nk>内部草稿", "</thi", "nk>正文在此"]),
+            ("内部草稿".into(), "正文在此".into())
+        );
+    }
+
+    #[test]
+    fn 流式分流_未闭合思考链其后内容归入思考不作正文() {
+        assert_eq!(
+            流式分流(&["正文", "<think>草稿被截断", "仍属草稿"]),
+            ("草稿被截断仍属草稿".into(), "正文".into())
+        );
+    }
+
+    #[test]
+    fn 流式分流_多段思考链与大小写标签() {
+        assert_eq!(
+            流式分流(&["<THINK>甲</THINK>正文一", "<think>乙</think>正文二"]),
+            ("甲乙".into(), "正文一正文二".into())
+        );
+    }
+
+    #[test]
+    fn 流式分流_块内思考与正文并存时互不混入() {
+        assert_eq!(
+            流式分流(&["<think>甲</think>正文"]),
+            ("甲".into(), "正文".into())
+        );
+    }
+
+    #[test]
+    fn 流式分流_疑似标签前缀并非标签时按正文吐出() {
+        // `<t` 是 `<think>` 的前缀，须暂存待定；下一块证明它其实是 `<tag>`
+        assert_eq!(
+            流式分流(&["看这个 <t", "ag> 是标签"]),
+            (String::new(), "看这个 <tag> 是标签".into())
+        );
+    }
+
+    #[test]
+    fn 流式分流_流结束时残留的前缀照常吐出() {
+        // 流停在 `<th` 就结束了：它已确定不是标签，收尾须把它还给用户，不能吞掉
+        assert_eq!(流式分流(&["正文<th"]), (String::new(), "正文<th".into()));
     }
 
     #[test]
@@ -168,11 +239,35 @@ mod tests {
     }
 
     #[test]
-    fn 阶段完成_映射为步骤结束() {
+    fn 阶段完成_映射为状态流转与步骤结束() {
         let 适配器 = 协议适配器::新();
-        let 结果 = 适配器.阶段事件(&阶段事件("阶段完成", Some("待圣人设计"), None), 42);
+        let 结果 = 适配器.阶段事件(&阶段事件("阶段完成", Some("待大罗金仙实现"), None), 42);
+        assert_eq!(结果.len(), 2);
+        // 新状态是状态机的确定性产物，归 STATE_DELTA：补丁指向该任务的 status
+        断言事件!(&结果[0], json!({
+            "type": "STATE_DELTA",
+            "delta": [{"op": "replace", "path": "/任务/5/status", "value": "待大罗金仙实现"}],
+        }));
+        // 步骤名归「角色 · 职责」（不再是冒充步骤名的状态名）
+        断言事件!(&结果[1], json!({"type": "STEP_FINISHED", "stepName": "圣人 · 边界契约设计"}));
+    }
+
+    #[test]
+    fn 阶段完成_缺新状态时只发步骤结束() {
+        // 补丁指向不了任务的状态就是编的：宁可只报步骤结束，也不发一条无目标的 STATE_DELTA
+        let 适配器 = 协议适配器::新();
+        let 结果 = 适配器.阶段事件(&阶段事件("阶段完成", None, None), 42);
         assert_eq!(结果.len(), 1);
-        断言事件!(&结果[0], json!({"type": "STEP_FINISHED", "stepName": "待圣人设计"}));
+        断言事件!(&结果[0], json!({"type": "STEP_FINISHED", "stepName": "圣人 · 边界契约设计"}));
+    }
+
+    #[test]
+    fn 阶段完成_角色不在五层之列时步骤名兜底为非空() {
+        let 适配器 = 协议适配器::新();
+        let mut 事件 = 阶段事件("阶段完成", None, None);
+        事件.角色 = Some("无此角色".into());
+        let 结果 = 适配器.阶段事件(&事件, 42);
+        断言事件!(&结果[0], json!({"type": "STEP_FINISHED", "stepName": "阶段"}));
     }
 
     #[test]

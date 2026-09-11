@@ -34,11 +34,17 @@ export const 演示任务集 = [
 ];
 
 /** 五层接力完整事件序列（帧：data: {json}）。
-    每帧的「角色」字段由后端注入（见 驱动处理.rs:284-291），客户端据此署名与分发。 */
+    每帧的「角色」字段由后端注入（见 驱动处理.rs:284-291），客户端据此署名与分发。
+
+    形状对齐实时契约（这是「契约样例」，不是另一套发明）：
+    · stepName 是「角色 · 职责」（与实时适配器同源，取自 AgentRole::职责）；
+    · 每棒的收尾以 STATE_DELTA（状态机流转出的新状态）+ STEP_FINISHED 表达；
+    · RUN_FINISHED 只在整个会话落定时发一条（空闲），不逐棒发——逐棒发会让「一棒结束」
+      有两种载体（RUN_FINISHED 与 STEP_FINISHED），早晚对不上。 */
 export const 事件脚本 = [
   /* ---------- 第一棒 · 圣人（设计） ---------- */
   {type:"RUN_STARTED",runId:"run-31-1",threadId:"thread-31",角色:"圣人",input:{任务id:31,角色:"圣人"}},
-  {type:"STEP_STARTED",stepName:"圣人 · 设计",角色:"圣人"},
+  {type:"STEP_STARTED",stepName:"圣人 · 边界契约设计",角色:"圣人"},
   {type:"STATE_DELTA",角色:"圣人",delta:[{op:"replace",path:"/任务/31/status",value:"圣人设计中"}]},
   {type:"REASONING_MESSAGE_START",messageId:"m-31-1",角色:"圣人"},
   {type:"REASONING_MESSAGE_CONTENT",messageId:"m-31-1",角色:"圣人",delta:"任务 #31 要求为 TaskStatus 增加「挂起 / 恢复」。设计前先钉死三条边界：① 挂起是否计入「已取消」统计口径；② 挂起期间是否占用承接人；③ 恢复回到固定状态还是暂停前状态。三条不定死，实现必然返工。"},
@@ -57,13 +63,12 @@ export const 事件脚本 = [
   {type:"TEXT_MESSAGE_START",messageId:"m-31-5",角色:"圣人"},
   {type:"TEXT_MESSAGE_CONTENT",messageId:"m-31-5",角色:"圣人",delta:"设计完成。接口：POST /api/board/{id}/suspend、POST /api/board/{id}/resume。流转约束：仅「进行中」可挂起，仅「挂起中」可恢复，恢复回到「挂起来源」记录的状态。验收标准 6 条已落文档，转大罗金仙实现。"},
   {type:"TEXT_MESSAGE_END",messageId:"m-31-5",角色:"圣人"},
-  {type:"STEP_FINISHED",stepName:"圣人 · 设计",角色:"圣人"},
   {type:"STATE_DELTA",角色:"圣人",delta:[{op:"replace",path:"/任务/31/status",value:"待大罗金仙实现"},{op:"replace",path:"/任务/31/当前承接人",value:"大罗金仙"}]},
-  {type:"RUN_FINISHED",runId:"run-31-1",threadId:"thread-31",角色:"圣人",result:{新状态:"待大罗金仙实现",产出:"设计文档"}},
+  {type:"STEP_FINISHED",stepName:"圣人 · 边界契约设计",角色:"圣人"},
 
   /* ---------- 第二棒 · 大罗金仙（实现） ---------- */
   {type:"RUN_STARTED",runId:"run-31-2",threadId:"thread-31",角色:"大罗金仙",input:{任务id:31,角色:"大罗金仙"}},
-  {type:"STEP_STARTED",stepName:"大罗金仙 · 实现",角色:"大罗金仙"},
+  {type:"STEP_STARTED",stepName:"大罗金仙 · 代码实现与自检",角色:"大罗金仙"},
   {type:"STATE_DELTA",角色:"大罗金仙",delta:[{op:"replace",path:"/任务/31/status",value:"大罗金仙实现中"}]},
   {type:"REASONING_MESSAGE_START",messageId:"m-31-6",角色:"大罗金仙"},
   {type:"REASONING_MESSAGE_CONTENT",messageId:"m-31-6",角色:"大罗金仙",delta:"按设计文档落地。先确认 22 个变体的流转函数「可流转到」的 match 分支，新增变体后必须补全分支，否则穷尽性检查会编译失败。"},
@@ -83,13 +88,12 @@ export const 事件脚本 = [
   {type:"TEXT_MESSAGE_START",messageId:"m-31-10",角色:"大罗金仙"},
   {type:"TEXT_MESSAGE_CONTENT",messageId:"m-31-10",角色:"大罗金仙",delta:"实现完成。变更 3 个文件，新增测试 3 例，穷尽性检查通过。产出实现文档，转准圣验收。"},
   {type:"TEXT_MESSAGE_END",messageId:"m-31-10",角色:"大罗金仙"},
-  {type:"STEP_FINISHED",stepName:"大罗金仙 · 实现",角色:"大罗金仙"},
   {type:"STATE_DELTA",角色:"大罗金仙",delta:[{op:"replace",path:"/任务/31/status",value:"待准圣验收"},{op:"replace",path:"/任务/31/当前承接人",value:"准圣"}]},
-  {type:"RUN_FINISHED",runId:"run-31-2",threadId:"thread-31",角色:"大罗金仙",result:{新状态:"待准圣验收",产出:"实现文档"}},
+  {type:"STEP_FINISHED",stepName:"大罗金仙 · 代码实现与自检",角色:"大罗金仙"},
 
   /* ---------- 第三棒 · 准圣（验收） ---------- */
   {type:"RUN_STARTED",runId:"run-31-3",threadId:"thread-31",角色:"准圣",input:{任务id:31,角色:"准圣"}},
-  {type:"STEP_STARTED",stepName:"准圣 · 验收",角色:"准圣"},
+  {type:"STEP_STARTED",stepName:"准圣 · 逐项验收",角色:"准圣"},
   {type:"STATE_DELTA",角色:"准圣",delta:[{op:"replace",path:"/任务/31/status",value:"准圣验收中"}]},
   {type:"REASONING_MESSAGE_START",messageId:"m-31-11",角色:"准圣"},
   {type:"REASONING_MESSAGE_CONTENT",messageId:"m-31-11",角色:"准圣",delta:"对设计文档六条验收标准逐条核验，不采信实现方自述。重点核第 4 条「状态历史须完整记录来源」——挂起来源必须进历史，只存运行时字段则重启即丢，历史上最容易漏的就是这一条。"},
@@ -101,13 +105,12 @@ export const 事件脚本 = [
   {type:"TEXT_MESSAGE_START",messageId:"m-31-14",角色:"准圣"},
   {type:"TEXT_MESSAGE_CONTENT",messageId:"m-31-14",角色:"准圣",delta:"验收通过（6/6）。六条标准全部落在测试断言内，无缺陷，转道祖终审。"},
   {type:"TEXT_MESSAGE_END",messageId:"m-31-14",角色:"准圣"},
-  {type:"STEP_FINISHED",stepName:"准圣 · 验收",角色:"准圣"},
   {type:"STATE_DELTA",角色:"准圣",delta:[{op:"replace",path:"/任务/31/status",value:"待道祖终审"},{op:"replace",path:"/任务/31/当前承接人",value:"道祖"}]},
-  {type:"RUN_FINISHED",runId:"run-31-3",threadId:"thread-31",角色:"准圣",result:{新状态:"待道祖终审",产出:"验收报告 6/6"}},
+  {type:"STEP_FINISHED",stepName:"准圣 · 逐项验收",角色:"准圣"},
 
   /* ---------- 第四棒 · 道祖（终审） ---------- */
   {type:"RUN_STARTED",runId:"run-31-4",threadId:"thread-31",角色:"道祖",input:{任务id:31,角色:"道祖"}},
-  {type:"STEP_STARTED",stepName:"道祖 · 终审",角色:"道祖"},
+  {type:"STEP_STARTED",stepName:"道祖 · 决策与终审",角色:"道祖"},
   {type:"STATE_DELTA",角色:"道祖",delta:[{op:"replace",path:"/任务/31/status",value:"道祖终审中"}]},
   {type:"REASONING_MESSAGE_START",messageId:"m-31-15",角色:"道祖"},
   {type:"REASONING_MESSAGE_CONTENT",messageId:"m-31-15",角色:"道祖",delta:"准圣验收 6/6 通过。终审只做一件事：回到来客原始诉求逐条对照，不看实现方与验收方的自评话术。"},
@@ -119,13 +122,12 @@ export const 事件脚本 = [
   {type:"TEXT_MESSAGE_START",messageId:"m-31-17",角色:"道祖"},
   {type:"TEXT_MESSAGE_CONTENT",messageId:"m-31-17",角色:"道祖",delta:"终审通过。需求满足度 10 / 9 / 9（需求覆盖 / 实现质量 / 测试完备）。放行至太乙金仙清理。"},
   {type:"TEXT_MESSAGE_END",messageId:"m-31-17",角色:"道祖"},
-  {type:"STEP_FINISHED",stepName:"道祖 · 终审",角色:"道祖"},
   {type:"STATE_DELTA",角色:"道祖",delta:[{op:"replace",path:"/任务/31/status",value:"待清理"},{op:"replace",path:"/任务/31/当前承接人",value:"太乙金仙"}]},
-  {type:"RUN_FINISHED",runId:"run-31-4",threadId:"thread-31",角色:"道祖",result:{新状态:"待清理",产出:"终审结论"}},
+  {type:"STEP_FINISHED",stepName:"道祖 · 决策与终审",角色:"道祖"},
 
   /* ---------- 第五棒 · 太乙金仙（清理） ---------- */
   {type:"RUN_STARTED",runId:"run-31-5",threadId:"thread-31",角色:"太乙金仙",input:{任务id:31,角色:"太乙金仙"}},
-  {type:"STEP_STARTED",stepName:"太乙金仙 · 清理",角色:"太乙金仙"},
+  {type:"STEP_STARTED",stepName:"太乙金仙 · 清理与归档",角色:"太乙金仙"},
   {type:"STATE_DELTA",角色:"太乙金仙",delta:[{op:"replace",path:"/任务/31/status",value:"清理中"}]},
   {type:"REASONING_MESSAGE_START",messageId:"m-31-18",角色:"太乙金仙"},
   {type:"REASONING_MESSAGE_CONTENT",messageId:"m-31-18",角色:"太乙金仙",delta:"终态扫尾。本轮大罗金仙用过原子写，必然留下 .bak 与 .tmp；准圣跑过带 --nocapture 的测试，查是否有调试脚本未删。逐项核验白名单。"},
@@ -141,7 +143,7 @@ export const 事件脚本 = [
   {type:"TEXT_MESSAGE_START",messageId:"m-31-21",角色:"太乙金仙"},
   {type:"TEXT_MESSAGE_CONTENT",messageId:"m-31-21",角色:"太乙金仙",delta:"清理完成。残留核验门通过：0 个 *.bak、0 个 *.tmp、0 个孤儿脚本。任务 #31 终态归档。"},
   {type:"TEXT_MESSAGE_END",messageId:"m-31-21",角色:"太乙金仙"},
-  {type:"STEP_FINISHED",stepName:"太乙金仙 · 清理",角色:"太乙金仙"},
   {type:"STATE_DELTA",角色:"太乙金仙",delta:[{op:"replace",path:"/任务/31/status",value:"清理完成"},{op:"remove",path:"/任务/31/当前承接人"}]},
-  {type:"RUN_FINISHED",runId:"run-31-5",threadId:"thread-31",角色:"太乙金仙",result:{新状态:"清理完成",产出:"清理核验报告"}},
+  {type:"STEP_FINISHED",stepName:"太乙金仙 · 清理与归档",角色:"太乙金仙"},
+  {type:"RUN_FINISHED",runId:"run-31-5",threadId:"thread-31",角色:"太乙金仙"},
 ];

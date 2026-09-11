@@ -27,6 +27,16 @@
 .消息 .名 .时{margin-left:auto;opacity:.6}
 .气泡{display:block;padding:10px 13px;border-radius:3px;font-size:13px;line-height:1.75;white-space:pre-wrap;word-break:break-word;background:var(--底二);border-left:2px solid var(--线亮);color:var(--字)}
 
+/* 推理条：模型思考独立成条，挂在气泡之前、默认折叠——过程可查，但不占答复的版面。
+   色位与右栏「条.推理」同源（水色）：同类东西在界面各处长得一样，读的人才不用重新认。 */
+.推理条{margin-bottom:8px;padding:7px 11px;border-left:2px solid rgba(91,127,184,.5);background:rgba(91,127,184,.05);border-radius:0 3px 3px 0}
+.推理条>summary{font-size:10.5px;color:var(--字三);font-family:var(--等);letter-spacing:.06em;cursor:pointer;list-style:none}
+.推理条>summary::-webkit-details-marker{display:none}
+.推理条>summary::before{content:"▸ ";display:inline-block;transition:.16s}
+.推理条[open]>summary::before{content:"▾ "}
+.推理条>summary:hover{color:var(--水)}
+.推body{margin-top:7px;font-size:12px;line-height:1.75;color:#AEB9C9;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto}
+
 .摘要卡{display:block;border:1px solid rgba(200,155,74,.4);border-radius:3px;overflow:hidden;background:rgba(200,155,74,.04);animation:浮现 .4s ease}
 .摘要卡 .卡头{padding:8px 12px;background:rgba(200,155,74,.12);border-bottom:1px solid rgba(200,155,74,.28);font-family:var(--宋);font-size:12px;letter-spacing:.1em;color:var(--土);display:flex;align-items:center;gap:8px}
 .摘要卡 .卡头::before{content:"◈";font-size:11px}
