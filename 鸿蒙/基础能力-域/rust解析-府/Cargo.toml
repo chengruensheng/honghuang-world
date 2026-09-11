@@ -1,0 +1,29 @@
+[package]
+name = "hm-symext-rust"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[[bin]]
+name = "hm-symext-rust"
+path = "主程序.rs"
+
+[dependencies]
+# 契约层：引擎 crate 提供语言无关的数据类型（产出 / 符号 / 边 / 悬空 / 诊断…）。
+# 反向不成立——引擎不依赖本 crate，故无依赖环（插件对引擎是"消费契约"而非"被调用"）。
+hm-symext = { path = "../符号解析-府" }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tree-sitter = "0.27.0"
+tree-sitter-rust = "0.24.2"
+
+# 语义层：rust-analyzer 系列。版本号必须同批次一致，否则类型不互通（不同版本的
+# NodeId / salsa 数据库无法混用）。这些重依赖只挂在插件 crate 上，引擎不沾。
+ra_ap_hir = "0.0.351"
+ra_ap_ide_db = "0.0.351"
+ra_ap_load-cargo = "0.0.351"
+ra_ap_project_model = "0.0.351"
+ra_ap_syntax = "0.0.351"
+ra_ap_vfs = "0.0.351"

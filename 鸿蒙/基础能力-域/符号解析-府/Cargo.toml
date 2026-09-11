@@ -1,0 +1,18 @@
+[package]
+name = "hm-symext"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[[bin]]
+name = "hm-symext"
+path = "主程序.rs"
+
+[dependencies]
+# 引擎语言无关（验收基线 1）：只留契约序列化所需的最小依赖。
+# 具体语言的解析重依赖一律归各语言插件府，引擎不背负——这同时让编辑器
+# 载入本 crate 时不再被那份庞大的依赖图拖慢。
+serde = { workspace = true }
+serde_json = { workspace = true }
