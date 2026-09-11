@@ -90,6 +90,7 @@ export function 追加结论(流, 角, 原文, runId, 摘要){
 
 export function 渲染对话(){
   const 流 = $("#对话流");
+  if(流.dataset.降级) return;   // 该栏已由顶层宣告故障：重绘不得把故障说明盖成一句空态
   流.innerHTML = "";
   // 一、接待阶段：演示模式铺契约样例语料；实时模式铺真实收到的接待往返。
   //    接待走 /api/dev/chat/stream，与天机流不同源，所以单独存一份 接待记录 供重绘。

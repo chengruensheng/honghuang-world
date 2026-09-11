@@ -21,10 +21,13 @@ async function 装载(清单){
   return {得, 失};
 }
 
-/** 府级降级：把失败写进该府负责的区域——界面对「哪一块坏了」要照实说 */
+/** 府级降级：把失败写进该府负责的区域——界面对「哪一块坏了」要照实说。
+    同时在该区留痕：故障说明是宣誓过的事实，别的府后续写空态时不得把它盖掉。 */
 function 降级(区选择器, 说明){
   const 区 = $(区选择器);
-  if(区) 区.innerHTML = `<div class="空" style="height:auto;padding:30px 10px"><div class="符">○</div><div class="语">${说明}</div></div>`;
+  if(!区) return;
+  区.dataset.降级 = "1";
+  区.innerHTML = `<div class="空" style="height:auto;padding:30px 10px"><div class="符">○</div><div class="语">${说明}</div></div>`;
 }
 
 /** 模块清单 —— 域 → 府 是唯一的装配依赖方向；府与府之间只经总线通信，互不 import。
