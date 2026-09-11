@@ -15,9 +15,6 @@ level = "info"
 [http]
 bind = "127.0.0.1"
 port = 8321
-static_dir = "artifacts/agent-workspace"
-# 前端热更新：开发期开启（前端文件变化自动刷新桌面窗口，改代码即时生效）；生产请置 false
-hot_reload = true
 auth_token = ""
 
 [persistence]
@@ -32,7 +29,7 @@ dir = "道果/持久化"
 # selected_provider / selected_model 留空 = 自动选择第一个启用供应商。
 # api_key 推荐写 env:环境变量名（密钥不入库，项目根 .env 由后端 dotenvy 自动加载）；开发期可写明文。
 # models_url 留空时推导为 {base_url}/models（供应商 list 端点不同时请显式配置）。
-# 快捷接入：前端对话页「＋ 接入供应商」可选内置模板（DeepSeek/智谱GLM/通义Qwen/Kimi/
+# 快捷接入：客户端对话页「＋ 接入供应商」可选内置模板（DeepSeek/智谱GLM/通义Qwen/Kimi/
 # MiniMax/火山方舟/OpenAI/OpenRouter/Ollama）或自定义供应商——填官网+密钥 → 获取可用模型
 # → 接入并选择；api_key 写 env:变量名 会记入 llm-接入.json，重启自动恢复；明文仅会话内有效。
 selected_provider = "minimax"
@@ -49,7 +46,10 @@ base_url = "https://api.minimaxi.com/v1/chat/completions"
 models_url = "https://api.minimaxi.com/v1/models"
 api_key = "env:LLM_API_KEY"
 model = "MiniMax-M3"
-timeout_secs = 60
+# 超时 300 秒：MiniMax-M3 为推理模型（思考链占输出大头，实测 4000 输出 token 中 3176 为 reasoning），
+# 大上下文下单次生成可远超 60 秒——复跑实测单轮最长 163 秒（180 秒仅余 17 秒余量，风险高），故取 300 秒。
+# 原 60 秒会「重试 2 次全部超时」（实测失败耗时 182s≈3×60）致整轮驱动失败。
+timeout_secs = 300
 retry = 2
 enabled = true
 json_mode = false
@@ -62,7 +62,7 @@ base_url = "https://api.a6api.com/v1/chat/completions"
 models_url = "https://api.a6api.com/v1/models"
 api_key = "env:LLM_FALLBACK_API_KEY"
 model = "deepseek-v4-pro-0813"
-timeout_secs = 60
+timeout_secs = 180
 retry = 2
 enabled = true
 json_mode = false

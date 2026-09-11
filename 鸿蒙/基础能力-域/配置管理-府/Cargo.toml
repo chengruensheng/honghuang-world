@@ -11,3 +11,4 @@ hm-error = { path = "../../基础契约-域/错误定义-府" }
 serde = { workspace = true }
 toml = { workspace = true }
 dotenvy = { workspace = true }
+tracing = { workspace = true }

@@ -50,7 +50,7 @@ const 文档清单扩展名: &[&str] = &["md", "html", "txt"];
 const 可读扩展名: &[&str] = &["md", "html", "txt", "toml", "json", "rs", "py", "js", "css"];
 
 /// 跳过目录（编译产物 / 版本控制 / 依赖）
-const 跳过目录: &[&str] = &["target", ".git", "node_modules", "artifacts"];
+const 跳过目录: &[&str] = &["target", ".git", "node_modules"];
 
 /// 内容读取大小上限（字节）
 const 内容上限: usize = 128 * 1024;
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn 传承殿仅收文档() {
-        assert_eq!(归类("界面呈现域-接入指南.md", ""), Some(类传承殿));
+        assert_eq!(归类("维护文档.md", ""), Some(类传承殿));
         assert_eq!(归类("架构图.html", ""), Some(类架构), "含架构应优先归架构");
         // 代码文件不归传承殿
         assert_eq!(归类("启动模块.rs", ""), None);

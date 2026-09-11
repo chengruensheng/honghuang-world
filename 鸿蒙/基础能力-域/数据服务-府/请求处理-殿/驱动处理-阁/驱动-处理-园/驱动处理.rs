@@ -282,7 +282,7 @@ pub async fn 看板驱动过程流_agui接口(
                 游标 = 事件.序号;
                 for 协议事件 in 适配器.过程事件(&事件, 会话id) {
                     let mut 载荷json: serde_json::Value = serde_json::to_value(&协议事件).unwrap_or_else(|_| serde_json::json!({}));
-                    // 往JSON里加角色字段，前端按角色分发到对应组件
+                    // 往JSON里加角色字段，客户端按角色分发到对应组件
                     if let Some(角色) = &事件.角色 {
                         载荷json["角色"] = serde_json::Value::String(角色.clone());
                     }
@@ -314,7 +314,15 @@ pub async fn 看板驱动阶段流_agui接口(
             for 事件 in 台.驱动事件增量(游标) {
                 游标 = 事件.序号;
                 for 协议事件 in 适配器.阶段事件(&事件, 会话id) {
-                    let 载荷 = serde_json::to_string(&协议事件).unwrap_or_else(|_| "{}".into());
+                    let mut 载荷json: serde_json::Value = serde_json::to_value(&协议事件).unwrap_or_else(|_| serde_json::json!({}));
+                    // 与过程流同理：阶段帧也须署名。
+                    // 前端按「角色」把收尾帧归位到对应那根棒；不署名时它只能挂到「当前最后一根棒」，
+                    // 而两条流各自独立回放、到达顺序不保证——末棒于是配上别人的终态
+                    // （实测：太乙金仙「清理完成」被配成大罗金仙的「待准圣验收」）。
+                    if let Some(角色) = &事件.角色 {
+                        载荷json["角色"] = serde_json::Value::String(角色.clone());
+                    }
+                    let 载荷 = serde_json::to_string(&载荷json).unwrap_or_else(|_| "{}".into());
                     yield Ok(Event::default().data(载荷));
                 }
             }

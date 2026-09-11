@@ -4,7 +4,7 @@ use hm_cognition::{图谱, 心智地图, 过程上下文};
 use hm_content::LLM池;
 use hm_agent::{道祖接待, 认知注入};
 use hm_log::运行日志记录器;
-use crate::{开发执行台, 看板驱动台, 扫尾执行者, 长河总线};
+use crate::{开发执行台, 看板驱动台, 扫尾执行者};
 use tc_task::{Task, TaskStatus, TaskBoard};
 use lj_iteration::{Iteration, Version};
 use qk_memory::Memory;
@@ -46,8 +46,6 @@ pub struct 数据服务状态 {
     pub 扫描根: Arc<Mutex<String>>,
     /// SSE 并发连接许可（所有 SSE 流共享，防止无限连接耗尽资源）
     pub sse信号量: Arc<tokio::sync::Semaphore>,
-    /// 长河总线（水镜统一通道单一真相源：环形河 + 全局游标）
-    pub 长河总线: Arc<长河总线>,
 }
 
 /// SSE 最大并发连接数（超出时新连接立即返回 429）
@@ -92,7 +90,6 @@ impl 数据服务状态 {
             扫尾执行者: None,
             扫描根: Arc::new(Mutex::new(String::from("./"))),
             sse信号量: Arc::new(tokio::sync::Semaphore::new(SSE最大连接数)),
-            长河总线: Arc::new(长河总线::新(2000)),
         }
     }
 
@@ -105,6 +102,16 @@ impl 数据服务状态 {
     /// 链式注入项目工作区根（启动装配调用；默认 ./）
     pub fn 设置扫描根(self, 根: String) -> Self {
         *self.扫描根.lock().expect("扫描根锁中毒") = 根;
+        self
+    }
+
+    /// 链式覆盖 SSE 并发上限（启动装配按对外契约注入；0 = 不限制）
+    ///
+    /// 0 取值取 tokio 信号量允许的最大许可数：`Semaphore::new(usize::MAX)` 会 panic
+    /// （tokio 上限为 `usize::MAX >> 3`），故以 `Semaphore::MAX_PERMITS` 表达「不限制」。
+    pub fn 设置并发上限(mut self, 上限: usize) -> Self {
+        let 数 = if 上限 == 0 { tokio::sync::Semaphore::MAX_PERMITS } else { 上限 };
+        self.sse信号量 = Arc::new(tokio::sync::Semaphore::new(数));
         self
     }
 }

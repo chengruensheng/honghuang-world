@@ -81,9 +81,11 @@ impl 看板驱动台 {
         *self.最近阶段.lock().expect("最近阶段清空锁中毒") = None;
         *self.最近结果.lock().expect("最近结果清空锁中毒") = None;
         self.事件流.lock().expect("事件流清空锁中毒").clear();
-        self.事件序号.store(0, Ordering::SeqCst);
         self.过程事件流.lock().expect("过程事件流清空锁中毒").clear();
-        self.过程事件序号.store(0, Ordering::SeqCst);
+        // 序号不归零：序号是客户端的增量游标（since），必须在本进程内全局单调。
+        // 清空缓冲只为「新连接只看当前轮」；若连序号一起归零，已经连着的老客户端
+        // （游标停在上轮末号）会把新轮的 1..N 全部判成「已读过」而永远收不到新事件——
+        // 表现为看板已推进、过程流却一片空白。缓冲可以丢，游标刻度不能倒拨。
         true
     }
 

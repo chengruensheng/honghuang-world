@@ -4,7 +4,7 @@
 //   目录/会话-{id}.json       —— 会话元数据（清单一项）
 //   目录/会话-{id}-事件.jsonl —— 过程事件追加写入（每行一个 JSON）
 // 目录为空时（persistence.dir 未配置）退化为纯内存暂存，重启丢失（与旧版一致）。
-// 回放接口对单会话事件做最新 5000 条截断，避免超大会话拖垮前端。
+// 回放接口对单会话事件做最新 5000 条截断，避免超大会话拖垮客户端。
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use hm_agent::任务项;

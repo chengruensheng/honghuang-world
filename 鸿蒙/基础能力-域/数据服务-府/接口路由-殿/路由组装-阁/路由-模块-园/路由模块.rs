@@ -1,7 +1,8 @@
-use axum::{Router, middleware::{self, Next}, extract::{Request, State}, response::{Redirect, Response}, routing::{get, post}};
+use axum::{Router, middleware::{self, Next}, extract::{Request, State}, response::Response, routing::{get, post}};
 use axum::http::StatusCode;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
+use hm_config::对外配置;
 use crate::{
     数据服务状态,
     任务列表, 查询任务, 创建任务, 迭代列表, 当前版本, 记忆列表, 规则列表, 事件列表,
@@ -11,7 +12,6 @@ use crate::{
     看板驱动接口, 看板驱动到空闲接口, 看板驱动状态接口, 看板驱动事件接口, 看板驱动过程接口,
     看板驱动过程流接口, 看板驱动阶段流接口,
     看板驱动过程流_agui接口, 看板驱动阶段流_agui接口,
-    长河接待流接口, 长河过程流接口, 长河事件查询接口,
     会话清单接口, 会话回放接口, 会话恢复接口, 会话分叉接口,
     模型状态接口, 模型列表接口, 模型选择接口,
     模型模板接口, 模型探测接口, 模型接入接口,
@@ -20,11 +20,11 @@ use crate::{
     工作区查询, 工作区设置,
 };
 
-/// 构建 axum 路由：只读 API + 同源托管前端静态文件 + 写接口鉴权中间件
-pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router {
+/// 构建 axum 路由：只读 API + 写接口鉴权中间件。
+/// 对外呈现面（CORS 来源 / 静态托管）由「对外契约」文件声明，前端来去不改后端代码。
+pub fn 构建路由(状态: 数据服务状态, 对外: 对外配置) -> Router {
     let 鉴权令牌 = 状态.鉴权令牌.clone();
-    Router::new()
-        .route("/", get(重定向入口))
+    let 应用 = Router::new()
         .route("/api/tasks", get(任务列表).post(创建任务))
         .route("/api/tasks/{id}", get(查询任务))
         .route("/api/iterations", get(迭代列表))
@@ -61,9 +61,6 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/dev/stream/state", get(看板驱动阶段流接口))
         .route("/api/dev/stream/agui", get(看板驱动过程流_agui接口))
         .route("/api/dev/stream/agui/state", get(看板驱动阶段流_agui接口))
-        .route("/api/river/chat", post(长河接待流接口))
-        .route("/api/river/stream", get(长河过程流接口))
-        .route("/api/river/events", get(长河事件查询接口))
         .route("/api/dev/sessions", get(会话清单接口))
         .route("/api/dev/sessions/{id}", get(会话回放接口))
         .route("/api/dev/sessions/{id}/resume", post(会话恢复接口))
@@ -79,33 +76,48 @@ pub fn 构建路由(状态: 数据服务状态, 静态目录: String) -> Router 
         .route("/api/llm/agent/unbind", post(智能体解绑接口))
         .route("/api/files", get(文件清单接口))
         .route("/api/files/content", get(文件内容接口))
-        .route("/api/workspace", get(工作区查询).post(工作区设置))
-        .fallback_service(ServeDir::new(静态目录))
-        .layer(axum::extract::DefaultBodyLimit::max(512 * 1024))
-        .layer(
-            CorsLayer::new()
-                .allow_origin([
-                    "http://127.0.0.1:8321".parse::<axum::http::HeaderValue>().unwrap(),
-                    "http://localhost:8321".parse::<axum::http::HeaderValue>().unwrap(),
-                    "tauri://localhost".parse::<axum::http::HeaderValue>().unwrap(),
-                ])
-                .allow_methods(tower_http::cors::Any)
-                .allow_headers(tower_http::cors::Any),
-        )
+        .route("/api/workspace", get(工作区查询).post(工作区设置));
+
+    // 静态托管：仅当对外契约声明目录时挂载（空 = 纯 API，零前端依赖）
+    let 应用 = if 对外.static_dir.trim().is_empty() {
+        应用
+    } else {
+        应用.fallback_service(ServeDir::new(对外.static_dir.clone()))
+    };
+
+    let 应用 = 应用.layer(axum::extract::DefaultBodyLimit::max(512 * 1024));
+
+    // 跨源：仅当对外契约声明来源白名单时启用（空 = 不启用 CORS 中间件）
+    let 应用 = if 对外.cors_origins.is_empty() {
+        应用
+    } else {
+        let 来源: Vec<axum::http::HeaderValue> = 对外
+            .cors_origins
+            .iter()
+            .filter_map(|来源| 来源.parse().ok())
+            .collect();
+        if 来源.is_empty() {
+            应用
+        } else {
+            应用.layer(
+                CorsLayer::new()
+                    .allow_origin(来源)
+                    .allow_methods(tower_http::cors::Any)
+                    .allow_headers(tower_http::cors::Any),
+            )
+        }
+    };
+
+    应用
         .layer(middleware::from_fn_with_state(鉴权令牌, 鉴权层))
         .with_state(状态)
-}
-
-/// 根路径重定向到前端入口页
-async fn 重定向入口() -> Redirect {
-    Redirect::permanent("/门面.html")
 }
 
 /// 写接口鉴权中间件：GET 请求放行（SSE 流端点除外）；非 GET 与 SSE 需携带 Authorization: Bearer <令牌>。
 /// SSE 端点额外接受 ?token=<令牌> 查询参数（EventSource 无法携带请求头）。
 async fn 鉴权层(State(令牌): State<Option<String>>, req: Request, next: Next) -> Result<Response, StatusCode> {
     let 路径 = req.uri().path();
-    let 是流端点 = 路径.starts_with("/api/dev/stream") || 路径 == "/api/dev/chat/stream" || 路径 == "/api/river/stream";
+    let 是流端点 = 路径.starts_with("/api/dev/stream") || 路径 == "/api/dev/chat/stream";
     if req.method() == axum::http::Method::GET && !是流端点 {
         return Ok(next.run(req).await);
     }
@@ -130,13 +142,13 @@ async fn 鉴权层(State(令牌): State<Option<String>>, req: Request, next: Nex
 /// 启动数据服务：独立线程运行 HTTP 服务，失败仅告警不影响主程序。
 ///
 /// 安全约束：bind 非 127.0.0.1 时必须设置 auth_token，否则启动失败（fail-loud）。
-pub fn 启动数据服务(状态: 数据服务状态, bind: String, 端口: u16, 静态目录: String) {
+pub fn 启动数据服务(状态: 数据服务状态, bind: String, 端口: u16, 对外: 对外配置) {
     if bind != "127.0.0.1" && 状态.鉴权令牌.is_none() {
         tracing::error!("安全约束：bind={bind} 非 127.0.0.1 但未设置 auth_token，拒绝启动数据服务");
         return;
     }
     std::thread::spawn(move || {
-        let 路由 = 构建路由(状态, 静态目录);
+        let 路由 = 构建路由(状态, 对外);
         let runtime = match tokio::runtime::Runtime::new() {
             Ok(rt) => rt,
             Err(e) => {

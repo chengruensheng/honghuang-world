@@ -88,7 +88,7 @@ pub struct LLM探测请求 {
     pub 密钥: Option<String>,
 }
 
-/// 模型探测响应：来源（目录/网络）+ 模型 + 错误（前端展示，不 panic）
+/// 模型探测响应：来源（目录/网络）+ 模型 + 错误（客户端展示，不 panic）
 #[derive(Debug, Serialize)]
 pub struct LLM探测响应 {
     pub 来源: String,
@@ -118,7 +118,7 @@ pub async fn 模型模板接口() -> Json<LLM模板响应> {
 }
 
 /// POST /api/llm/discover：目录命中 → 模板默认模型（零网络）；
-/// 否则网络探测（密钥三级：请求内 > 池内已存 > 无鉴权），失败返回错误字段供前端展示。
+/// 否则网络探测（密钥三级：请求内 > 池内已存 > 无鉴权），失败返回错误字段供客户端展示。
 pub async fn 模型探测接口(
     State(状态): State<数据服务状态>,
     Json(请求): Json<LLM探测请求>,

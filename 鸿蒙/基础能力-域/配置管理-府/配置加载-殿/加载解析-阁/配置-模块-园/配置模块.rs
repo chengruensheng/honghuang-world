@@ -62,12 +62,6 @@ pub struct HttpConfig {
     /// HTTP 服务监听端口
     #[serde(default = "default_http_port")]
     pub port: u16,
-    /// 前端静态文件目录（相对项目根，同源托管前端页面）
-    #[serde(default = "default_static_dir")]
-    pub static_dir: String,
-    /// 前端热更新开关（默认关闭，仅开发期开启：监视前端目录，文件变化自动刷新窗口）
-    #[serde(default)]
-    pub hot_reload: bool,
     /// 写接口鉴权令牌（非空时 POST/PUT/DELETE 需携带 Authorization: Bearer <令牌>；
     /// bind 非 127.0.0.1 时必须设置，否则启动失败）
     #[serde(default)]
@@ -152,7 +146,6 @@ fn default_executor_max_output_bytes() -> u64 { 64 * 1024 }
 
 fn default_bind() -> String { "127.0.0.1".into() }
 fn default_http_port() -> u16 { 8321 }
-fn default_static_dir() -> String { "artifacts/agent-workspace".into() }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -183,8 +176,6 @@ impl Default for HttpConfig {
         HttpConfig {
             bind: default_bind(),
             port: default_http_port(),
-            static_dir: default_static_dir(),
-            hot_reload: false,
             auth_token: String::new(),
         }
     }
@@ -244,7 +235,7 @@ pub fn 运行配置() -> Config {
     配置
 }
 
-/// 加载环境密钥文件：先查当前目录，未找到则逐级向上查父目录（覆盖桌面壳等子目录启动场景）。
+/// 加载环境密钥文件：先查当前目录，未找到则逐级向上查父目录（覆盖从子目录启动的场景）。
 fn 加载环境密钥文件() {
     if dotenvy::dotenv().is_ok() {
         return;
