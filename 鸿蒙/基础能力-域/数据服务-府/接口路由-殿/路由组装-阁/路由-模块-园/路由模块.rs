@@ -16,7 +16,7 @@ use crate::{
     模型状态接口, 模型列表接口, 模型选择接口,
     模型模板接口, 模型探测接口, 模型接入接口,
     智能体清单接口, 智能体绑定接口, 智能体解绑接口,
-    文件清单接口, 文件内容接口,
+    文件清单接口, 文件内容接口, 规则写入接口,
     工作区查询, 工作区设置,
 };
 
@@ -76,6 +76,7 @@ pub fn 构建路由(状态: 数据服务状态, 对外: 对外配置) -> Router 
         .route("/api/llm/agent/unbind", post(智能体解绑接口))
         .route("/api/files", get(文件清单接口))
         .route("/api/files/content", get(文件内容接口))
+        .route("/api/rules/write", post(规则写入接口))
         .route("/api/workspace", get(工作区查询).post(工作区设置));
 
     // 静态托管：仅当对外契约声明目录时挂载（空 = 纯 API，零前端依赖）

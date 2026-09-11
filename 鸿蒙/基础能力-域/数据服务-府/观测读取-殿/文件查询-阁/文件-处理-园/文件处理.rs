@@ -43,6 +43,20 @@ pub struct 内容响应 {
     pub 内容: String,
 }
 
+/// 规则写入请求（道规更改：写 rules/*.md 条文）
+#[derive(Debug, Deserialize)]
+pub struct 规则写入请求 {
+    pub 路径: String,
+    pub 内容: String,
+}
+
+/// 规则写入响应
+#[derive(Debug, Serialize)]
+pub struct 规则写入响应 {
+    pub 路径: String,
+    pub 字节数: usize,
+}
+
 /// 传承殿文档扩展名（仅纯文档，代码文件不归传承殿）
 const 文档清单扩展名: &[&str] = &["md", "html", "txt"];
 
@@ -151,6 +165,44 @@ pub async fn 文件内容接口(
     Ok(Json(内容响应 { 路径: 相对.to_string(), 内容 }))
 }
 
+/// 校验规则写入路径：仅 rules/ 目录下 .md 且无目录穿越（纯函数，便于单测）
+fn 校验规则路径(相对: &str) -> bool {
+    let 相对 = 相对.trim().trim_start_matches(['/', '\\']);
+    if 相对.is_empty() || 相对.split(['/', '\\']).any(|段| 段 == "..") {
+        return false;
+    }
+    let 扩 = 相对.rsplit('.').next().map(|s| s.to_ascii_lowercase()).unwrap_or_default();
+    扩 == "md" && 相对.starts_with("rules/")
+}
+
+/// POST /api/rules/write：写入 rules/*.md 规则条文（道规更改）。
+/// 安全约束：仅 rules/ 目录下 .md；防 .. 穿越；canonicalize 父目录防符号链接逃逸。
+pub async fn 规则写入接口(
+    状态: State<数据服务状态>,
+    Json(请求): Json<规则写入请求>,
+) -> Result<Json<规则写入响应>, StatusCode> {
+    let 相对 = 请求.路径.trim().trim_start_matches(['/', '\\']);
+    if !校验规则路径(&相对) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let 根 = 状态.扫描根.lock().expect("扫描根锁中毒");
+    let 全路径 = std::path::Path::new(根.as_str()).join(相对);
+    let 规范根 = std::path::Path::new(根.as_str()).canonicalize().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // 父目录必须已存在（rules/ 目录应已存在；不自动创建，避免任意目录创建）
+    let 父 = 全路径.parent().ok_or(StatusCode::BAD_REQUEST)?;
+    let 规范父 = 父.canonicalize().map_err(|_| StatusCode::NOT_FOUND)?;
+    if !规范父.starts_with(&规范根) {
+        tracing::warn!("规则写入路径逃逸拦截: {:?}", 规范父);
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if 请求.内容.len() > 内容上限 {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let 字节 = 请求.内容.as_bytes();
+    std::fs::write(&全路径, 字节).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(规则写入响应 { 路径: 相对.to_string(), 字节数: 字节.len() }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,5 +227,17 @@ mod tests {
         // 代码文件不归传承殿
         assert_eq!(归类("启动模块.rs", ""), None);
         assert_eq!(归类("Cargo.toml", ""), None);
+    }
+
+    #[test]
+    fn 规则路径校验() {
+        assert!(校验规则路径("rules/严禁出现.md"));
+        assert!(校验规则路径("/rules/构建验证规则.md"), "允许前导斜杠");
+        assert!(!校验规则路径("rules/../秘密.md"), "拒绝目录穿越");
+        assert!(!校验规则路径("../rules/秘密.md"), "拒绝逃出 rules 目录");
+        assert!(!校验规则路径("rules/非规则.txt"), "拒绝非 md 扩展名");
+        assert!(!校验规则路径("非rules/规则.md"), "拒绝非 rules 目录");
+        assert!(!校验规则路径(""), "拒绝空路径");
+        assert!(!校验规则路径("rules/秘密.md.exe"), "拒绝双扩展名伪装");
     }
 }
