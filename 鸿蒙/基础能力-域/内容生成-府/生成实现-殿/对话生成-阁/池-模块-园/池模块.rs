@@ -191,8 +191,8 @@ impl LLM池 {
             match self.请求解析(&请求供应商, &造体(&请求供应商), 解析) {
                 Ok(值) => return Ok(值),
                 Err(错误) => {
+                    tracing::warn!("LLM 供应商 {} 请求失败，尝试转移下一供应商：{错误}", 供应商.名);
                     最后错误 = Some(错误);
-                    tracing::warn!("LLM 供应商 {} 请求失败，尝试转移下一供应商", 供应商.名);
                 }
             }
         }
@@ -308,8 +308,8 @@ impl LLM池 {
             match 请求供应商.流式对话(&消息json, &工具, on_chunk) {
                 Ok(响应) => return Ok(响应),
                 Err(错误) => {
+                    tracing::warn!("LLM 供应商 {} 流式请求失败，尝试转移下一供应商：{错误}", 供应商.名);
                     最后错误 = Some(错误);
-                    tracing::warn!("LLM 供应商 {} 流式请求失败，尝试转移下一供应商", 供应商.名);
                 }
             }
         }

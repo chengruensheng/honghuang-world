@@ -134,7 +134,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         ) {
             Ok(()) => {
                 tracing::info!("自主开发智能体已上线（HTTP 受理模式，工作区 {}）", config.app.dev_workspace);
-                // 设置工作区重装配回调：前端可通过 POST /api/dev/workspace 切换工作区
+                // 设置工作区重装配回调：外部可通过 POST /api/dev/workspace 切换工作区
                 let 执行台 = 数据状态.开发执行台.clone();
                 let 最大轮数 = config.app.dev_max_rounds;
                 let 超时秒 = config.app.executor_timeout_secs;
@@ -301,8 +301,12 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         }
     }
 
-    // 启动数据服务：axum 同源托管前端静态文件 + API（独立线程，失败仅告警不影响主程序）
-    hm_http::启动数据服务(数据状态, config.http.bind.clone(), config.http.port, config.http.static_dir.clone());
+    // 对外契约（独立文件配置化）：前端/客户端消费面参数；增删前端只改 对外契约.toml，不改后端代码
+    let 契约 = hm_config::对外契约配置();
+    数据状态 = 数据状态.设置并发上限(契约.对外.sse_max);
+
+    // 启动数据服务：纯 API（独立线程，失败仅告警不影响主程序）
+    hm_http::启动数据服务(数据状态, config.http.bind.clone(), config.http.port, 契约.对外);
 
     // 启动自检仅在显式开启时运行（默认关闭，避免污染真实业务数据）；
     // 验证失败仅告警并继续启动，不得因失败导致程序退出

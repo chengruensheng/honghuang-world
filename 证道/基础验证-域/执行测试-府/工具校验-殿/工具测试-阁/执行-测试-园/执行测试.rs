@@ -6,7 +6,8 @@ mod tests {
     use std::path::PathBuf;
 
     fn 准备工作区(名: &str) -> String {
-        let 根 = std::env::temp_dir().join(format!("zd_execute_test_{名}"));
+        // 路径带进程号：避免并行/重入运行同一测试二进制时同名工作区互相踩踏（清目录/写文件竞态）
+        let 根 = std::env::temp_dir().join(format!("zd_execute_test_{}_{名}", std::process::id()));
         let 根字符串 = 根.to_string_lossy().into_owned();
         let _ = std::fs::remove_dir_all(&根);
         std::fs::create_dir_all(&根).expect("创建工作区目录");

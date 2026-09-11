@@ -36,6 +36,8 @@ pub enum Error {
     命令超时(String),
     #[error("超出轮数: {0}")]
     超出轮数(String),
+    #[error("退化循环熔断: {0}")]
+    退化循环熔断(String),
     #[error("已中断: {0}")]
     中断(String),
     #[error("未知工具: {0}")]

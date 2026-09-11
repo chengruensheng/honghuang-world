@@ -8,7 +8,7 @@ mod tests {
     use hm_error::{Error, Result};
     use hm_execute_contract::执行器;
     use hm_cognition::ContextManager;
-    use tc_task::{Task, TaskBoard, TaskStatus, AgentRole};
+    use tc_task::{Task, TaskBoard, TaskStatus, AgentRole, 回退记录, 五行层级};
 
     /// 模拟对话器：按预设序列依次返回模型响应，验证契约可插拔
     struct 模拟对话器 {
@@ -203,6 +203,43 @@ mod tests {
         assert_eq!(任务.status, TaskStatus::待修复);
         let 验收 = 任务.验收文档.as_ref().expect("验收文档应写入");
         assert!(!验收.最终结果);
+    }
+
+    #[test]
+    fn 驱动器_跨层回退超限_熔断终止() {
+        // 回归（2026-09-11 真机暴露）：驱动器每轮新建智能体，熔断计数随实例重置；
+        // 本用例另覆盖「跨层回退」形态——同一任务反复「验收不通过→跨层回退」达阈值应熔断终止本轮驱动，
+        // 而非仅静默转「待道祖澄清」后空闲。构造已回退 3 次的任务，再触发一次验收不通过 → 累计 4 → 熔断。
+        let mut 看板 = TaskBoard::新建(临时路径("回退熔断"));
+        let mut task = 造任务("回退熔断任务");
+        task.status = TaskStatus::待准圣验收;
+        看板.发布任务(task).expect("发布应成功");
+        let uuid = 看板.查询(1).expect("任务应存在").任务标识.任务id;
+        看板.按标识改写(&uuid, |t| {
+            t.status = TaskStatus::待准圣验收;
+            t.回退来源 = Some(回退记录::新(
+                hm_contract::当前时间戳(),
+                五行层级::金,
+                五行层级::土,
+                "实现Bug",
+                "历史回退",
+                3,
+            ));
+        })
+        .expect("预置回退次数应成功");
+
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 思考: None, 内容: Some(验收样例(false).into()), 工具调用: vec![] }],
+            &临时路径("ctx-回退熔断"),
+        );
+
+        let 错误 = 驱动器.执行一轮().expect_err("回退超限应熔断返回错误").to_string();
+        assert!(错误.contains("退化循环熔断"), "错误应标识退化循环熔断，实际: {错误}");
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待道祖澄清, "超限回退后任务应转入待道祖澄清等人工介入");
     }
 
     #[test]
