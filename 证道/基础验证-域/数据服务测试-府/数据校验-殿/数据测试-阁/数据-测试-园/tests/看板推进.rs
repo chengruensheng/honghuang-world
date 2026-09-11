@@ -90,8 +90,17 @@ use super::*;
 
         看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
             role: "道祖".into(),
+            next_status: "待人工验收".into(),
+        })).await.expect("道祖终审提交应成功");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "道祖".into(),
+        })).await.expect("道祖审核承接应成功");
+
+        看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
+            role: "道祖".into(),
             next_status: "待清理".into(),
-        })).await.expect("道祖提交应成功");
+        })).await.expect("道祖审核提交应成功");
 
         // 六层流转：终审通过后由太乙金仙清理收尾，清理完成触发 木生火
         看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
@@ -148,8 +157,16 @@ use super::*;
         })).await.expect("道祖承接");
         看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
             role: "道祖".into(),
+            next_status: "待人工验收".into(),
+        })).await.expect("道祖终审提交");
+
+        看板承接(State(状态.clone()), Path(id), Json(承接任务请求 {
+            role: "道祖".into(),
+        })).await.expect("道祖审核承接");
+        看板提交(State(状态.clone()), Path(id), Json(提交任务请求 {
+            role: "道祖".into(),
             next_status: "待清理".into(),
-        })).await.expect("道祖提交到待清理");
+        })).await.expect("道祖审核提交到待清理");
 
         // 一键清理
         let _ = 看板清理(State(状态.clone()), Path(id)).await.expect("清理应成功");

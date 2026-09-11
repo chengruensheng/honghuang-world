@@ -36,3 +36,15 @@
 .卡 .回顾 .项{font-size:11.5px;color:var(--字二);display:flex;gap:9px;margin-bottom:6px;line-height:1.6}
 .卡 .回顾 .项 i{font-style:normal;color:var(--字三);flex:0 0 46px;font-family:var(--等);font-size:10px;padding-top:2px}
 .回退{color:var(--火);font-size:10.5px;font-family:var(--等);display:flex;align-items:center;gap:4px;margin-top:6px}
+
+/* ---------- 待人工验收 · 审核操作区 ---------- */
+.审{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px;padding-top:9px;border-top:1px dashed var(--线)}
+.审 button{font-family:var(--等);font-size:10.5px;padding:3px 10px;border-radius:2px;border:1px solid currentColor;background:none;cursor:pointer;transition:.15s;line-height:1.4}
+.审通过{color:var(--木)}
+.审通过:hover{background:var(--木);border-color:var(--木);color:#fff}
+.审驳回{color:var(--火)}
+.审驳回:hover{background:var(--火);border-color:var(--火);color:#fff}
+.审 button:disabled{opacity:.38;cursor:not-allowed}
+.审因{flex:1;min-width:110px;font-family:var(--等);font-size:10.5px;padding:3px 6px;border:1px solid var(--线);border-radius:2px;background:var(--底);color:var(--字二)}
+.审因:focus{outline:none;border-color:var(--水)}
+.审错{flex-basis:100%;font-size:10px;color:var(--火);font-family:var(--等);line-height:1.5;margin-top:2px}

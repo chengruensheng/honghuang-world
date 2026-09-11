@@ -2,7 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use tc_task::{AgentRole, Task, TaskPriority, TaskScene, TaskStatus};
+use tc_task::{AgentRole, Task, TaskPriority, TaskScene, TaskStatus, 审核来源, 驳回原因};
 use crate::数据服务状态;
 
 /// 看板任务列表查询参数（可选筛选）
@@ -79,6 +79,8 @@ fn 解析状态(s: &str) -> Option<TaskStatus> {
         "待修复" => Some(TaskStatus::待修复),
         "待道祖终审" => Some(TaskStatus::待道祖终审),
         "道祖终审中" => Some(TaskStatus::道祖终审中),
+        "待人工验收" => Some(TaskStatus::待人工验收),
+        "人工验收中" => Some(TaskStatus::人工验收中),
         "待清理" => Some(TaskStatus::待清理),
         "清理中" => Some(TaskStatus::清理中),
         "清理完成" => Some(TaskStatus::清理完成),
@@ -103,6 +105,20 @@ fn 解析层级(s: &str) -> Option<tc_task::五行层级> {
 
 fn 解析优先级(s: &str) -> Option<TaskPriority> {
     TaskPriority::解析(s)
+}
+
+/// 驳回原因字符串 → 枚举（与 tc-task 审核记录驳回原因枚举同源）
+fn 解析驳回原因(s: &str) -> Option<驳回原因> {
+    match s {
+        "需求不清" => Some(驳回原因::需求不清),
+        "设计不符" => Some(驳回原因::设计不符),
+        "实现错误" => Some(驳回原因::实现错误),
+        "测试不足" => Some(驳回原因::测试不足),
+        "产出不完整" => Some(驳回原因::产出不完整),
+        "扩大范围" => Some(驳回原因::扩大范围),
+        "缩小范围" => Some(驳回原因::缩小范围),
+        _ => None,
+    }
 }
 
 /// GET /api/board — 看板任务列表（可选筛选）
@@ -351,5 +367,88 @@ pub async fn 看板澄清(
         任务id: id,
         新状态: format!("{新状态:?}"),
         澄清记录,
+    }))
+}
+
+/// 审核请求体：人工覆盖最终审核结论（通过/驳回）
+#[derive(Deserialize)]
+pub struct 审核请求 {
+    /// 是否通过
+    pub 通过: bool,
+    /// 驳回原因（驳回时必填，通过时为 null/缺省）
+    #[serde(default)]
+    pub 驳回原因: Option<String>,
+    /// 审核评语
+    #[serde(default)]
+    pub 评语: String,
+}
+
+/// 审核响应：目标任务的最终审核结论与推进后状态
+#[derive(Serialize)]
+pub struct 审核响应 {
+    pub 任务id: u64,
+    pub 新状态: String,
+    pub 审核记录: tc_task::审核记录,
+}
+
+/// POST /api/board/{id}/review — 人工覆盖最终审核结论（人可看可不看）
+///
+/// 任务处于 `待人工验收` 时可经此接口人工覆盖 LLM 自动审核结论：
+/// `通过=true` → 人工验收中 → 待清理；`通过=false` → 人工验收中 → 待修复 → 按驳回原因定向回退。
+/// 非 `待人工验收` 状态返回 400，状态不变。
+pub async fn 看板审核(
+    State(状态): State<数据服务状态>,
+    Path(id): Path<u64>,
+    Json(请求): Json<审核请求>,
+) -> Result<Json<审核响应>, (StatusCode, String)> {
+    let 原因 = 请求.驳回原因.as_deref().and_then(解析驳回原因);
+    if 请求.通过 && 原因.is_some() {
+        return Err((StatusCode::BAD_REQUEST, "通过时驳回原因必须为空".to_string()));
+    }
+    if !请求.通过 && 原因.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "驳回时必须提供驳回原因（需求不清/设计不符/实现错误/测试不足/产出不完整/扩大范围/缩小范围）".to_string(),
+        ));
+    }
+    let 记录 = tc_task::审核记录::新(
+        hm_contract::当前时间戳(),
+        请求.通过,
+        原因,
+        请求.评语,
+        审核来源::人工,
+    );
+    // 先取任务标识（用于驳回召回），再原子审核推进
+    let 任务uuid = {
+        let board = 状态.任务看板.lock().expect("看板锁中毒");
+        board
+            .查询(id)
+            .map(|t| t.任务标识.任务id)
+            .ok_or((StatusCode::NOT_FOUND, format!("任务 {id} 不存在")))?
+    };
+    let mut board = 状态.任务看板.lock().expect("看板锁中毒");
+    let (新状态, 回退次数) = board
+        .审核并推进(id, 记录)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    // 驳回回退：沿依赖图召回受影响任务（与看板定向回退 handler 一致）
+    if 回退次数.is_some() {
+        let 评语 = board
+            .查询(id)
+            .and_then(|t| t.审核记录.as_ref())
+            .map(|r| r.评语.clone())
+            .unwrap_or_default();
+        let 召回器 = hm_agent::召回器::新();
+        let 图 = board.构建依赖图();
+        let 影响 = 召回器.影响分析(任务uuid, &图);
+        let _事件们 = 召回器.执行召回(任务uuid, 影响, &评语, &mut board);
+    }
+    let 审核记录 = board
+        .查询(id)
+        .and_then(|t| t.审核记录.clone())
+        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "审核推进成功但记录缺失".to_string()))?;
+    Ok(Json(审核响应 {
+        任务id: id,
+        新状态: format!("{新状态:?}"),
+        审核记录,
     }))
 }

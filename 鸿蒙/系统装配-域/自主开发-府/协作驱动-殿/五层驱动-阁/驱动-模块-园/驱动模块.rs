@@ -7,7 +7,7 @@ use hm_error::{Error, Result};
 use hm_execute_contract::{执行器, 开发事件};
 use tc_task::{
     Task, TaskBoard, TaskStatus, DesignDoc, ImplementationDoc, VerificationDoc,
-    FinalAcceptanceDoc, 五行层级, 状态归属角色,
+    FinalAcceptanceDoc, 五行层级, 状态归属角色, 审核记录, 审核来源, 驳回原因,
 };
 use crate::循环驱动_殿::{智能体, 认知注入, 退化检测器};
 use crate::协作驱动_殿::五层驱动_阁::错误追溯_阁::追溯器;
@@ -189,7 +189,7 @@ impl 五层协作驱动器 {
         };
 
         // 5. 解析阶段产出为文档（失败 → 回喂 serde 错误原文重试，上限 2 次；仍失败任务保持待承接可重试）
-        let (写文档, 下一状态) = 解析并构造带重试(&角色, &答复, &提示, &智能体)?;
+        let (写文档, 下一状态) = 解析并构造带重试(&角色, 快照.状态, &答复, &提示, &智能体)?;
 
         // 5b. 清理残留核验门：太乙金仙产出解析通过且要推进「清理完成」时，先用执行器实扫工作区
         //     确认 .bak/.tmp 已清空；有残留则返回 Err，任务保持待清理可重试（防模型「自报完成但产物残留」）
@@ -209,6 +209,26 @@ impl 五层协作驱动器 {
                 let (回退状态, 次数) = 看板.定向回退(快照.id, 根源层级, &错误描述)?;
                 tracing::warn!(
                     "任务 #{} 验收不通过，定向回退到 {}（第 {次数} 次，{错误描述}）→ {:?}",
+                    快照.id,
+                    根源层级.名(),
+                    回退状态
+                );
+                (回退状态, Some((根源层级, 错误描述, 次数)))
+            } else if 下一状态 == TaskStatus::待修复 && 角色 == AgentRole::道祖 && 快照.状态 == TaskStatus::待人工验收 {
+                // 最终审核驳回：先提交到「待修复」（完成审核层级记录），再按驳回原因映射根源层级定向回退
+                看板.提交任务(快照.id, 角色, TaskStatus::待修复)?;
+                let (根源层级, 错误描述) = {
+                    let task = 看板.查询(快照.id).ok_or_else(|| Error::任务不存在(快照.id))?;
+                    let 记录 = task
+                        .审核记录
+                        .as_ref()
+                        .ok_or_else(|| Error::Other("最终审核驳回但缺少审核记录".to_string()))?;
+                    let 层级 = 记录.驳回原因.map(|r| r.回退层级()).unwrap_or(五行层级::土);
+                    (层级, 记录.评语.clone())
+                };
+                let (回退状态, 次数) = 看板.定向回退(快照.id, 根源层级, &错误描述)?;
+                tracing::warn!(
+                    "任务 #{} 最终审核驳回，定向回退到 {}（第 {次数} 次，{错误描述}）→ {:?}",
                     快照.id,
                     根源层级.名(),
                     回退状态
@@ -412,6 +432,7 @@ fn 可承接(状态: TaskStatus) -> bool {
             | TaskStatus::待大罗金仙实现
             | TaskStatus::待准圣验收
             | TaskStatus::待道祖终审
+            | TaskStatus::待人工验收
             | TaskStatus::待修复
             | TaskStatus::待清理
             | TaskStatus::清理中
@@ -441,9 +462,16 @@ fn 阶段提示(角色: &AgentRole, 快照: &任务快照) -> String {
              \"最终结果\":true}"
         }
         AgentRole::道祖 => {
-            "你的任务是【终审】。综合审查需求/设计/实现/验收全部文档，做最终决策。\
-             输出终审文档 JSON：\
-             {\"通过\":true,\"需求满足度\":10,\"可维护性\":9,\"代码质量\":9,\"风险评估\":\"\",\"评语\":\"\"}"
+            if matches!(快照.状态, TaskStatus::待人工验收 | TaskStatus::人工验收中) {
+                "你的任务是【最终审核】。基于终审结论与全部阶段文档，对任务做最终交付审核（默认自动，人工可覆盖）。\
+                 输出审核记录 JSON：\
+                 {\"通过\":true,\"驳回原因\":null,\"评语\":\"\"}。\
+                 通过时「驳回原因」为 null；驳回时「驳回原因」取 需求不清/设计不符/实现错误/测试不足/产出不完整/扩大范围/缩小范围 之一，「评语」写明驳回理由。"
+            } else {
+                "你的任务是【终审】。综合审查需求/设计/实现/验收全部文档，做最终决策。\
+                 输出终审文档 JSON：\
+                 {\"通过\":true,\"需求满足度\":10,\"可维护性\":9,\"代码质量\":9,\"风险评估\":\"\",\"评语\":\"\"}"
+            }
         }
         AgentRole::太乙金仙 => {
             "你的任务是【清理】。对已终审通过的任务做收尾清理：核对产物、归档、移除临时文件。\n\
@@ -494,6 +522,7 @@ fn 拼接已有文档(快照: &任务快照) -> String {
 /// 解析阶段产出：提取 JSON → 注入 created_at → 反序列化为目标文档 → 返回（写文档闭包, 下一状态）
 fn 解析并构造(
     角色: &AgentRole,
+    状态: TaskStatus,
     答复: &str,
 ) -> Result<(Box<dyn FnOnce(&mut TaskBoard, u64) -> Result<()>>, TaskStatus)> {
     // LLM 常在 JSON 前包裹 <think>...</think> 思考标签或 ```json 代码块，
@@ -528,10 +557,39 @@ fn 解析并构造(
             Ok((Box::new(move |看板, id| 看板.更新验收文档(id, doc)), 下一状态))
         }
         AgentRole::道祖 => {
-            let doc: FinalAcceptanceDoc = serde_json::from_value(值)
-                .map_err(|e| Error::反序列化(format!("终审文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
-            let 下一状态 = if doc.通过 { TaskStatus::待清理 } else { TaskStatus::待修复 };
-            Ok((Box::new(move |看板, id| 看板.更新终审文档(id, doc)), 下一状态))
+            // 道祖同角色承担「终审」与「最终审核」两阶段，靠当前状态区分
+            if matches!(状态, TaskStatus::待人工验收 | TaskStatus::人工验收中) {
+                // 最终审核：产出审核记录（审核时间/来源由驱动器注入，LLM 只给结论三要素）
+                let 通过 = 值
+                    .get("通过")
+                    .and_then(|v| v.as_bool())
+                    .ok_or_else(|| Error::反序列化(format!("审核记录缺「通过」布尔字段，前 200 字：{}", 截断(&json, 200))))?;
+                let 驳回原因 = match 值.get("驳回原因") {
+                    None | Some(serde_json::Value::Null) => None,
+                    Some(v) => Some(serde_json::from_value::<驳回原因>(v.clone()).map_err(|e| {
+                        Error::反序列化(format!("审核记录「驳回原因」非法: {e}；前 200 字：{}", 截断(&json, 200)))
+                    })?),
+                };
+                if 通过 && 驳回原因.is_some() {
+                    return Err(Error::反序列化("审核记录「通过=true」时「驳回原因」必须为 null".to_string()));
+                }
+                if !通过 && 驳回原因.is_none() {
+                    return Err(Error::反序列化("审核记录「通过=false」时必须给出「驳回原因」".to_string()));
+                }
+                let 评语 = 值
+                    .get("评语")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let 记录 = 审核记录::新(当前时间戳(), 通过, 驳回原因, 评语, 审核来源::自动);
+                let 下一状态 = if 通过 { TaskStatus::待清理 } else { TaskStatus::待修复 };
+                Ok((Box::new(move |看板, id| 看板.更新审核记录(id, 记录)), 下一状态))
+            } else {
+                let doc: FinalAcceptanceDoc = serde_json::from_value(值)
+                    .map_err(|e| Error::反序列化(format!("终审文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
+                let 下一状态 = if doc.通过 { TaskStatus::待人工验收 } else { TaskStatus::待修复 };
+                Ok((Box::new(move |看板, id| 看板.更新终审文档(id, doc)), 下一状态))
+            }
         }
         AgentRole::太乙金仙 => {
             // 清理阶段无文档槽位（Task 未扩展字段）：校验顶层对象即可，推进到 清理完成
@@ -547,6 +605,7 @@ fn 解析并构造(
 /// 重试仍失败才返回 Err（任务保持待承接可重试，不死等）。
 fn 解析并构造带重试(
     角色: &AgentRole,
+    状态: TaskStatus,
     答复: &str,
     阶段提示: &str,
     智能体: &智能体,
@@ -554,7 +613,7 @@ fn 解析并构造带重试(
     let mut 当前答复 = 答复.to_string();
     let mut 重试 = 0;
     loop {
-        match 解析并构造(角色, &当前答复) {
+        match 解析并构造(角色, 状态, &当前答复) {
             Ok(结果) => return Ok(结果),
             Err(错误) => {
                 if 重试 >= 2 {

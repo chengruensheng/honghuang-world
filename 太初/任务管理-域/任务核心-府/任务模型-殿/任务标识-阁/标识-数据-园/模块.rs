@@ -16,9 +16,13 @@ mod 扫尾_定义;
 #[path = "澄清记录.rs"]
 mod 澄清_定义;
 
+#[path = "审核记录.rs"]
+mod 审核_定义;
+
 pub use 标识_定义::*;
 pub use 层级_定义::*;
 pub use 产物_定义::*;
 pub use 回退_定义::*;
 pub use 扫尾_定义::*;
 pub use 澄清_定义::*;
+pub use 审核_定义::*;

@@ -118,6 +118,7 @@ function 建卡(t){
     <div class="题">${转义(t.title)}</div>
     <div class="底"><span class="态 ${态类(t.status)}">${转义(t.status)}</span><span class="轮">第${转义(t.轮次)}轮</span></div>
     ${t.回退 ? `<div class="回退">↩ 第${转义(t.回退.次)}次回退 · ${转义(t.回退.由)} → ${转义(t.回退.至)}</div>` : ""}
+    ${t.status === "待人工验收" ? 审核区() : ""}
     <div class="回顾">
       <div class="项"><i>阶段</i><span style="font-family:var(--等);font-size:10.5px">${阶段链}</span></div>
       <div class="项"><i>承接</i><span>${转义((t.承接历史||[]).join(" → "))}</span></div>
@@ -125,5 +126,50 @@ function 建卡(t){
       ${(t.动态||[]).map(d=>`<div class="项"><i>${转义(d.时)}</i><span>${转义(d.事)}</span></div>`).join("")}
     </div>`;
   卡.addEventListener("click", ()=>卡.classList.toggle("开"));
+  // 最终审核操作（人可看可不看）：仅「待人工验收」任务落通过/驳回按钮；人工覆盖 LLM 自动审核结论
+  if(t.status === "待人工验收"){
+    const 区 = 卡.querySelector(".审");
+    区.addEventListener("click", (e)=>e.stopPropagation());   // 审核操作不触发卡片展开
+    区.querySelector(".审通过").addEventListener("click", ()=>审核(t.id, true, null, 区));
+    区.querySelector(".审驳回").addEventListener("click", ()=>审核(t.id, false, 区.querySelector(".审因").value, 区));
+  }
   return 卡;
+}
+
+/** 待人工验收任务的审核操作区：通过 / 驳回（驳回原因固定七选一，与后端驳回原因枚举同源） */
+function 审核区(){
+  const 因 = ["需求不清","设计不符","实现错误","测试不足","产出不完整","扩大范围","缩小范围"];
+  const 选项 = 因.map((x,i)=>`<option value="${x}"${i===2?" selected":""}>${x}</option>`).join("");
+  return `<div class="审">
+    <button class="审通过" type="button">✓ 通过</button>
+    <select class="审因">${选项}</select>
+    <button class="审驳回" type="button">✗ 驳回</button>
+  </div>`;
+}
+
+/** 人工覆盖最终审核结论：POST /api/board/{id}/review → 成功后重拉看板；失败原因内联在操作区，不静默 */
+async function 审核(任务id, 通过, 驳回原因, 区){
+  区.querySelectorAll("button,select").forEach(b=>b.disabled = true);
+  let 错位 = 区.querySelector(".审错");
+  if(!错位){ 错位 = document.createElement("div"); 错位.className = "审错"; 区.appendChild(错位); }
+  错位.textContent = "";
+  try{
+    const 响应 = await fetch(`/api/board/${任务id}/review`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({通过, 驳回原因: 通过 ? null : (驳回原因 || null), 评语:""}),
+    });
+    if(!响应.ok){
+      let 说明 = "HTTP " + 响应.status;
+      try{
+        const 体 = await 响应.json();
+        if(typeof 体 === "string" && 体) 说明 = 体;
+      }catch(_){}
+      throw new Error(说明);
+    }
+    拉看板();   // 审核成功：回到后端权威数据（卡片随新状态自然迁移）
+  }catch(错){
+    错位.textContent = "审核失败：" + 错.message;
+    区.querySelectorAll("button,select").forEach(b=>b.disabled = false);
+  }
 }

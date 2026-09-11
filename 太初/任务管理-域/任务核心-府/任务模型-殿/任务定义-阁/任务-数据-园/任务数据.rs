@@ -3,7 +3,7 @@ use hm_cognition::AgentRole;
 use crate::任务模型_殿::{
     TaskStatus, TaskScene, TaskPriority, StatusChange,
     RequirementDoc, DesignDoc, ImplementationDoc, VerificationDoc, FinalAcceptanceDoc,
-    任务标识, 层级记录, 回退记录, 五行层级, 扫尾记录, 澄清记录,
+    任务标识, 层级记录, 回退记录, 五行层级, 扫尾记录, 澄清记录, 审核记录,
 };
 
 /// 任务：太初之木，从无到有的存在。
@@ -65,6 +65,9 @@ pub struct Task {
     // 新增：澄清记录（回退到木层后道祖的需求纠偏结论，None=未澄清）
     #[serde(default)]
     pub 澄清记录: Option<澄清记录>,
+    // 新增：审核记录（道祖终审后最终审核结论，None=未审核）
+    #[serde(default)]
+    pub 审核记录: Option<审核记录>,
     // 新增：任务级临时规则（流态第三态：驱动执行期间注入智能体上下文，任务终态后清除）
     #[serde(default)]
     pub 临时规则: Vec<String>,
@@ -99,6 +102,7 @@ impl Task {
             当前层级: 五行层级::木,
             扫尾记录: None,
             澄清记录: None,
+            审核记录: None,
             临时规则: Vec::new(),
         }
     }

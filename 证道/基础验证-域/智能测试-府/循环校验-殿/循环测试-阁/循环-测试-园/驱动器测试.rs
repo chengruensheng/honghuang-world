@@ -133,6 +133,14 @@ mod tests {
         )
     }
 
+    fn 审核样例(通过: bool) -> String {
+        if 通过 {
+            r#"{"通过":true,"驳回原因":null,"评语":"审核通过"}"#.to_string()
+        } else {
+            r#"{"通过":false,"驳回原因":"实现错误","评语":"实现有误"}"#.to_string()
+        }
+    }
+
     #[test]
     fn 驱动器_圣人设计阶段产出设计文档() {
         let mut 看板 = TaskBoard::新建(临时路径("圣人"));
@@ -243,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn 驱动器_道祖终审通过进入待清理() {
+    fn 驱动器_道祖终审通过进入待人工验收() {
         let mut 看板 = TaskBoard::新建(临时路径("道祖"));
         let mut task = 造任务("终审任务");
         task.status = TaskStatus::待道祖终审;
@@ -255,12 +263,60 @@ mod tests {
         );
 
         let 结果 = 驱动器.执行一轮().expect("驱动应成功");
+        assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::道祖, 新状态: TaskStatus::待人工验收 });
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待人工验收);
+        assert!(任务.终审文档.as_ref().expect("终审文档应写入").通过);
+        assert!(任务.审核记录.is_none(), "终审阶段尚未产出审核记录");
+    }
+
+    #[test]
+    fn 驱动器_最终审核通过进入待清理() {
+        let mut 看板 = TaskBoard::新建(临时路径("审核"));
+        let mut task = 造任务("审核任务");
+        task.status = TaskStatus::待人工验收;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 思考: None, 内容: Some(审核样例(true).into()), 工具调用: vec![] }],
+            &临时路径("ctx-审核"),
+        );
+
+        let 结果 = 驱动器.执行一轮().expect("驱动应成功");
         assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::道祖, 新状态: TaskStatus::待清理 });
 
         let 看板 = 看板.lock().expect("看板锁");
         let 任务 = 看板.查询(1).expect("任务应存在");
         assert_eq!(任务.status, TaskStatus::待清理);
-        assert!(任务.终审文档.as_ref().expect("终审文档应写入").通过);
+        let 审核 = 任务.审核记录.as_ref().expect("审核记录应写入");
+        assert!(审核.通过);
+        assert!(审核.驳回原因.is_none());
+    }
+
+    #[test]
+    fn 驱动器_最终审核驳回定向回退() {
+        let mut 看板 = TaskBoard::新建(临时路径("审核驳回"));
+        let mut task = 造任务("审核驳回任务");
+        task.status = TaskStatus::待人工验收;
+        看板.发布任务(task).expect("发布应成功");
+        let (驱动器, 看板) = 新驱动器(
+            看板,
+            vec![模型响应 { 思考: None, 内容: Some(审核样例(false).into()), 工具调用: vec![] }],
+            &临时路径("ctx-审核驳回"),
+        );
+
+        let 结果 = 驱动器.执行一轮().expect("驱动应成功");
+        // 驳回原因「实现错误」→ 土层 → 待修复（首轮回退）
+        assert_eq!(结果, 驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::道祖, 新状态: TaskStatus::待修复 });
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待修复);
+        let 审核 = 任务.审核记录.as_ref().expect("审核记录应写入");
+        assert!(!审核.通过);
+        assert!(审核.驳回原因.is_some());
     }
 
     #[test]
@@ -274,12 +330,13 @@ mod tests {
             模型响应 { 思考: None, 内容: Some(实现样例().into()), 工具调用: vec![] },
             模型响应 { 思考: None, 内容: Some(验收样例(true).into()), 工具调用: vec![] },
             模型响应 { 思考: None, 内容: Some(终审样例(true).into()), 工具调用: vec![] },
+            模型响应 { 思考: None, 内容: Some(审核样例(true).into()), 工具调用: vec![] },
             模型响应 { 思考: None, 内容: Some(r#"{"清理项":[{"项":"临时文件","结果":"已清理"}],"归档完成":true}"#.into()), 工具调用: vec![] },
         ];
         let (驱动器, 看板) = 新驱动器(看板, 序列, &临时路径("ctx-完整"));
 
         let 结果 = 驱动器.执行到空闲(8).expect("驱动应成功");
-        assert_eq!(结果.len(), 5, "应完成五个阶段（设计/实现/验收/终审/清理）");
+        assert_eq!(结果.len(), 6, "应完成六个阶段（设计/实现/验收/终审/审核/清理）");
 
         let 看板 = 看板.lock().expect("看板锁");
         let 任务 = 看板.查询(1).expect("任务应存在");
@@ -288,7 +345,8 @@ mod tests {
         assert!(任务.实现文档.is_some(), "实现文档应写入");
         assert!(任务.验收文档.is_some(), "验收文档应写入");
         assert!(任务.终审文档.is_some(), "终审文档应写入");
-        assert_eq!(任务.承接历史.len(), 5, "五角色各承接一次");
+        assert!(任务.审核记录.is_some(), "审核记录应写入");
+        assert_eq!(任务.承接历史.len(), 6, "六角色各承接一次（道祖终审+审核两次）");
     }
 
     /// 模拟执行器变体：按名找文件 返回工作区残留（模拟清理不彻底的现场）

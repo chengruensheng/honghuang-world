@@ -8,7 +8,7 @@ use hm_signal::{信号, 信号总线, 信号类型, 信号载荷};
 use crate::任务模型_殿::{
     Task, TaskStatus, StatusChange, RequirementDoc, DesignDoc, ImplementationDoc, VerificationDoc,
     FinalAcceptanceDoc,
-    任务标识, 层级记录, 层级记录状态, 产物记录, 回退记录, 五行层级, 澄清记录,
+    任务标识, 层级记录, 层级记录状态, 产物记录, 回退记录, 五行层级, 澄清记录, 审核记录,
 };
 use crate::任务看板_殿::{状态归属角色, 承接后状态, 任务依赖图};
 
@@ -265,6 +265,35 @@ impl TaskBoard {
         Ok(目标)
     }
 
+    /// 最终审核并推进：仅 `待人工验收` 可审核（人工经 review API 覆盖）。
+    /// 写入审核记录 → 承接（待人工验收 → 人工验收中）→
+    ///   通过：提交到 `待清理`；
+    ///   驳回：提交到 `待修复` → 按驳回原因映射根源层级定向回退。
+    /// 返回（最终状态, 回退次数：None=通过，Some=驳回回退）。
+    pub fn 审核并推进(&mut self, 任务id: u64, 记录: 审核记录) -> Result<(TaskStatus, Option<u32>)> {
+        let 通过 = 记录.通过;
+        let 评语 = 记录.评语.clone();
+        let 根源层级 = 记录.驳回原因.map(|r| r.回退层级());
+        {
+            let task = self.任务集.get_mut(&任务id).ok_or_else(|| Error::任务不存在(任务id))?;
+            if task.status != TaskStatus::待人工验收 {
+                return Err(Error::状态流转非法(format!("{:?} 不可审核（仅待人工验收）", task.status)));
+            }
+            task.审核记录 = Some(记录);
+        }
+        // 复用标准流转：承接（→人工验收中）→ 提交/定向回退，保证状态历史/信号/持久化一致
+        self.承接任务(任务id, AgentRole::道祖)?;
+        if 通过 {
+            self.提交任务(任务id, AgentRole::道祖, TaskStatus::待清理)?;
+            Ok((TaskStatus::待清理, None))
+        } else {
+            let 层级 = 根源层级.unwrap_or(五行层级::土);
+            self.提交任务(任务id, AgentRole::道祖, TaskStatus::待修复)?;
+            let (回退状态, 次数) = self.定向回退(任务id, 层级, &评语)?;
+            Ok((回退状态, Some(次数)))
+        }
+    }
+
     /// 列出全部任务
     pub fn 全部(&self) -> Vec<&Task> {
         self.任务集.values().collect()
@@ -315,6 +344,14 @@ impl TaskBoard {
     pub fn 更新终审文档(&mut self, task_id: u64, doc: FinalAcceptanceDoc) -> Result<()> {
         let task = self.任务集.get_mut(&task_id).ok_or_else(|| Error::任务不存在(task_id))?;
         task.终审文档 = Some(doc);
+        task.updated_at = 当前时间戳();
+        self.保存()
+    }
+
+    /// 更新最终审核记录（道祖终审后插入的审核结论，LLM 自动或人工覆盖）
+    pub fn 更新审核记录(&mut self, task_id: u64, 记录: 审核记录) -> Result<()> {
+        let task = self.任务集.get_mut(&task_id).ok_or_else(|| Error::任务不存在(task_id))?;
+        task.审核记录 = Some(记录);
         task.updated_at = 当前时间戳();
         self.保存()
     }

@@ -61,6 +61,8 @@ mod tests {
             TaskStatus::准圣验收中,
             TaskStatus::待道祖终审,
             TaskStatus::道祖终审中,
+            TaskStatus::待人工验收,
+            TaskStatus::人工验收中,
             TaskStatus::待清理,
             TaskStatus::清理中,
             TaskStatus::清理完成,
@@ -160,15 +162,18 @@ mod tests {
         board.提交任务(id, AgentRole::准圣, TaskStatus::待道祖终审).expect("准圣提交通过");
 
         board.承接任务(id, AgentRole::道祖).expect("道祖承接");
-        board.提交任务(id, AgentRole::道祖, TaskStatus::待清理).expect("道祖终审通过");
+        board.提交任务(id, AgentRole::道祖, TaskStatus::待人工验收).expect("道祖终审通过");
+
+        board.承接任务(id, AgentRole::道祖).expect("道祖审核承接");
+        board.提交任务(id, AgentRole::道祖, TaskStatus::待清理).expect("道祖审核通过");
 
         board.承接任务(id, AgentRole::太乙金仙).expect("太乙金仙承接");
         board.提交任务(id, AgentRole::太乙金仙, TaskStatus::清理完成).expect("太乙金仙清理完成");
 
         let task = board.查询(id).expect("任务应存在");
         assert_eq!(task.status, TaskStatus::清理完成);
-        assert_eq!(task.状态历史.len(), 11);
-        assert_eq!(task.承接历史, vec![AgentRole::圣人, AgentRole::大罗金仙, AgentRole::准圣, AgentRole::道祖, AgentRole::太乙金仙]);
+        assert_eq!(task.状态历史.len(), 13);
+        assert_eq!(task.承接历史, vec![AgentRole::圣人, AgentRole::大罗金仙, AgentRole::准圣, AgentRole::道祖, AgentRole::道祖, AgentRole::太乙金仙]);
         std::fs::remove_file(&path).ok();
     }
 

@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 /// 任务状态：待受理 → 进行中 → 已完成（木之生长），
 /// 扩展洪荒五层流转：待受理 → 待圣人设计 → 圣人设计中 → 待大罗金仙实现
 /// → 大罗金仙实现中 → 待准圣验收 → 准圣验收中 →（不通过）待修复 → 大罗金仙实现中
-/// 或（通过）→ 待道祖终审 → 道祖终审中 →（通过）待清理 → 清理中 → 清理完成 /（不通过）待修复
+/// 或（通过）→ 待道祖终审 → 道祖终审中 →（通过）待人工验收 → 人工验收中
+/// →（审核通过）待清理 → 清理中 → 清理完成 /（审核驳回）定向回退 /（终审不通过）待修复
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskStatus {
     // 原有状态（兼容）
@@ -21,6 +22,9 @@ pub enum TaskStatus {
     待修复,
     待道祖终审,
     道祖终审中,
+    // 新增：最终审核阶段（道祖终审后插入，默认 LLM 审核、人工可覆盖）
+    待人工验收,
+    人工验收中,
     // 新增：太乙金仙清理阶段
     待清理,
     清理中,
@@ -56,8 +60,12 @@ impl TaskStatus {
                 | (TaskStatus::准圣验收中, TaskStatus::待道祖终审)
                 | (TaskStatus::待修复, TaskStatus::大罗金仙实现中)
                 | (TaskStatus::待道祖终审, TaskStatus::道祖终审中)
-                | (TaskStatus::道祖终审中, TaskStatus::待清理)
+                | (TaskStatus::道祖终审中, TaskStatus::待人工验收)
                 | (TaskStatus::道祖终审中, TaskStatus::待修复)
+                // 最终审核流转（道祖终审后插入；审核驳回先提交到待修复，再定向回退）
+                | (TaskStatus::待人工验收, TaskStatus::人工验收中)
+                | (TaskStatus::人工验收中, TaskStatus::待清理)
+                | (TaskStatus::人工验收中, TaskStatus::待修复)
                 // 太乙金仙清理流转
                 | (TaskStatus::待清理, TaskStatus::清理中)
                 | (TaskStatus::清理中, TaskStatus::清理完成)
