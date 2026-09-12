@@ -2,19 +2,31 @@ use hm_cognition::AgentRole;
 use hm_contract::当前时间戳;
 use hm_error::{Error, Result};
 use tc_task::{
-    TaskBoard, TaskStatus, DesignDoc, ImplementationDoc, VerificationDoc,
+    TaskBoard, TaskStatus, DesignDoc, ImplementationDoc, VerificationDoc, VerificationRound,
     FinalAcceptanceDoc, 五行层级, 审核记录, 审核来源, 驳回原因,
 };
 use crate::循环驱动_殿::智能体;
 use crate::协作驱动_殿::五层驱动_阁::错误追溯_阁::追溯器;
+use super::构建核验::核验结论;
 use super::阶段提示::任务快照;
 
-/// 解析阶段产出：提取 JSON → 注入 created_at → 反序列化为目标文档 → 返回（写文档闭包, 下一状态）
+/// 阶段产出：写文档闭包 + 下一状态 + 机器核验结论（仅当本轮模型宣告「通过」并被机器推翻时存在）
+pub(crate) struct 阶段产出 {
+    pub(crate) 写文档: Box<dyn FnOnce(&mut TaskBoard, u64) -> Result<()>>,
+    pub(crate) 下一状态: TaskStatus,
+    pub(crate) 核验: Option<核验结论>,
+}
+
+/// 解析阶段产出：提取 JSON → 注入 created_at → 反序列化为目标文档 → 返回 阶段产出。
+///
+/// `核验器` 是机器核验门的惰性求值入口：**仅当模型宣告「验收通过 / 审核通过」时才调用**，
+/// 由系统真实执行编译与测试判定；判定不通过则推翻模型结论，改写文档并把任务打回实现层。
 fn 解析并构造(
     角色: &AgentRole,
     状态: TaskStatus,
     答复: &str,
-) -> Result<(Box<dyn FnOnce(&mut TaskBoard, u64) -> Result<()>>, TaskStatus)> {
+    核验器: &dyn Fn() -> 核验结论,
+) -> Result<阶段产出> {
     // LLM 常在 JSON 前包裹 <think>...</think> 思考标签或 ```json 代码块，
     // 提取json 会从第一个 { 开始匹配，可能抓到 think 内部的碎片 JSON 而非真正的阶段产出。
     // 先剥离这些杂质再提取，避免误抓导致的反序列化失败回喂重试浪费轮次。
@@ -33,18 +45,54 @@ fn 解析并构造(
         AgentRole::圣人 => {
             let doc: DesignDoc = serde_json::from_value(值)
                 .map_err(|e| Error::反序列化(format!("设计文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
-            Ok((Box::new(move |看板, id| 看板.更新设计文档(id, doc)), TaskStatus::待大罗金仙实现))
+            Ok(阶段产出 {
+                写文档: Box::new(move |看板, id| 看板.更新设计文档(id, doc)),
+                下一状态: TaskStatus::待大罗金仙实现,
+                核验: None,
+            })
         }
         AgentRole::大罗金仙 => {
             let doc: ImplementationDoc = serde_json::from_value(值)
                 .map_err(|e| Error::反序列化(format!("实现文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
-            Ok((Box::new(move |看板, id| 看板.更新实现文档(id, doc)), TaskStatus::待准圣验收))
+            Ok(阶段产出 {
+                写文档: Box::new(move |看板, id| 看板.更新实现文档(id, doc)),
+                下一状态: TaskStatus::待准圣验收,
+                核验: None,
+            })
         }
         AgentRole::准圣 => {
-            let doc: VerificationDoc = serde_json::from_value(值)
+            let mut doc: VerificationDoc = serde_json::from_value(值)
                 .map_err(|e| Error::反序列化(format!("验收文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
+            let 模型宣告通过 = doc.最终结果;
+            // 机器核验门：模型宣告验收通过时，系统实跑编译与测试独立复核；
+            // 不通过则推翻模型结论（改写文档 + 打回实现层），杜绝「自报通过」。
+            let 核验 = if 模型宣告通过 {
+                let 结论 = 核验器();
+                if !结论.通过 {
+                    tracing::warn!("机器核验推翻模型验收结论：{}", 结论.摘要);
+                    doc.最终结果 = false;
+                    doc.轮次.push(VerificationRound {
+                        轮次: doc.轮次.len() as u32 + 1,
+                        通过: false,
+                        边界检查: true,
+                        契约检查: true,
+                        安全检查: true,
+                        事实检查: false,
+                        完整性检查: false,
+                        问题: vec![结论.摘要.clone()],
+                        建议: "按机器核验给出的真实编译/测试错误修正实现后重新提交验收".to_string(),
+                    });
+                }
+                Some(结论)
+            } else {
+                None
+            };
             let 下一状态 = if doc.最终结果 { TaskStatus::待道祖终审 } else { TaskStatus::待修复 };
-            Ok((Box::new(move |看板, id| 看板.更新验收文档(id, doc)), 下一状态))
+            Ok(阶段产出 {
+                写文档: Box::new(move |看板, id| 看板.更新验收文档(id, doc)),
+                下一状态,
+                核验,
+            })
         }
         AgentRole::道祖 => {
             // 道祖同角色承担「终审」与「最终审核」两阶段，靠当前状态区分
@@ -71,14 +119,36 @@ fn 解析并构造(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let 记录 = 审核记录::新(当前时间戳(), 通过, 驳回原因, 评语, 审核来源::自动);
-                let 下一状态 = if 通过 { TaskStatus::待清理 } else { TaskStatus::待修复 };
-                Ok((Box::new(move |看板, id| 看板.更新审核记录(id, 记录)), 下一状态))
+                // 机器核验门：最终审核宣告通过前同样实跑复核，不通过即视为「实现错误」驳回
+                let 核验 = if 通过 { Some(核验器()) } else { None };
+                let 机器否决 = 核验.as_ref().is_some_and(|c| !c.通过);
+                if let Some(结论) = &核验 {
+                    if !结论.通过 {
+                        tracing::warn!("机器核验推翻模型最终审核结论：{}", 结论.摘要);
+                    }
+                }
+                let (实际通过, 实际驳回原因, 实际评语) = if 机器否决 {
+                    let 结论 = 核验.as_ref().map(|c| c.摘要.clone()).unwrap_or_default();
+                    (false, Some(驳回原因::实现错误), format!("机器核验否决：{结论}（原模型评语：{评语}）"))
+                } else {
+                    (通过, 驳回原因, 评语)
+                };
+                let 记录 = 审核记录::新(当前时间戳(), 实际通过, 实际驳回原因, 实际评语, 审核来源::自动);
+                let 下一状态 = if 实际通过 { TaskStatus::待清理 } else { TaskStatus::待修复 };
+                Ok(阶段产出 {
+                    写文档: Box::new(move |看板, id| 看板.更新审核记录(id, 记录)),
+                    下一状态,
+                    核验,
+                })
             } else {
                 let doc: FinalAcceptanceDoc = serde_json::from_value(值)
                     .map_err(|e| Error::反序列化(format!("终审文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
                 let 下一状态 = if doc.通过 { TaskStatus::待人工验收 } else { TaskStatus::待修复 };
-                Ok((Box::new(move |看板, id| 看板.更新终审文档(id, doc)), 下一状态))
+                Ok(阶段产出 {
+                    写文档: Box::new(move |看板, id| 看板.更新终审文档(id, doc)),
+                    下一状态,
+                    核验: None,
+                })
             }
         }
         AgentRole::太乙金仙 => {
@@ -86,7 +156,11 @@ fn 解析并构造(
             if !值.is_object() {
                 return Err(Error::反序列化(format!("清理记录 JSON 顶层必须是对象，前 200 字：{}", 截断(&json, 200))));
             }
-            Ok((Box::new(|_看板, _id| Ok(())), TaskStatus::清理完成))
+            Ok(阶段产出 {
+                写文档: Box::new(|_看板, _id| Ok(())),
+                下一状态: TaskStatus::清理完成,
+                核验: None,
+            })
         }
     }
 }
@@ -99,11 +173,12 @@ pub(crate) fn 解析并构造带重试(
     答复: &str,
     阶段提示: &str,
     智能体: &智能体,
-) -> Result<(Box<dyn FnOnce(&mut TaskBoard, u64) -> Result<()>>, TaskStatus)> {
+    核验器: &dyn Fn() -> 核验结论,
+) -> Result<阶段产出> {
     let mut 当前答复 = 答复.to_string();
     let mut 重试 = 0;
     loop {
-        match 解析并构造(角色, 状态, &当前答复) {
+        match 解析并构造(角色, 状态, &当前答复, 核验器) {
             Ok(结果) => return Ok(结果),
             Err(错误) => {
                 if 重试 >= 2 {

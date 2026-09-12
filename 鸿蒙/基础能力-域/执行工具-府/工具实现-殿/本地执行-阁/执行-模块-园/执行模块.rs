@@ -99,13 +99,13 @@ impl 本地执行器 {
     }
 
     /// 轮询等待子进程退出；超时则终止进程并报错
-    fn 等待退出(&self, 子进程: &mut std::process::Child, 命令: &str) -> Result<std::process::ExitStatus> {
+    fn 等待退出(&self, 子进程: &mut std::process::Child, 命令: &str, 超时秒: u64) -> Result<std::process::ExitStatus> {
         let 开始 = Instant::now();
         loop {
             match 子进程.try_wait().map_err(Error::Io)? {
                 Some(状态) => return Ok(状态),
                 None => {
-                    if 开始.elapsed() >= Duration::from_secs(self.命令超时秒) {
+                    if 开始.elapsed() >= Duration::from_secs(超时秒) {
                         // 终止整个进程树（cmd 及其子进程），避免残留孤儿进程
                         let 进程号 = 子进程.id();
                         if let Err(失败) = Command::new("taskkill")
@@ -207,39 +207,11 @@ impl 执行器 for 本地执行器 {
     }
 
     fn 运行命令(&self, 命令: &str) -> Result<String> {
-        if 命令不在白名单(命令) {
-            return Err(Error::危险命令(format!("命令不在白名单: {命令}")));
-        }
-        let mut 子进程 = Command::new("cmd")
-            .args(["/C", 命令])
-            .current_dir(&self.工作区)
-            // 从源头关闭子进程彩色/光标输出（cargo 认 CARGO_TERM_COLOR，通用 CLI 认 NO_COLOR/CLICOLOR），
-            // 避免 ANSI 转义序列进入天机流形成乱码；输出边界另有 剥终端转义 兜底（见 读流）。
-            .env("CARGO_TERM_COLOR", "never")
-            .env("NO_COLOR", "1")
-            .env("CLICOLOR", "0")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(Error::Io)?;
+        self.运行命令_超时(命令, self.命令超时秒)
+    }
 
-        let 标准输出流 = 子进程.stdout.take();
-        let 标准错误流 = 子进程.stderr.take();
-        let 上限 = self.最大输出字节;
-        let 收集线程 = std::thread::spawn(move || 收集输出(标准输出流, 标准错误流, 上限));
-
-        let 状态结果 = self.等待退出(&mut 子进程, 命令);
-        let (标准输出, 标准错误) = 收集线程
-            .join()
-            .map_err(|_| Error::Other("输出收集线程异常".into()))?;
-        let 状态 = 状态结果?;
-        if !状态.success() {
-            return Err(Error::Other(format!(
-                "命令失败（退出码 {}）: {标准错误}{标准输出}",
-                状态
-            )));
-        }
-        Ok(标准输出)
+    fn 运行命令_限时(&self, 命令: &str, 超时秒: u64) -> Result<String> {
+        self.运行命令_超时(命令, 超时秒)
     }
 
     fn 列目录(&self, 路径: &str) -> Result<String> {
@@ -328,6 +300,46 @@ impl 执行器 for 本地执行器 {
         super::删除防护::安全删除(&self.工作区, 路径)
     }
 
+}
+
+impl 本地执行器 {
+    /// 运行命令的实际实现（可指定超时）：白名单校验 → 工作区执行 → 收集输出 → 非零退出码报错。
+    /// `运行命令` 用执行器默认超时，`运行命令_限时` 用调用方超时（编译/测试核验等长耗时场景）。
+    fn 运行命令_超时(&self, 命令: &str, 超时秒: u64) -> Result<String> {
+        if 命令不在白名单(命令) {
+            return Err(Error::危险命令(format!("命令不在白名单: {命令}")));
+        }
+        let mut 子进程 = Command::new("cmd")
+            .args(["/C", 命令])
+            .current_dir(&self.工作区)
+            // 从源头关闭子进程彩色/光标输出（cargo 认 CARGO_TERM_COLOR，通用 CLI 认 NO_COLOR/CLICOLOR），
+            // 避免 ANSI 转义序列进入天机流形成乱码；输出边界另有 剥终端转义 兜底（见 读流）。
+            .env("CARGO_TERM_COLOR", "never")
+            .env("NO_COLOR", "1")
+            .env("CLICOLOR", "0")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(Error::Io)?;
+
+        let 标准输出流 = 子进程.stdout.take();
+        let 标准错误流 = 子进程.stderr.take();
+        let 上限 = self.最大输出字节;
+        let 收集线程 = std::thread::spawn(move || 收集输出(标准输出流, 标准错误流, 上限));
+
+        let 状态结果 = self.等待退出(&mut 子进程, 命令, 超时秒);
+        let (标准输出, 标准错误) = 收集线程
+            .join()
+            .map_err(|_| Error::Other("输出收集线程异常".into()))?;
+        let 状态 = 状态结果?;
+        if !状态.success() {
+            return Err(Error::Other(format!(
+                "命令失败（退出码 {}）: {标准错误}{标准输出}",
+                状态
+            )));
+        }
+        Ok(标准输出)
+    }
 }
 
 /// 生成备份路径：原文件名追加 ".bak" 后缀

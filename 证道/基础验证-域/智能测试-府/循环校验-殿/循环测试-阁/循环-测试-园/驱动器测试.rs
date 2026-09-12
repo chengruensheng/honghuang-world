@@ -8,7 +8,7 @@ mod tests {
     use hm_error::{Error, Result};
     use hm_execute_contract::执行器;
     use hm_cognition::ContextManager;
-    use tc_task::{Task, TaskBoard, TaskStatus, AgentRole, 回退记录, 五行层级};
+    use tc_task::{Task, TaskBoard, TaskStatus, AgentRole, 回退记录, 五行层级, 驳回原因};
 
     /// 模拟对话器：按预设序列依次返回模型响应，验证契约可插拔
     struct 模拟对话器 {
@@ -48,7 +48,9 @@ mod tests {
                 写文件记录: Mutex::new(Vec::new()),
                 命令记录: Mutex::new(Vec::new()),
                 读文件返回: "文件内容".to_string(),
-                命令返回: "命令输出".to_string(),
+                // 机器核验门要求 cargo test 输出含 `test result: ok.` 才判通过，
+                // 故模拟命令输出须携带该证据行，否则验收通过会被核验门（正确地）推翻。
+                命令返回: "test result: ok. 3 passed; 0 failed; 0 ignored".to_string(),
             }
         }
     }
@@ -488,5 +490,93 @@ mod tests {
         assert_eq!(任务.status, TaskStatus::待圣人设计, "任务状态应保持不变（未承接未提交）");
         assert!(任务.设计文档.is_none(), "文档不应写入");
         assert!(任务.承接历史.is_empty(), "不应产生承接记录");
+    }
+
+    /// 模拟执行器变体：命令输出**不含** `test result: ok.` 证据行。
+    /// 模拟「模型在 JSON 里自报验收通过，但系统实跑既无通过证据」的自证场景。
+    struct 模拟执行器_无测试证据;
+
+    impl Component for 模拟执行器_无测试证据 {
+        fn name(&self) -> &'static str { "模拟执行器_无测试证据" }
+    }
+
+    impl 执行器 for 模拟执行器_无测试证据 {
+        fn 读文件(&self, _路径: &str) -> Result<String> { Ok("文件内容".to_string()) }
+        fn 写文件(&self, _路径: &str, _内容: &str) -> Result<()> { Ok(()) }
+        fn 运行命令(&self, _命令: &str) -> Result<String> { Ok("命令输出".to_string()) }
+        fn 列目录(&self, _路径: &str) -> Result<String> { Ok("（空目录）".to_string()) }
+        fn 按名找文件(&self, _模式: &str) -> Result<String> { Ok("（无匹配）".to_string()) }
+        fn 搜索内容(&self, _关键词: &str) -> Result<String> { Ok("（无匹配）".to_string()) }
+        fn 精确编辑(&self, _路径: &str, _旧: &str, _新: &str) -> Result<String> { Ok("替换成功（1 处）".to_string()) }
+    }
+
+    #[test]
+    fn 驱动器_模型自报验收通过但机器无通过证据_打回实现层() {
+        // 核心回归：破解「自证闭环」——模型宣告验收通过不再被直接采信，
+        // 系统实跑编译/测试，无 `test result: ok.` 证据即推翻结论并把任务打回实现层。
+        let 看板 = Arc::new(Mutex::new(TaskBoard::新建(临时路径("机器否决验收"))));
+        {
+            let mut 看板 = 看板.lock().expect("看板锁");
+            let mut task = 造任务("机器否决验收任务");
+            task.status = TaskStatus::待准圣验收;
+            看板.发布任务(task).expect("发布应成功");
+        }
+        let 上下文 = Arc::new(Mutex::new(ContextManager::新(临时路径("ctx-机器否决验收"))));
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 思考: None, 内容: Some(验收样例(true).into()), 工具调用: vec![] },
+        ]));
+        let 执行器: Arc<dyn 执行器> = Arc::new(模拟执行器_无测试证据);
+        let 驱动器 = 五层协作驱动器::新(看板.clone(), 上下文, 对话器, 执行器, 10);
+
+        let 结果 = 驱动器.执行一轮().expect("机器核验不通过属判定结论，不应让驱动本身报错");
+        assert_eq!(
+            结果,
+            驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::准圣, 新状态: TaskStatus::待修复 },
+            "机器核验否决后应打回实现层，而非放行到终审"
+        );
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        assert_eq!(任务.status, TaskStatus::待修复);
+        let 验收 = 任务.验收文档.as_ref().expect("验收文档应写入");
+        assert!(!验收.最终结果, "机器核验否决后验收结论应被改写为不通过");
+        assert!(
+            验收.轮次.iter().any(|r| r.问题.iter().any(|q| q.contains("机器核验未通过"))),
+            "验收文档应记录机器核验的真实理由，供实现层据此修正"
+        );
+    }
+
+    #[test]
+    fn 驱动器_最终审核模型通过但机器核验否决_按实现错误驳回() {
+        // 终审通过同样须过机器核验：否决时映射「实现错误」→ 土层 → 待修复
+        let 看板 = Arc::new(Mutex::new(TaskBoard::新建(临时路径("机器否决审核"))));
+        {
+            let mut 看板 = 看板.lock().expect("看板锁");
+            let mut task = 造任务("机器否决审核任务");
+            task.status = TaskStatus::待人工验收;
+            看板.发布任务(task).expect("发布应成功");
+        }
+        let 上下文 = Arc::new(Mutex::new(ContextManager::新(临时路径("ctx-机器否决审核"))));
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 思考: None, 内容: Some(审核样例(true).into()), 工具调用: vec![] },
+        ]));
+        let 执行器: Arc<dyn 执行器> = Arc::new(模拟执行器_无测试证据);
+        let 驱动器 = 五层协作驱动器::新(看板.clone(), 上下文, 对话器, 执行器, 10);
+
+        let 结果 = 驱动器.执行一轮().expect("驱动本身应成功");
+        assert_eq!(
+            结果,
+            驱动结果::阶段完成 { 任务id: 1, 角色: AgentRole::道祖, 新状态: TaskStatus::待修复 }
+        );
+
+        let 看板 = 看板.lock().expect("看板锁");
+        let 任务 = 看板.查询(1).expect("任务应存在");
+        let 审核 = 任务.审核记录.as_ref().expect("审核记录应写入");
+        assert!(!审核.通过, "机器核验否决后审核结论应为不通过");
+        assert_eq!(
+            审核.驳回原因,
+            Some(驳回原因::实现错误),
+            "机器核验否决应映射为「实现错误」→ 土层 → 待修复"
+        );
     }
 }

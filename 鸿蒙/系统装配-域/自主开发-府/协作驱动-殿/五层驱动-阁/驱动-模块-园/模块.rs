@@ -7,6 +7,9 @@ mod 阶段提示;
 #[path = "解析与净化.rs"]
 mod 解析与净化;
 
+#[path = "构建核验.rs"]
+mod 构建核验;
+
 #[cfg(test)]
 #[path = "驱动测试.rs"]
 mod 驱动测试;

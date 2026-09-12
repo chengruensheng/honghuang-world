@@ -69,7 +69,11 @@ mod tests {
     impl 执行器 for 模拟执行器 {
         fn 读文件(&self, _路径: &str) -> Result<String> { Ok("文件内容".to_string()) }
         fn 写文件(&self, _路径: &str, _内容: &str) -> Result<()> { Ok(()) }
-        fn 运行命令(&self, _命令: &str) -> Result<String> { Ok("命令输出".to_string()) }
+        fn 运行命令(&self, _命令: &str) -> Result<String> {
+            // 机器核验门要求 cargo test 输出含 `test result: ok.` 才判通过（防模型自报验收通过），
+            // 故模拟命令输出须携带该证据行。
+            Ok("test result: ok. 3 passed; 0 failed; 0 ignored".to_string())
+        }
         fn 列目录(&self, _路径: &str) -> Result<String> { Ok("（空目录）".to_string()) }
         fn 按名找文件(&self, _模式: &str) -> Result<String> { Ok("（无匹配）".to_string()) }
         fn 搜索内容(&self, _关键词: &str) -> Result<String> { Ok("（无匹配）".to_string()) }
