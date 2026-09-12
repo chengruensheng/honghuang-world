@@ -1,0 +1,25 @@
+[package]
+name = "hm-docgen"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "模块.rs"
+
+[[bin]]
+name = "hm-docgen"
+path = "主程序.rs"
+
+[dependencies]
+# 事实源：只消费上游符号索引，本府内不出现任何源码解析逻辑。
+# 这是「事实唯一」的硬约束——一旦本府自己解析源码，就会出现第二份真相，
+# 与符号索引漂移。
+hm-symext = { path = "../符号解析-府" }
+hm-contract = { path = "../../基础契约-域/核心契约-府" }
+hm-error = { path = "../../基础契约-域/错误定义-府" }
+# 叙述层的模型后端：本府只依赖「内容生成器」契约，不绑定任何具体 LLM 供应商。
+hm-content-contract = { path = "../../基础契约-域/内容契约-府" }
+# 主程序用 LLM池（从环境装配）作默认后端；库本身不依赖它。
+hm-content = { path = "../内容生成-府" }
+serde = { workspace = true }
+serde_json = { workspace = true }
