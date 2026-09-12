@@ -1,0 +1,12 @@
+{
+  "name": "qk-presentation-testing",
+  "private": true,
+  "type": "module",
+  "description": "乾坤维度 · 呈现层测试装备。呈现域本体是零依赖纯静态资源，此文件只服务它的测试；node_modules 仅供 node --test 使用，不进静态托管。",
+  "scripts": {
+    "test": "node --test-isolation=process --import \"./观星呈现-域/呈现验证-府/映射装配-殿/钩子注册-阁/映射-模块-园/映射注册.mjs\" --test \"观星呈现-域/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.5"
+  }
+}
