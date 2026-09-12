@@ -31,6 +31,47 @@ if ($任务清单.Count -eq 0) {
     )
 }
 
+# ============ 原始产出目录（第 3 条治理：结论落盘原始 stdout） ============
+# 每次运行建立独立时间戳目录，原样保存：控制台全程输出、原始 JSON 响应、结构化结果。
+# 所有指标数字都必须能回溯到本目录中的原始数据，禁止仅由文档转述数字。
+$基准时间戳 = (Get-Date).ToString('yyyyMMdd-HHmmss')
+$基准根目录 = Join-Path $PSScriptRoot '原始输出'
+$基准目录 = Join-Path $基准根目录 "基准-$基准时间戳"
+if (-not (Test-Path $基准目录)) { New-Item -ItemType Directory -Path $基准目录 -Force | Out-Null }
+try { Start-Transcript -Path (Join-Path $基准目录 '控制台.txt') | Out-Null } catch { }
+
+# 最近一次 HTTP 响应原文（由 调用Json 填充）：供原样落盘，杜绝二次转述
+$script:最近原文 = $null
+
+function 存原文($名, $文本) {
+    # 原样落盘（不改写、不转述），保证结论可回溯到原始响应
+    if ($null -eq $文本) { $文本 = '' }
+    Set-Content -Path (Join-Path $基准目录 $名) -Value $文本 -Encoding UTF8
+}
+
+function 写结果($结果对象) {
+    # 结构化结果同时写基准目录与「最新」指针，供门禁/文档引用，避免文档手写三指标
+    $文本 = $结果对象 | ConvertTo-Json -Depth 6
+    Set-Content -Path (Join-Path $基准目录 '基准结果.json') -Value $文本 -Encoding UTF8
+    Set-Content -Path (Join-Path $PSScriptRoot '基准结果.json') -Value $文本 -Encoding UTF8
+}
+
+function 写失败结果($原因, $额外数据 = $null) {
+    # 前置失败/无数据也留结构化结论：失败同样要有出处，不得只剩一句控制台告警
+    $原始数据 = [ordered]@{ 控制台 = '控制台.txt' }
+    if ($null -ne $额外数据) { foreach ($健 in $额外数据.Keys) { $原始数据[$健] = $额外数据[$健] } }
+    写结果 ([ordered]@{
+        生成时间 = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssK')
+        生成脚本 = '.传承/门禁/端到端基准.ps1'
+        结论 = '失败'
+        原因 = $原因
+        地址 = $地址
+        任务清单 = @($任务清单)
+        原始数据目录 = "原始输出/基准-$基准时间戳"
+        原始数据 = $原始数据
+    })
+}
+
 function 调用Json($方法, $路径, $体 = $null) {
     # 统一取响应原始字节并按 UTF-8 解码（PS7 下 Invoke-WebRequest 的 Content 即 byte[]），
     # 规避中文键/值按本地代码页误解码导致「驱动台就绪」判断失真。入口已硬校验 pwsh 7+；
@@ -48,6 +89,7 @@ function 调用Json($方法, $路径, $体 = $null) {
         $原始字节 = $响应.RawContentStream.ToArray()
     }
     $文本 = if ($null -ne $原始字节) { [System.Text.Encoding]::UTF8.GetString($原始字节) } else { [string]$响应.Content }
+    $script:最近原文 = $文本
     if ([string]::IsNullOrWhiteSpace($文本)) { return $null }
     $文本 | ConvertFrom-Json
 }
@@ -57,12 +99,17 @@ Write-Host "========== 端到端基准 · 真实 LLM 全链 ==========" -Foregro
 Write-Host "后端地址：$地址"
 try {
     $状态 = 调用Json GET "/api/dev/pilot/status"
+    存原文 '驱动台状态.json' $script:最近原文
     if (-not $状态.就绪) {
         Write-Host "✗ 看板驱动台未装配（五层驱动器未就绪），请确认启动模块装配。请勿运行。" -ForegroundColor Red
+        写失败结果 '看板驱动台未装配（就绪=false）' ([ordered]@{ 驱动台状态 = '驱动台状态.json' })
+        try { Stop-Transcript } catch { }
         exit 1
     }
 } catch {
     Write-Host "✗ 无法连接后端 $地址，请先运行 .\启动.ps1 并接入 LLM。请勿运行。" -ForegroundColor Red
+    写失败结果 "无法连接后端 $地址"
+    try { Stop-Transcript } catch { }
     exit 1
 }
 Write-Host "驱动台就绪：是" -ForegroundColor Green
@@ -76,7 +123,9 @@ foreach ($任务描述 in $任务清单) {
     Write-Host "[任务 $发布任务数/$($任务清单.Count)] 发布：$标题" -ForegroundColor Yellow
 
     $发布 = 调用Json POST "/api/board" @{ title = $标题; description = $任务描述 }
-    Write-Host "  任务 #$($发布.id) 已发布，开始自主驱动…"
+    # POST /api/board 返回裸数字任务 id（非对象），勿写 $发布.id（会得空值）
+    $发布任务号 = $发布
+    Write-Host "  任务 #$发布任务号 已发布，开始自主驱动…"
 
     # 发布自动仅推进第一层（圣人设计）；等待发布自动线程落定（运行中=false）后再显式 drain
     # 走完五层。避免「发布线程占用 → drain 409 → 脚本中断」的时序缺陷。
@@ -115,7 +164,7 @@ foreach ($任务描述 in $任务清单) {
         }
     }
     if (-not $受理成功) {
-        Write-Host "  ✗ drain 3 次仍失败，请检查后端日志后重跑该任务。任务 #$($发布.id) 仍保留在看板。" -ForegroundColor Red
+        Write-Host "  ✗ drain 3 次仍失败，请检查后端日志后重跑该任务。任务 #$发布任务号 仍保留在看板。" -ForegroundColor Red
         continue
     }
 
@@ -147,10 +196,14 @@ foreach ($任务描述 in $任务清单) {
 Write-Host ""
 Write-Host "========== 指标统计 ==========" -ForegroundColor Cyan
 
+$已存会话文件 = @()
 $清单 = 调用Json GET "/api/dev/sessions"
+存原文 '会话清单.json' $script:最近原文
 $会话们 = @($清单.会话)
 if ($会话们.Count -eq 0) {
     Write-Host "✗ 未收集到任何驱动会话，无法输出指标（请确认任务已成功发布并驱动）。请勿运行。" -ForegroundColor Red
+    写失败结果 '未收集到任何驱动会话' ([ordered]@{ 会话清单 = '会话清单.json' })
+    try { Stop-Transcript } catch { }
     exit 1
 }
 
@@ -177,7 +230,7 @@ foreach ($会话 in $会话们) {
 # 读取看板终态（任务最新状态）
 $看板全部 = @()
 if ($涉及任务id.Count -gt 0) {
-    try { $看板全部 = @(调用Json GET "/api/board") } catch { $看板全部 = @() }
+    try { $看板全部 = @(调用Json GET "/api/board"); 存原文 '看板.json' $script:最近原文 } catch { $看板全部 = @() }
 }
 $任务终态 = @{}
 foreach ($任务 in $看板全部) {
@@ -197,6 +250,9 @@ foreach ($会话 in $会话们) {
     if ($本会话失败) { $失败会话++ }
 
     $详情 = 调用Json GET "/api/dev/sessions/$($会话.会话id)"
+    $会话文件名 = "会话-{0}.json" -f $会话.会话id
+    存原文 $会话文件名 $script:最近原文
+    $已存会话文件 += $会话文件名
     $事件们 = @($详情.事件)
 
     $本会话有测试动作 = $false
@@ -255,3 +311,35 @@ if ($null -eq $测试通过率) {
 Write-Host ("  返工率 = {0}%（{1}/{2} 会话出现返工：准圣打回「待修复」或测试失败后自愈重测）" -f $返工率, $返工会话, $总会话)
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
+
+# ============ 落盘结构化结果（第 3 条：指标数字有原始出处，禁止文档转述） ============
+$任务终态表 = [ordered]@{}
+foreach ($健 in ($任务终态.Keys | Sort-Object)) { $任务终态表[[string]$健] = $任务终态[$健] }
+$结果 = [ordered]@{
+    生成时间 = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssK')
+    生成脚本 = '.传承/门禁/端到端基准.ps1'
+    结论 = '完成'
+    地址 = $地址
+    任务清单 = @($任务清单)
+    总会话数 = $总会话
+    无人干预 = $无人干预
+    失败会话 = $失败会话
+    有测试动作会话 = $有测试动作会话
+    测试通过会话 = $测试通过会话
+    返工会话 = $返工会话
+    无人干预率 = $无人干预率
+    测试通过率 = $测试通过率
+    返工率 = $返工率
+    任务终态 = $任务终态表
+    原始数据目录 = "原始输出/基准-$基准时间戳"
+    原始数据 = [ordered]@{
+        控制台 = '控制台.txt'
+        会话清单 = '会话清单.json'
+        看板 = $(if (Test-Path (Join-Path $基准目录 '看板.json')) { '看板.json' } else { $null })
+        会话详情 = @($已存会话文件)
+    }
+}
+写结果 $结果
+Write-Host "结构化结果已落盘：$($结果.原始数据目录)/基准结果.json（最新指针：.传承/门禁/基准结果.json）" -ForegroundColor Green
+try { Stop-Transcript } catch { }
+exit 0
