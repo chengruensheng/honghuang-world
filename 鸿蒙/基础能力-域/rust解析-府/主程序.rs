@@ -12,11 +12,37 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+/// Cargo 清单文件名（外部数据契约）
+const 清单文件名: &str = "Cargo.toml";
+/// 整层缓存产物文件名（缓存契约）
+const 缓存产出文件名: &str = "rust解析-产出.json";
+/// 整层缓存指纹文件名（缓存契约）
+const 缓存指纹文件名: &str = "rust解析-指纹.txt";
+
 fn main() -> ExitCode {
-    match 运行() {
-        Ok(()) => ExitCode::SUCCESS,
+    // 语义层载入整个依赖图时，rust-analyzer 构建巨型 crate（tokio/axum…）的模块树
+    // 递归很深，默认 1MB 主线程栈会溢出（0xC00000FD）。故像 rust-analyzer 官方 CLI 一样，
+    // 把全部工作挪进一个加大栈的线程。栈设 16MB 留足余量，Windows 下按需分页不实际占用。
+    let 线程 = match std::thread::Builder::new()
+        .name("语义扫描".into())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| match 运行() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(原因) => {
+                eprintln!("rust 插件失败：{原因}");
+                ExitCode::from(1)
+            }
+        }) {
+        Ok(句柄) => 句柄,
         Err(原因) => {
-            eprintln!("rust 插件失败：{原因}");
+            eprintln!("rust 插件失败：启动扫描线程失败：{原因}");
+            return ExitCode::from(1);
+        }
+    };
+    match 线程.join() {
+        Ok(码) => 码,
+        Err(_) => {
+            eprintln!("rust 插件失败：语义扫描线程异常终止");
             ExitCode::from(1)
         }
     }
@@ -97,7 +123,7 @@ fn 运行() -> Result<(), String> {
         }
         Err(原因) => 诊断.push(插件诊断 {
             级别: "警告".into(),
-            文件: "Cargo.toml".into(),
+            文件: 清单文件名.into(),
             信息: 原因,
         }),
     }
@@ -129,7 +155,7 @@ fn 运行() -> Result<(), String> {
         }
         Err(原因) => 诊断.push(插件诊断 {
             级别: "警告".into(),
-            文件: "Cargo.toml".into(),
+            文件: 清单文件名.into(),
             信息: 原因,
         }),
     }
@@ -176,8 +202,8 @@ fn 计算指纹(
     清单文件们.hash(&mut 哈希);
 
     let mut 清单们: Vec<(String, Vec<u8>)> = Vec::new();
-    if let Ok(内容) = std::fs::read(项目根.join("Cargo.toml")) {
-        清单们.push(("Cargo.toml".to_string(), 内容));
+    if let Ok(内容) = std::fs::read(项目根.join(清单文件名)) {
+        清单们.push((清单文件名.to_string(), 内容));
     }
     for 包 in 单元包们 {
         if let Ok(内容) = std::fs::read(项目根.join(&包.清单路径)) {
@@ -195,11 +221,11 @@ fn 计算指纹(
 
 /// 指纹一致且缓存产出在位时，返回该产出的路径
 fn 命中缓存(项目根: &Path, 指纹: u64) -> Option<PathBuf> {
-    let 记号 = std::fs::read_to_string(缓存目录(项目根).join("rust解析-指纹.txt")).ok()?;
+    let 记号 = std::fs::read_to_string(缓存目录(项目根).join(缓存指纹文件名)).ok()?;
     if 记号.trim() != format!("{指纹:016x}") {
         return None;
     }
-    let 产出 = 缓存目录(项目根).join("rust解析-产出.json");
+    let 产出 = 缓存目录(项目根).join(缓存产出文件名);
     产出.is_file().then_some(产出)
 }
 
@@ -210,10 +236,10 @@ fn 写回缓存(项目根: &Path, 指纹: u64, 产出路径: &Path) {
     if std::fs::create_dir_all(&目录).is_err() {
         return;
     }
-    if std::fs::copy(产出路径, 目录.join("rust解析-产出.json")).is_err() {
+    if std::fs::copy(产出路径, 目录.join(缓存产出文件名)).is_err() {
         return;
     }
-    let _ = std::fs::write(目录.join("rust解析-指纹.txt"), format!("{指纹:016x}"));
+    let _ = std::fs::write(目录.join(缓存指纹文件名), format!("{指纹:016x}"));
 }
 
 /// 沿目录向上找最近的 `Cargo.toml`，取其 `[package] name` 作为 crate 名
@@ -225,7 +251,7 @@ fn 找包名(项目根: &Path, 相对: &str, 缓存: &mut BTreeMap<PathBuf, Stri
         if let Some(名) = 缓存.get(&当前) {
             return 名.clone();
         }
-        let 清单 = 当前.join("Cargo.toml");
+        let 清单 = 当前.join(清单文件名);
         if 清单.is_file() {
             if let Some(名) = 读包名(&清单) {
                 缓存.insert(当前.clone(), 名.clone());

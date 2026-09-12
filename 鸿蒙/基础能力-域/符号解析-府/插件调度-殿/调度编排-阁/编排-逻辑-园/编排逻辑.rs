@@ -13,6 +13,17 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::process::Command;
 
+/// 图谱产物文件名（数据契约）
+const 解析定义文件: &str = "解析定义.json";
+const 坐标索引文件: &str = "坐标索引.json";
+const 符号索引文件: &str = "符号索引.json";
+const 符号索引摘要文件: &str = "符号索引.md";
+/// 插件交换产出后缀（引擎与插件进程的私有约定）
+const 交换产出后缀: &str = ".json";
+/// 坐标索引的节点类型字段与文件节点取值（外部数据契约）
+const 节点类型键: &str = "类型";
+const 文件节点值: &str = "文件";
+
 /// 符号索引引擎。以仓库根构造，一次运行产出全量符号索引。
 pub struct 编排器 {
     仓库根: PathBuf,
@@ -27,11 +38,11 @@ impl 编排器 {
     }
 
     fn 定义路径(&self) -> PathBuf {
-        self.图谱目录.join("解析定义.json")
+        self.图谱目录.join(解析定义文件)
     }
 
     fn 坐标索引路径(&self) -> PathBuf {
-        self.图谱目录.join("坐标索引.json")
+        self.图谱目录.join(坐标索引文件)
     }
 
     /// 执行一次全量索引，并把结果写入 `.传承/图谱/知识图谱/`
@@ -237,7 +248,7 @@ impl 编排器 {
             None => return 表,
         };
         for 节点 in 节点们 {
-            if 节点.get("类型").and_then(|v| v.as_str()) != Some("文件") {
+            if 节点.get(节点类型键).and_then(|v| v.as_str()) != Some(文件节点值) {
                 continue;
             }
             let 路径 = match 节点.get("路径").and_then(|v| v.as_str()) {
@@ -262,7 +273,7 @@ impl 编排器 {
     fn 调用插件(&self, 清单: &插件清单, 文件们: &[String]) -> Result<产出, String> {
         let 临时 = std::env::temp_dir();
         let 清单文件 = 临时.join(format!("hm-symext-{}-文件.txt", 清单.语言));
-        let 产出文件 = 临时.join(format!("hm-symext-{}-产出.json", 清单.语言));
+        let 产出文件 = 临时.join(format!("hm-symext-{}-产出{交换产出后缀}", 清单.语言));
 
         std::fs::write(&清单文件, 文件们.join("\n"))
             .map_err(|e| format!("写文件清单失败：{e}"))?;
@@ -298,9 +309,9 @@ impl 编排器 {
     fn 写索引(&self, 索引: &符号索引) -> Result<(), String> {
         let json = serde_json::to_string_pretty(索引)
             .map_err(|e| format!("序列化符号索引失败：{e}"))?;
-        std::fs::write(self.图谱目录.join("符号索引.json"), json)
+        std::fs::write(self.图谱目录.join(符号索引文件), json)
             .map_err(|e| format!("写符号索引失败：{e}"))?;
-        std::fs::write(self.图谱目录.join("符号索引.md"), 摘要(索引))
+        std::fs::write(self.图谱目录.join(符号索引摘要文件), 摘要(索引))
             .map_err(|e| format!("写符号索引摘要失败：{e}"))?;
         Ok(())
     }

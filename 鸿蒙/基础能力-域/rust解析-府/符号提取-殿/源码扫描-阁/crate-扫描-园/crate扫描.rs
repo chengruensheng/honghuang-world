@@ -10,6 +10,9 @@ use hm_symext::{边, 符号, 边种类, 符号种类, 置信度};
 use std::collections::BTreeSet;
 use std::path::Path;
 
+/// Cargo 清单文件名（外部数据契约）
+const 清单文件名: &str = "Cargo.toml";
+
 /// 一个单元包的清单信息
 pub struct 单元包信息 {
     pub 名: String,
@@ -21,7 +24,7 @@ pub struct 单元包信息 {
 
 /// 读根 `Cargo.toml` 的 `workspace.members`，逐个读其清单
 pub fn 扫描单元包(项目根: &Path) -> Result<Vec<单元包信息>, String> {
-    let 根清单 = 项目根.join("Cargo.toml");
+    let 根清单 = 项目根.join(清单文件名);
     let 文本 =
         std::fs::read_to_string(&根清单).map_err(|e| format!("读根 Cargo.toml 失败：{e}"))?;
     let 值: toml::Value =
@@ -41,7 +44,7 @@ pub fn 扫描单元包(项目根: &Path) -> Result<Vec<单元包信息>, String>
 
     let mut 结果 = Vec::new();
     for 成员 in 成员们 {
-        let 清单路径 = 项目根.join(&成员).join("Cargo.toml");
+        let 清单路径 = 项目根.join(&成员).join(清单文件名);
         let 文本 = match std::fs::read_to_string(&清单路径) {
             Ok(t) => t,
             Err(_) => continue,
@@ -70,7 +73,7 @@ pub fn 扫描单元包(项目根: &Path) -> Result<Vec<单元包信息>, String>
 
         结果.push(单元包信息 {
             名,
-            清单路径: format!("{成员}/Cargo.toml"),
+            清单路径: format!("{成员}/{清单文件名}"),
             依赖,
         });
     }

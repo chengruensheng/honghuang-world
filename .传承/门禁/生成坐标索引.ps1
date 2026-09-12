@@ -295,9 +295,9 @@ $md.Add('')
 $md.Add('| 阶段 | 内容 | 状态 |')
 $md.Add('|---|---|---|')
 $md.Add('| 1 | 坐标索引（本文件）：路径 → 多层语义坐标 | **已完成** |')
-$md.Add('| 2 | 符号索引：crate / 模块 / 函数 / trait / impl / use / call | 待做 |')
+$md.Add('| 2 | 符号索引：crate / 模块 / 函数 / trait / impl / use / call | **已完成** |')
 $md.Add('| 3 | 声明索引：契约 / 规则条文 / 文档引用 | 待做 |')
-$md.Add('| 4 | 合并与诊断：dead / orphan / drift / broken_contract，接入门禁 | 待做 |')
+$md.Add('| 4 | 合并与诊断：dead / orphan / drift / broken_contract，接入门禁 | 进行中（探针已出：命名/坐标合规） |')
 
 $md路径 = Join-Path $输出目录 $MD名
 [System.IO.File]::WriteAllText($md路径, (($md -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
