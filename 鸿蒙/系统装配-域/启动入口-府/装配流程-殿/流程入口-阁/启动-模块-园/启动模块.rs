@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{装配开发受理台, 装配看板驱动台};
-use hm_agent::{认知注入, 道祖接待};
-use hm_cognition::上下文库;
+use hm_agent::道祖接待;
+use hm_cognition::{上下文库, 认知注入};
 use hm_content::LLM池;
 
 /// 道祖接待会话持久化文件名（位于 persistence.dir 下）
@@ -82,13 +82,23 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         Some(config.http.auth_token.clone())
     };
 
-    // 数据服务状态：五引擎 + 认知三态 + 任务看板 + 日志记录器 + 开发执行台 + 鉴权令牌
+    // 数据服务状态（hm-http）：仅认知三态 + 日志记录器 + LLM 池 + 鉴权令牌；
+    // 五引擎仓储与开发端子状态分别由各引擎府路由片段、hm-agent 开发服务状态自持。
+    let mut 数据状态 = hm_http::数据服务状态::新(
+        装配.图谱.clone(),
+        装配.心智地图.clone(),
+        装配.语境.clone(),
+        装配.日志记录器.clone(),
+        llm池.clone(),
+        鉴权令牌,
+    );
+
+    // 任务看板：加载历史看板（文件不存在则空板）：重启恢复，避免看板失忆
     let 看板路径 = match &持久化目录 {
         Some(d) => format!("{d}/任务看板.jsonl"),
         None => std::env::temp_dir().join("洪荒任务看板.jsonl").to_string_lossy().to_string(),
     };
-    // 加载历史看板（文件不存在则空板）：重启恢复，避免看板失忆
-    let 任务看板 = Arc::new(std::sync::Mutex::new(match tc_task::TaskBoard::加载(&看板路径) {
+    let 任务看板 = Arc::new(Mutex::new(match tc_task::TaskBoard::加载(&看板路径) {
         Ok(看板) => 看板,
         Err(e) => {
             tracing::warn!("任务看板加载失败，使用空看板: {e}");
@@ -99,23 +109,15 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         let mut 看板 = 任务看板.lock().expect("看板锁中毒");
         看板.设置信号总线(装配.信号总线.clone());
     }
-    let mut 数据状态 = hm_http::数据服务状态::新(
-        装配.任务仓库.clone(),
-        装配.迭代日志.clone(),
-        装配.记忆库.clone(),
-        装配.规则库.clone(),
-        装配.事件总线.clone(),
-        装配.图谱.clone(),
-        装配.心智地图.clone(),
-        装配.语境.clone(),
+
+    // 开发服务状态（hm-agent）：任务看板 + 开发执行台 + 看板驱动台 + 记忆库
+    let mut 开发状态 = hm_agent::开发服务状态::新(
         任务看板.clone(),
-        装配.日志记录器.clone(),
-        Arc::new(hm_http::开发执行台::新()),
-        Arc::new(hm_http::看板驱动台::新()),
-        llm池.clone(),
-        鉴权令牌,
-    );
-    数据状态.扫描根 = Arc::new(Mutex::new(config.app.scan_root.clone()));
+        Arc::new(hm_agent::开发执行台::新()),
+        Arc::new(hm_agent::看板驱动台::新()),
+        装配.记忆库.clone(),
+    )
+    .设置扫描根(config.app.scan_root.clone());
 
     // 自主开发智能体上线：run_dev_agent=true 时装配到 HTTP 受理台（默认关闭）。
     // LLM key 缺失仅告警，受理台保持未上线（受理接口 503），不影响数据服务；
@@ -125,7 +127,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         let 执行视图: Option<Arc<dyn hm_content_contract::工具对话器>> =
             llm池.as_ref().map(|池| 池.绑定视图("执行") as Arc<dyn hm_content_contract::工具对话器>);
         match 装配开发受理台(
-            &数据状态.开发执行台,
+            &开发状态.开发执行台,
             &config.app.dev_workspace,
             config.app.dev_max_rounds,
             config.app.executor_timeout_secs,
@@ -135,16 +137,22 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
             Ok(()) => {
                 tracing::info!("自主开发智能体已上线（HTTP 受理模式，工作区 {}）", config.app.dev_workspace);
                 // 设置工作区重装配回调：外部可通过 POST /api/dev/workspace 切换工作区
-                let 执行台 = 数据状态.开发执行台.clone();
+                let 执行台 = 开发状态.开发执行台.clone();
                 let 最大轮数 = config.app.dev_max_rounds;
                 let 超时秒 = config.app.executor_timeout_secs;
                 let 输出上限 = config.app.executor_max_output_bytes;
                 let 重装配视图 = 执行视图.clone();
-                数据状态.重装配工作区 = Some(Arc::new(move |新工作区: &str| {
+                开发状态.重装配工作区 = Some(Arc::new(move |新工作区: &str| {
                     装配开发受理台(&执行台, 新工作区, 最大轮数, 超时秒, 输出上限, 重装配视图.clone())
                 }));
                 if !config.app.dev_task.trim().is_empty() {
-                    match hm_http::受理开发任务(&数据状态, config.app.dev_task.clone()) {
+                    let 依赖 = hm_agent::受理依赖 {
+                        看板驱动台: &开发状态.看板驱动台,
+                        任务看板: &开发状态.任务看板,
+                        道祖接待: 开发状态.道祖接待.as_ref(),
+                        记忆库: &开发状态.记忆库,
+                    };
+                    match hm_agent::受理开发任务(依赖, config.app.dev_task.clone()) {
                         Ok(id) => tracing::info!("已自动受理初始任务 id={id}：{}", config.app.dev_task),
                         Err(失败) => tracing::warn!("初始任务受理失败（不影响启动）: {失败:?}"),
                     }
@@ -221,7 +229,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     None => String::new(),
                 };
                 match 装配看板驱动台(
-                    &数据状态.看板驱动台,
+                    &开发状态.看板驱动台,
                     任务看板.clone(),
                     &驱动上下文路径,
                     &config.app.dev_workspace,
@@ -237,7 +245,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 }
                 // 看板驱动台重装配回调：顶栏切换项目工作区时，与开发受理台同步重装配，
                 // 确保五层协作驱动器的执行器工作区与扫描根一致（产出直接落项目根）
-                let 看板驱动台克隆 = 数据状态.看板驱动台.clone();
+                let 看板驱动台克隆 = 开发状态.看板驱动台.clone();
                 let 看板克隆 = 任务看板.clone();
                 let 上下文路径克隆 = 驱动上下文路径.clone();
                 let 会话目录克隆 = 驱动会话目录.clone();
@@ -246,7 +254,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 let 最大轮数 = config.app.dev_max_rounds;
                 let 超时秒 = config.app.executor_timeout_secs;
                 let 输出上限 = config.app.executor_max_output_bytes;
-                数据状态.重装配看板驱动 = Some(Arc::new(move |新工作区: &str| {
+                开发状态.重装配看板驱动 = Some(Arc::new(move |新工作区: &str| {
                     装配看板驱动台(
                         &看板驱动台克隆,
                         看板克隆.clone(),
@@ -275,7 +283,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                             let 接待 = 接待
                                 .装配认知(认知注入.clone())
                                 .装配流式(道祖视图);
-                            数据状态.道祖接待 = Some(Arc::new(Mutex::new(接待)));
+                            开发状态.道祖接待 = Some(Arc::new(Mutex::new(接待)));
                             tracing::info!("道祖接待已上线（主控澄清模式，认知装配已对齐，流式对话已开启）");
                         }
                         Err(e) => tracing::warn!("道祖接待装配失败，对话澄清不可用（不影响启动）: {e}"),
@@ -291,7 +299,7 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                     config.app.executor_timeout_secs,
                     config.app.executor_max_output_bytes,
                 ));
-                数据状态.扫尾执行者 = Some(Arc::new(hm_http::扫尾执行者::新(
+                开发状态.扫尾执行者 = Some(Arc::new(hm_agent::扫尾执行者::新(
                     扫尾执行器,
                     任务看板.clone(),
                 )));
@@ -303,10 +311,21 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
 
     // 对外契约（独立文件配置化）：前端/客户端消费面参数；增删前端只改 对外契约.toml，不改后端代码
     let 契约 = hm_config::对外契约配置();
-    数据状态 = 数据状态.设置并发上限(契约.对外.sse_max);
+    let 开发状态 = 开发状态.设置并发上限(契约.对外.sse_max);
+
+    // 路由片段注册：五引擎只读 API 与看板/开发端接口由各自拥有方提供，
+    // 数据服务仅作合并、鉴权与静态托管（依赖方向：各府 → 数据服务）
+    let 片段 = vec![
+        tc_task::路由片段(装配.任务仓库.clone()),
+        lj_iteration::路由片段(装配.迭代日志.clone()),
+        qk_memory::路由片段(装配.记忆库.clone()),
+        dy_rule::路由片段(装配.规则库.clone()),
+        hd_event::路由片段(装配.事件总线.clone()),
+        hm_agent::路由片段(开发状态),
+    ];
 
     // 启动数据服务：纯 API（独立线程，失败仅告警不影响主程序）
-    hm_http::启动数据服务(数据状态, config.http.bind.clone(), config.http.port, 契约.对外);
+    hm_http::启动数据服务(数据状态, 片段, config.http.bind.clone(), config.http.port, 契约.对外);
 
     // 启动自检仅在显式开启时运行（默认关闭，避免污染真实业务数据）；
     // 验证失败仅告警并继续启动，不得因失败导致程序退出

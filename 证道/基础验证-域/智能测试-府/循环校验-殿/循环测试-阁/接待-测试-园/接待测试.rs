@@ -4,11 +4,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use hm_agent::{道祖接待, 会话阶段, 认知注入};
+    use hm_agent::{道祖接待, 会话阶段};
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
     use hm_contract::Component;
     use hm_error::{Error, Result};
-    use hm_cognition::{上下文库, 模块, 图谱, 维度, 心智地图};
+    use hm_cognition::{上下文库, 模块, 图谱, 维度, 心智地图, 认知注入};
 
     /// 模拟对话器：按预设序列依次返回模型响应，验证道祖接待契约可插拔
     struct 模拟对话器 {

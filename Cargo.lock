@@ -385,6 +385,7 @@ checksum = "9bda8e21c04aca2ae33ffc2fd8c23134f3cac46db123ba97bd9d3f3b8a4a85e1"
 name = "dy-rule"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "hm-contract",
  "hm-domain-contract",
  "hm-error",
@@ -614,6 +615,7 @@ dependencies = [
 name = "hd-event"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "hm-contract",
  "hm-domain-contract",
  "hm-error",
@@ -627,14 +629,20 @@ dependencies = [
 name = "hm-agent"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
+ "axum",
+ "futures-core",
+ "hm-agui",
  "hm-cognition",
  "hm-content-contract",
  "hm-contract",
+ "hm-domain-contract",
  "hm-error",
  "hm-execute-contract",
  "serde",
  "serde_json",
  "tc-task",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -652,6 +660,8 @@ name = "hm-bootstrap"
 version = "0.1.0"
 dependencies = [
  "ctrlc",
+ "dy-rule",
+ "hd-event",
  "hm-agent",
  "hm-cognition",
  "hm-config",
@@ -664,6 +674,8 @@ dependencies = [
  "hm-http",
  "hm-linkage",
  "hm-log",
+ "lj-iteration",
+ "qk-memory",
  "tc-task",
  "tracing",
 ]
@@ -672,6 +684,7 @@ dependencies = [
 name = "hm-cognition"
 version = "0.1.0"
 dependencies = [
+ "hm-content-contract",
  "hm-contract",
  "hm-error",
  "serde",
@@ -733,6 +746,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hm-docgen"
+version = "0.1.0"
+dependencies = [
+ "hm-content",
+ "hm-content-contract",
+ "hm-contract",
+ "hm-error",
+ "hm-symext",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hm-domain-contract"
 version = "0.1.0"
 dependencies = [
@@ -773,10 +799,7 @@ version = "0.1.0"
 dependencies = [
  "async-stream",
  "axum",
- "dy-rule",
  "futures-core",
- "hd-event",
- "hm-agent",
  "hm-agui",
  "hm-cognition",
  "hm-config",
@@ -787,11 +810,8 @@ dependencies = [
  "hm-error",
  "hm-execute-contract",
  "hm-log",
- "lj-iteration",
- "qk-memory",
  "serde",
  "serde_json",
- "tc-task",
  "tokio",
  "tower-http",
  "tracing",
@@ -1200,6 +1220,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 name = "lj-iteration"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "hm-contract",
  "hm-domain-contract",
  "hm-error",
@@ -1508,6 +1529,7 @@ dependencies = [
 name = "qk-memory"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "hm-contract",
  "hm-domain-contract",
  "hm-error",
@@ -2621,6 +2643,7 @@ dependencies = [
 name = "tc-task"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "hm-cognition",
  "hm-contract",
  "hm-domain-contract",

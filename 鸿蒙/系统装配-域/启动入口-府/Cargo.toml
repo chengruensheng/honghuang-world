@@ -25,5 +25,9 @@ hm-execute = { path = "../../基础能力-域/执行工具-府" }
 hm-execute-contract = { path = "../../基础契约-域/执行契约-府" }
 hm-cognition = { path = "../../基础能力-域/项目认知-府" }
 tc-task = { path = "../../../太初/任务管理-域/任务核心-府" }
+lj-iteration = { path = "../../../量劫/迭代管理-域/迭代核心-府" }
+qk-memory = { path = "../../../乾坤/记忆管理-域/记忆核心-府" }
+dy-rule = { path = "../../../道韵/规则管理-域/规则核心-府" }
+hd-event = { path = "../../../混沌/事件管理-域/事件核心-府" }
 tracing = { workspace = true }
 ctrlc = "3"

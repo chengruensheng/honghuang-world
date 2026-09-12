@@ -1,7 +1,8 @@
 use super::*;
 
-    /// 构造完整装配状态（五行相生桥接已串联），用于看板驱动五行闭环测试
-    fn 构造装配状态() -> 数据服务状态 {
+    /// 构造完整装配状态（五行相生桥接已串联），用于看板驱动五行闭环测试；
+    /// 同时返回装配体迭代日志句柄（验证 木生火 是否开启迭代）
+    fn 构造装配状态() -> (开发服务状态<Memory>, Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>>) {
         let 装配 = hm_linkage::五行装配::装配();
         let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
         let 任务看板 = Arc::new(Mutex::new(tc_task::TaskBoard::新建(
@@ -11,27 +12,18 @@ use super::*;
             let mut 看板 = 任务看板.lock().expect("看板锁中毒");
             看板.设置信号总线(装配.信号总线.clone());
         }
-        数据服务状态::新(
-            装配.任务仓库.clone(),
-            装配.迭代日志.clone(),
-            装配.记忆库.clone(),
-            装配.规则库.clone(),
-            装配.事件总线.clone(),
-            装配.图谱.clone(),
-            装配.心智地图.clone(),
-            装配.语境.clone(),
+        let 状态 = 开发服务状态::新(
             任务看板,
-            装配.日志记录器.clone(),
             Arc::new(开发执行台::新()),
-            Arc::new(hm_http::看板驱动台::新()),
-            None,
-            None,
-        )
+            Arc::new(hm_agent::看板驱动台::新()),
+            装配.记忆库.clone(),
+        );
+        (状态, 装配.迭代日志.clone())
     }
 
     #[tokio::test]
     async fn 看板_发布任务触发任务推进信号() {
-        let 状态 = 构造装配状态();
+        let (状态, _迭代日志) = 构造装配状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "信号测试".into(),
             description: "验证发布信号".into(),
@@ -48,7 +40,7 @@ use super::*;
 
     #[tokio::test]
     async fn 看板_任务完成触发木生火开启迭代() {
-        let 状态 = 构造装配状态();
+        let (状态, 迭代日志) = 构造装配状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "闭环测试".into(),
             description: "验证木生火".into(),
@@ -112,8 +104,8 @@ use super::*;
             next_status: "清理完成".into(),
         })).await.expect("太乙金仙提交应成功");
 
-        let 迭代日志 = 状态.迭代日志.lock().expect("迭代日志锁中毒");
-        let 迭代列表 = 迭代日志.全部();
+        let 迭代日志守卫 = 迭代日志.lock().expect("迭代日志锁中毒");
+        let 迭代列表 = 迭代日志守卫.全部();
         assert!(!迭代列表.is_empty(), "木生火应已开启迭代");
         assert!(迭代列表.iter().any(|it| it.变更说明.contains("闭环测试")),
             "迭代变更说明应包含任务标题");
@@ -121,7 +113,7 @@ use super::*;
 
     #[tokio::test]
     async fn 看板_清理一键接口完成待清理任务() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "清理测试".into(),
             description: "验证一键清理".into(),
@@ -180,7 +172,7 @@ use super::*;
 
     #[tokio::test]
     async fn 看板_清理接口对非待清理状态返回错误() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "不可清理".into(),
             description: "验证错误清理".into(),

@@ -58,8 +58,32 @@ mod tests {
             for 连接 in 监听.incoming() {
                 if let Ok(mut 流) = 连接 {
                     use std::io::{Read, Write};
-                    let mut 缓冲 = [0u8; 4096];
-                    let _ = 流.read(&mut 缓冲);
+                    // 循环读满：TCP 可能分片，需等请求行+头部+Content-Length 体全部到达；
+                    // 若只读一次就回包+关连接，读不全时会触发 RST，令 ureq 偶发报错（测试 flaky 根因）。
+                    let mut 缓冲: Vec<u8> = Vec::new();
+                    let mut 临时 = [0u8; 4096];
+                    loop {
+                        let n = 流.read(&mut 临时).unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        缓冲.extend_from_slice(&临时[..n]);
+                        let 文本 = String::from_utf8_lossy(&缓冲);
+                        if let Some(头尾) = 文本.find("\r\n\r\n") {
+                            let 头 = &文本[..头尾];
+                            let clen = 头
+                                .lines()
+                                .find_map(|l| {
+                                    let 低 = l.to_ascii_lowercase();
+                                    低.strip_prefix("content-length:")
+                                        .and_then(|v| v.trim().parse::<usize>().ok())
+                                })
+                                .unwrap_or(0);
+                            if 缓冲.len() >= 头尾 + 4 + clen {
+                                break;
+                            }
+                        }
+                    }
                     let 状态文本 = match 状态码 {
                         200 => "200 OK",
                         429 => "429 Too Many Requests",

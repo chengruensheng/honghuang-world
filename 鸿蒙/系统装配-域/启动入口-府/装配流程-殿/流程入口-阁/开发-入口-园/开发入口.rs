@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
-use hm_agent::{智能体, 五层协作驱动器, 认知注入};
-use hm_cognition::ContextManager;
+use hm_agent::{智能体, 五层协作驱动器};
+use hm_cognition::{ContextManager, 认知注入};
 use hm_content_contract::工具对话器;
 use hm_execute::本地执行器;
 use hm_execute_contract::开发事件;
-use hm_http::{开发执行台, 看板驱动台, 驱动过程事件};
+use hm_agent::{开发执行台, 看板驱动台, 驱动过程事件};
 use tc_task::TaskBoard;
 
 /// 装配智能体到 HTTP 受理台（仅在配置显式开启 run_dev_agent 时调用）。

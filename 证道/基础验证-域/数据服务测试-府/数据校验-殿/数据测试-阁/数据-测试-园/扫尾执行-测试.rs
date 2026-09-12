@@ -9,13 +9,13 @@ mod tests {
     use hm_error::Result;
     use hm_execute::本地执行器;
     use hm_execute_contract::执行器;
-    use hm_http::{数据服务状态, 看板驱动台, 看板扫尾检查, 开发执行台, 看板清理, 看板澄清, 澄清请求};
+    use hm_agent::{
+        开发服务状态, 看板驱动台, 开发执行台,
+        看板扫尾检查, 看板清理, 看板澄清, 澄清请求,
+    };
     use tc_task::{AgentRole, CodeChange, ImplementationDoc, SelfCheckResult, Task, TaskBoard, TaskStatus, TaskStore, 扫尾记录};
-    use lj_iteration::{Iteration, IterationLog, Version};
+    use hm_domain_contract::记忆库契约;
     use qk_memory::{Memory, MemoryStore};
-    use dy_rule::{Rule, RuleSet};
-    use hd_event::{Event, EventBus};
-    use hm_domain_contract::{迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约, 任务仓库契约};
 
     static 看板序号: AtomicU64 = AtomicU64::new(0);
 
@@ -38,23 +38,20 @@ mod tests {
         fn 精确编辑(&self, _路径: &str, _旧: &str, _新: &str) -> Result<String> { Ok("替换成功（1 处）".to_string()) }
     }
 
-    /// 构造 数据服务状态 + 共享看板（仿照驱动流转-测试.rs 装配模式）
-    fn 基础状态(看板: &Arc<Mutex<TaskBoard>>) -> 数据服务状态 {
-        let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
-        let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = Arc::new(Mutex::new(IterationLog::new()));
+    /// 构造开发服务状态（hm-agent）：任务看板 + 开发执行台 + 看板驱动台 + 记忆库
+    fn 基础状态(看板: &Arc<Mutex<TaskBoard>>) -> 开发服务状态<Memory> {
         let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = Arc::new(Mutex::new(MemoryStore::new()));
-        let 规则库: Arc<Mutex<dyn 规则库契约<Rule>>> = Arc::new(Mutex::new(RuleSet::new()));
-        let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = Arc::new(Mutex::new(EventBus::new()));
-        let 图谱 = Arc::new(Mutex::new(hm_cognition::图谱::新()));
-        let 心智地图 = Arc::new(Mutex::new(hm_cognition::心智地图::新()));
-        let 语境 = Arc::new(Mutex::new(hm_cognition::过程上下文::新()));
-        let 日志记录器 = Arc::new(Mutex::new(hm_log::运行日志记录器::new()));
-        数据服务状态::新(任务仓库, 迭代日志, 记忆库, 规则库, 事件总线, 图谱, 心智地图, 语境, 看板.clone(), 日志记录器, Arc::new(开发执行台::新()), Arc::new(看板驱动台::新()), None, None)
+        开发服务状态::新(
+            看板.clone(),
+            Arc::new(开发执行台::新()),
+            Arc::new(看板驱动台::新()),
+            记忆库,
+        )
     }
 
     /// 构造带 mock 执行器（可配快照）扫尾执行者的状态
-    fn 带扫尾(状态: 数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 快照: &str) -> 数据服务状态 {
-        let 执行者 = hm_http::扫尾执行者::新(Arc::new(模拟执行器 { 快照: 快照.into() }), 看板.clone());
+    fn 带扫尾(状态: 开发服务状态<Memory>, 看板: &Arc<Mutex<TaskBoard>>, 快照: &str) -> 开发服务状态<Memory> {
+        let 执行者 = hm_agent::扫尾执行者::新(Arc::new(模拟执行器 { 快照: 快照.into() }), 看板.clone());
         状态.设置扫尾执行者(Arc::new(执行者))
     }
 
@@ -153,7 +150,7 @@ mod tests {
         let 看板 = Arc::new(Mutex::new(TaskBoard::新建(format!(
             "{}/洪荒扫尾_真实_{序号}.jsonl", std::env::temp_dir().to_string_lossy()
         ))));
-        let 状态 = 基础状态(&看板).设置扫尾执行者(Arc::new(hm_http::扫尾执行者::新(
+        let 状态 = 基础状态(&看板).设置扫尾执行者(Arc::new(hm_agent::扫尾执行者::新(
             Arc::new(本地执行器::new_with_limits(临时.to_string_lossy().as_ref(), 5, 1024)),
             看板.clone(),
         )));

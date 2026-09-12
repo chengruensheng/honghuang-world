@@ -1,0 +1,29 @@
+//! 对外接口-殿/路由组装-阁/规则-接口-园：规则 HTTP 只读接口。
+//!
+//! 路由片段由启动入口收集后注入数据服务（数据服务不再反向依赖本引擎），
+//! JSON 结构与原数据服务实现逐字一致，前端零漂移。
+
+use std::sync::{Arc, Mutex};
+use axum::extract::State;
+use axum::routing::get;
+use axum::{Json, Router};
+use hm_domain_contract::规则库契约;
+use crate::Rule;
+
+/// 规则接口状态：规则库契约句柄（路由片段与测试共用）
+pub type 规则接口状态 = Arc<Mutex<dyn 规则库契约<Rule>>>;
+
+/// 构建规则接口路由片段：GET /api/rules
+pub fn 路由片段(规则库: 规则接口状态) -> Router {
+    Router::new()
+        .route("/api/rules", get(规则列表))
+        .with_state(规则库)
+}
+
+/// GET /api/rules：列出全部规则
+pub async fn 规则列表(状态: State<规则接口状态>) -> Json<Vec<Rule>> {
+    let 守卫 = 状态.lock().expect("引擎锁中毒");
+    let 数据: Vec<Rule> = 守卫.全部().into_iter().cloned().collect();
+    drop(守卫);
+    Json(数据)
+}

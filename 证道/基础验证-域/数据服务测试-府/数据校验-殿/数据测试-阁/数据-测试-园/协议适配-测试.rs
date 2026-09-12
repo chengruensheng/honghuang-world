@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use hm_http::{协议适配器, 思考链过滤器, 驱动过程事件, 驱动阶段事件};
+    use hm_agent::{协议适配器, 思考链过滤器, 驱动过程事件, 驱动阶段事件};
     use serde_json::json;
 
     /// 断言某 AG-UI 事件序列化结果与预期 JSON 逐字节一致

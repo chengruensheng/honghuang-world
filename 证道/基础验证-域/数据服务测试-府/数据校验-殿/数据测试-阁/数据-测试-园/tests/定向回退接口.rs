@@ -1,10 +1,10 @@
 use axum::{Json, extract::{Path, State}};
-use hm_http::{数据服务状态, 看板发布, 看板查询, 看板定向回退, 看板影响分析, 定向回退请求, 恢复方式, 发布任务请求};
+use hm_agent::{开发服务状态, 看板发布, 看板查询, 看板定向回退, 看板影响分析, 定向回退请求, 恢复方式, 发布任务请求};
 use tc_task::{DesignDoc, ImplementationDoc, TaskStatus};
 
 use super::*;
 
-async fn 发布(状态: &数据服务状态) -> u64 {
+async fn 发布(状态: &开发服务状态<Memory>) -> u64 {
     let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
         title: "回退接口任务".into(),
         description: "验证定向回退接口".into(),
@@ -18,7 +18,7 @@ async fn 发布(状态: &数据服务状态) -> u64 {
 }
 
 /// 给任务注入设计/实现文档（追溯器自动判断用）
-fn 注入文档(状态: &数据服务状态, id: u64) {
+fn 注入文档(状态: &开发服务状态<Memory>, id: u64) {
     let mut board = 状态.任务看板.lock().expect("看板锁中毒");
     let 标识 = board.查询(id).expect("任务").任务标识.任务id;
     board
@@ -42,7 +42,7 @@ fn 注入文档(状态: &数据服务状态, id: u64) {
 /// 测试1：手动回退 API——提供建议根源层级=土 → 状态=待修复，回退记录完整
 #[tokio::test]
 async fn rollback接口_建议土层级直接回退() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let id = 发布(&状态).await;
 
     let Json(响应) = 看板定向回退(
@@ -73,7 +73,7 @@ async fn rollback接口_建议土层级直接回退() {
 /// 测试2：手动回退 API——建议根源层级=火 → 状态=待圣人设计
 #[tokio::test]
 async fn rollback接口_建议火层级回退到设计() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let id = 发布(&状态).await;
 
     let Json(响应) = 看板定向回退(
@@ -100,7 +100,7 @@ async fn rollback接口_建议火层级回退到设计() {
 /// 测试3：未提供建议层级 → 追溯器自动判断（实现越界设计清单 → 根源=土）
 #[tokio::test]
 async fn rollback接口_无建议自动追溯() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let id = 发布(&状态).await;
     注入文档(&状态, id);
 
@@ -127,7 +127,7 @@ async fn rollback接口_无建议自动追溯() {
 /// 测试4：任务不存在 → 404
 #[tokio::test]
 async fn rollback接口_任务不存在404() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let 结果 = 看板定向回退(
         State(状态),
         Path(999),
@@ -144,7 +144,7 @@ async fn rollback接口_任务不存在404() {
 /// 测试5：手动回退联动召回——受影响依赖任务被置为「待重新*」并打召回标记
 #[tokio::test]
 async fn rollback接口_触发连带召回() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let 基础id = 发布(&状态).await;
     let 依赖id = 发布(&状态).await;
     {
@@ -184,7 +184,7 @@ async fn rollback接口_触发连带召回() {
 /// 测试6：恢复方式=仅回退——只回退当前任务，不召回下游
 #[tokio::test]
 async fn rollback接口_仅回退不召回() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let 基础id = 发布(&状态).await;
     let 依赖id = 发布(&状态).await;
     {
@@ -224,7 +224,7 @@ async fn rollback接口_仅回退不召回() {
 /// 测试7：恢复方式=仅标记——只写回退记录，不改任务状态与当前层级
 #[tokio::test]
 async fn rollback接口_仅标记不改状态() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let id = 发布(&状态).await;
     let 初始状态 = 状态.任务看板.lock().expect("看板锁中毒").查询(id).expect("任务").status;
 
@@ -257,7 +257,7 @@ async fn rollback接口_仅标记不改状态() {
 /// 测试8：恢复方式=取消——不做任何变更
 #[tokio::test]
 async fn rollback接口_取消不变更() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let id = 发布(&状态).await;
     let 初始状态 = 状态.任务看板.lock().expect("看板锁中毒").查询(id).expect("任务").status;
 
@@ -288,7 +288,7 @@ async fn rollback接口_取消不变更() {
 /// 测试9：影响分析接口——只读预览会被连带召回的任务，不改变任何状态
 #[tokio::test]
 async fn 影响分析接口_预览受影响任务() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     let 基础id = 发布(&状态).await;
     let 依赖id = 发布(&状态).await;
     {

@@ -1,8 +1,8 @@
 use super::*;
 
-    /// 构造带 LLM 池的状态（复用 构造状态 的五引擎装配，仅覆写池字段）
+    /// 构造带 LLM 池的状态（复用 构造数据状态，仅覆写池字段）
     fn 构造池状态(池: Arc<LLM池>) -> 数据服务状态 {
-        let mut 状态 = 构造状态();
+        let mut 状态 = 构造数据状态();
         状态.llm池 = Some(池);
         状态
     }
@@ -24,7 +24,7 @@ use super::*;
 
     #[tokio::test]
     async fn 模型接口_未装配返回未配置() {
-        let 状态 = 构造状态();
+        let 状态 = 构造数据状态();
         let Json(响应) = 模型状态接口(State(状态)).await;
         assert!(!响应.配置);
         assert!(响应.供应商.is_empty());
@@ -162,7 +162,7 @@ use super::*;
 
     #[tokio::test]
     async fn 模型接口_探测_目录命中() {
-        let 状态 = 构造状态();
+        let 状态 = 构造数据状态();
         let Json(响应) = 模型探测接口(State(状态), Json(LLM探测请求 {
             供应商: Some("deepseek".into()),
             地址: None,
@@ -204,7 +204,7 @@ use super::*;
                 }
             }
         });
-        let 状态 = 构造状态();
+        let 状态 = 构造数据状态();
         let Json(响应) = 模型探测接口(State(状态), Json(LLM探测请求 {
             供应商: None,
             地址: Some(format!("http://{地址}")),

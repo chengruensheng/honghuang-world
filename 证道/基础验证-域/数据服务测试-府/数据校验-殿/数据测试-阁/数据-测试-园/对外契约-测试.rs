@@ -4,32 +4,32 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use axum::body::Body;
     use axum::http::{header, Method, Request, StatusCode};
-    use hm_config::对外配置;
+    use axum::Router;
+    use hm_agent::{开发服务状态, 开发执行台, 看板驱动台};
     use hm_cognition::{图谱, 心智地图, 过程上下文};
-    use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
-    use hm_http::{构建路由, 开发执行台, 看板驱动台, 数据服务状态};
+    use hm_config::对外配置;
+    use hm_domain_contract::{任务仓库契约, 记忆库契约};
+    use hm_http::{构建路由, 数据服务状态};
     use hm_log::运行日志记录器;
     use http_body_util::BodyExt;
-    use lj_iteration::{Iteration, IterationLog, Version};
     use qk_memory::{Memory, MemoryStore};
     use tc_task::{Task, TaskStatus, TaskStore};
     use tower::ServiceExt;
-    use dy_rule::{Rule, RuleSet};
-    use hd_event::{Event, EventBus};
 
     static 用例序号: AtomicU64 = AtomicU64::new(0);
 
-    /// 构造最小可用的 数据服务状态（看板路径带原子序号，避免并行用例互相踩踏）
-    fn 构造状态() -> 数据服务状态 {
-        let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
-        let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = Arc::new(Mutex::new(IterationLog::new()));
-        let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = Arc::new(Mutex::new(MemoryStore::new()));
-        let 规则库: Arc<Mutex<dyn 规则库契约<Rule>>> = Arc::new(Mutex::new(RuleSet::new()));
-        let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = Arc::new(Mutex::new(EventBus::new()));
+    /// 构造最小可用的 数据服务状态（hm-http）：认知三态 + 日志记录器 + LLM 池 + 鉴权令牌
+    fn 构造数据状态() -> 数据服务状态 {
         let 图谱 = Arc::new(Mutex::new(图谱::新()));
         let 心智地图 = Arc::new(Mutex::new(心智地图::新()));
         let 语境 = Arc::new(Mutex::new(过程上下文::新()));
         let 日志记录器 = Arc::new(Mutex::new(运行日志记录器::new()));
+        数据服务状态::新(图谱, 心智地图, 语境, 日志记录器, None, None)
+    }
+
+    /// 构造开发服务状态（hm-agent）：任务看板 + 开发执行台 + 看板驱动台 + 记忆库
+    fn 构造开发状态() -> 开发服务状态<Memory> {
+        let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = Arc::new(Mutex::new(MemoryStore::new()));
         let 序号 = 用例序号.fetch_add(1, Ordering::SeqCst);
         let 任务看板 = Arc::new(Mutex::new(tc_task::TaskBoard::新建(
             std::env::temp_dir()
@@ -37,12 +37,18 @@ mod tests {
                 .to_string_lossy()
                 .to_string(),
         )));
-        let 开发执行台 = Arc::new(开发执行台::新());
-        let 看板驱动台 = Arc::new(看板驱动台::新());
-        数据服务状态::新(
-            任务仓库, 迭代日志, 记忆库, 规则库, 事件总线, 图谱, 心智地图, 语境, 任务看板,
-            日志记录器, 开发执行台, 看板驱动台, None, None,
+        开发服务状态::新(
+            任务看板,
+            Arc::new(开发执行台::新()),
+            Arc::new(看板驱动台::新()),
+            记忆库,
         )
+    }
+
+    /// 构造被测路由：任务片段由任务核心府提供（数据服务仅作合并与中间件）
+    fn 构造路由(对外: 对外配置) -> Router {
+        let 仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
+        构建路由(构造数据状态(), 对外, vec![tc_task::路由片段(仓库)])
     }
 
     /// 构造一个 GET 请求（可带请求头）
@@ -63,7 +69,7 @@ mod tests {
     /// 1. 静态目录为空 ⇒ 纯 API：未知路径 404（未托管）
     #[tokio::test]
     async fn 对外契约_静态目录为空纯api未知路径404() {
-        let 路由 = 构建路由(构造状态(), 对外配置::default());
+        let 路由 = 构造路由(对外配置::default());
         let 响应 = 路由.oneshot(构造请求("/nope", None)).await.expect("请求应送达");
         assert_eq!(响应.status(), StatusCode::NOT_FOUND, "未声明静态目录时未知路径应 404");
     }
@@ -81,7 +87,7 @@ mod tests {
             ..对外配置::default()
         };
         // “/” 不是任何 API 路由，属未知路径，应回落到静态托管并返回 index.html
-        let 路由 = 构建路由(构造状态(), 对外);
+        let 路由 = 构造路由(对外);
         let 响应 = 路由.oneshot(构造请求("/", None)).await.expect("请求应送达");
         assert_eq!(响应.status(), StatusCode::OK, "声明静态目录后未知路径应由静态服务返回");
         let 体 = 读体(响应).await;
@@ -93,7 +99,7 @@ mod tests {
     /// 3. 来源白名单为空 ⇒ 不启用 CORS，响应无 access-control-allow-origin
     #[tokio::test]
     async fn 对外契约_来源白名单为空无跨源头() {
-        let 路由 = 构建路由(构造状态(), 对外配置::default());
+        let 路由 = 构造路由(对外配置::default());
         let 响应 = 路由
             .oneshot(构造请求("/api/tasks", Some("http://localhost:1234")))
             .await
@@ -111,7 +117,7 @@ mod tests {
             cors_origins: vec!["http://localhost:1234".to_string()],
             ..对外配置::default()
         };
-        let 路由 = 构建路由(构造状态(), 对外);
+        let 路由 = 构造路由(对外);
         let 响应 = 路由
             .oneshot(构造请求("/api/tasks", Some("http://localhost:1234")))
             .await
@@ -129,9 +135,9 @@ mod tests {
     /// 故「不限制」以 `Semaphore::MAX_PERMITS` 表达，可用许可数即该上限。
     #[test]
     fn 对外契约_并发上限零表示不限制() {
-        assert_eq!(构造状态().设置并发上限(10).sse信号量.available_permits(), 10);
+        assert_eq!(构造开发状态().设置并发上限(10).sse信号量.available_permits(), 10);
 
-        let 不限 = 构造状态().设置并发上限(0);
+        let 不限 = 构造开发状态().设置并发上限(0);
         assert_eq!(
             不限.sse信号量.available_permits(),
             tokio::sync::Semaphore::MAX_PERMITS,

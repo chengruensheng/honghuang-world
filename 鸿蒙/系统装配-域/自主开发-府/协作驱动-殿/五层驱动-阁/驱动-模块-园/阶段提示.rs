@@ -1,0 +1,138 @@
+use uuid::Uuid;
+use hm_cognition::AgentRole;
+use tc_task::{Task, TaskStatus, DesignDoc, ImplementationDoc};
+
+/// 任务快照：短锁内复制所需字段，避免执行期间持锁
+pub(crate) struct 任务快照 {
+    pub(crate) id: u64,
+    /// 任务唯一标识（UUID，定向回退/召回按标识追溯）
+    pub(crate) uuid: Uuid,
+    pub(crate) 标题: String,
+    pub(crate) 描述: String,
+    pub(crate) 状态: TaskStatus,
+    pub(crate) 需求: Option<String>,
+    pub(crate) 设计: Option<String>,
+    pub(crate) 实现: Option<String>,
+    pub(crate) 验收: Option<String>,
+    pub(crate) 终审: Option<String>,
+    /// 结构化阶段文档（供错误追溯器纯规则判定）
+    pub(crate) 设计对象: Option<DesignDoc>,
+    pub(crate) 实现对象: Option<ImplementationDoc>,
+    /// 任务级临时规则（流态第三态：承接时注入，任务终态后清除）
+    pub(crate) 临时规则: Vec<String>,
+}
+
+pub(crate) fn 任务快照(t: &Task) -> 任务快照 {
+    任务快照 {
+        id: t.id,
+        uuid: t.任务标识.任务id,
+        标题: t.title.clone(),
+        描述: t.description.clone(),
+        状态: t.status,
+        需求: t.需求文档.as_ref().map(|d| serde_json::to_string_pretty(d).unwrap_or_default()),
+        设计: t.设计文档.as_ref().map(|d| serde_json::to_string_pretty(d).unwrap_or_default()),
+        实现: t.实现文档.as_ref().map(|d| serde_json::to_string_pretty(d).unwrap_or_default()),
+        验收: t.验收文档.as_ref().map(|d| serde_json::to_string_pretty(d).unwrap_or_default()),
+        终审: t.终审文档.as_ref().map(|d| serde_json::to_string_pretty(d).unwrap_or_default()),
+        设计对象: t.设计文档.clone(),
+        实现对象: t.实现文档.clone(),
+        临时规则: t.临时规则.clone(),
+    }
+}
+
+/// 可承接状态集合（与流转逻辑-园的状态归属一致；
+/// 待道祖澄清/道祖澄清中 需道祖人工澄清，不纳入自动驱动候选，避免被误当终审；
+/// 待重新* 为召回暂停态，也不纳入自动驱动候选，待解除召回后恢复）
+pub(crate) fn 可承接(状态: TaskStatus) -> bool {
+    matches!(
+        状态,
+        TaskStatus::待圣人设计
+            | TaskStatus::待大罗金仙实现
+            | TaskStatus::待准圣验收
+            | TaskStatus::待道祖终审
+            | TaskStatus::待人工验收
+            | TaskStatus::待修复
+            | TaskStatus::待清理
+            | TaskStatus::清理中
+    )
+}
+
+/// 组装阶段提示：角色使命 + 任务信息 + 已有文档 + 本阶段输出要求
+pub(crate) fn 阶段提示(角色: &AgentRole, 快照: &任务快照) -> String {
+    let 已有文档 = 拼接已有文档(快照);
+    let 阶段要求 = match 角色 {
+        AgentRole::圣人 => {
+            "你的任务是【设计】。基于需求设计实现方案，输出**严格符合以下类型**的设计文档 JSON。\n\
+             关键约束：边界定义是一个「键=>纯文本字符串」的对象，其每个键的值**只能是字符串**，绝不能是对象或数组；安全区域/修改文件/新建文件是字符串数组；契约/依赖是对象数组，其中各字段的值均为字符串。\n\
+             严格示例（字段名与值类型必须与之一致）：\n\
+             {\"边界定义\":{\"输入边界\":\"字符串\",\"输出边界\":\"字符串\"},\"安全区域\":[],\"契约\":[{\"契约名\":\"\",\"方法\":[{\"名称\":\"\",\"签名\":\"\",\"描述\":\"\"}],\"描述\":\"\"}],\"修改文件\":[],\"新建文件\":[],\"依赖\":[{\"来源模块\":\"\",\"目标模块\":\"\",\"描述\":\"\"}]}"
+        }
+        AgentRole::大罗金仙 => {
+            "你的任务是【实现】。在工作区实际实现设计（可用读文件/写文件/运行命令/搜索内容/精确编辑等工具），\
+             改完必须运行 cargo build 与 cargo test 验证。完成后输出实现文档 JSON：\
+             {\"代码变更\":[{\"文件路径\":\"\",\"变更类型\":\"\",\"摘要\":\"\"}],\
+             \"自检\":{\"通过\":true,\"边界合规\":true,\"契约合规\":true,\"问题\":[]}}"
+        }
+        AgentRole::准圣 => {
+            "你的任务是【验收】。逐项对照需求与实现进行验收（可运行 cargo test 等），\
+             输出验收文档 JSON：\
+             {\"轮次\":[{\"轮次\":1,\"通过\":true,\"边界检查\":true,\"契约检查\":true,\"安全检查\":true,\"事实检查\":true,\"完整性检查\":true,\"问题\":[],\"建议\":\"\"}],\
+             \"最终结果\":true}"
+        }
+        AgentRole::道祖 => {
+            if matches!(快照.状态, TaskStatus::待人工验收 | TaskStatus::人工验收中) {
+                "你的任务是【最终审核】。基于终审结论与全部阶段文档，对任务做最终交付审核（默认自动，人工可覆盖）。\
+                 输出审核记录 JSON：\
+                 {\"通过\":true,\"驳回原因\":null,\"评语\":\"\"}。\
+                 通过时「驳回原因」为 null；驳回时「驳回原因」取 需求不清/设计不符/实现错误/测试不足/产出不完整/扩大范围/缩小范围 之一，「评语」写明驳回理由。"
+            } else {
+                "你的任务是【终审】。综合审查需求/设计/实现/验收全部文档，做最终决策。\
+                 输出终审文档 JSON：\
+                 {\"通过\":true,\"需求满足度\":10,\"可维护性\":9,\"代码质量\":9,\"风险评估\":\"\",\"评语\":\"\"}"
+            }
+        }
+        AgentRole::太乙金仙 => {
+            "你的任务是【清理】。对已终审通过的任务做收尾清理：核对产物、归档、移除临时文件。\n\
+             清理纪律（强制，否则清理会被机器核验驳回）：\n\
+             1) 先用「按名找文件」扫描工作区残留临时/备份文件，工具调用必须显式携带模式参数，\
+             形如 {\"模式\":\"**/*.bak\"} 与 {\"模式\":\"**/*.tmp\"}（参数为空会被拒绝，禁止省略）；\n\
+             2) 对每个残留文件调用「删除文件」工具逐一删除，形如 {\"路径\":\"<扫描返回的相对路径>\"}；\n\
+             3) 删除后再用「按名找文件」重新扫描同一模式，确认已无匹配（返回（无匹配））才可宣告完成；\n\
+             4) 若工具调用失败，必须读取错误信息修正后重试，不得在工具失败时直接宣告清理完成（机器会实扫工作区，谎报必被驳回）。\n\
+             输出清理记录 JSON：\n\
+             {\"清理项\":[{\"项\":\"\",\"结果\":\"已清理\"}],\"归档完成\":true}"
+        }
+    };
+    format!(
+        "你是{角色}（{职责}），在「洪荒·世界」项目五层协作中负责本阶段。\n\
+         \n\
+         任务 #{id}：{标题}\n\
+         任务描述：{描述}\n\
+         \n\
+         {已有文档}\n\
+         \n\
+         {阶段要求}\n\
+         请只输出 JSON，不要输出任何解释文字。",
+        角色 = 角色.名称(),
+        职责 = 角色.职责(),
+        id = 快照.id,
+        标题 = 快照.标题,
+        描述 = 快照.描述,
+        已有文档 = 已有文档,
+        阶段要求 = 阶段要求,
+    )
+}
+
+fn 拼接已有文档(快照: &任务快照) -> String {
+    let mut 段 = Vec::new();
+    if let Some(d) = &快照.需求 { 段.push(format!("【需求文档】\n{d}")); }
+    if let Some(d) = &快照.设计 { 段.push(format!("【设计文档】\n{d}")); }
+    if let Some(d) = &快照.实现 { 段.push(format!("【实现文档】\n{d}")); }
+    if let Some(d) = &快照.验收 { 段.push(format!("【验收文档】\n{d}")); }
+    if let Some(d) = &快照.终审 { 段.push(format!("【终审文档】\n{d}")); }
+    if 段.is_empty() {
+        "（暂无已有阶段文档）".to_string()
+    } else {
+        段.join("\n\n")
+    }
+}

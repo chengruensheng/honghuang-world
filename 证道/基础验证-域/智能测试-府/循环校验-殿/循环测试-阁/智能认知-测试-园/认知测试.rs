@@ -2,10 +2,10 @@
 mod tests {
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
-    use hm_agent::{智能体, 五层协作驱动器, 认知注入, 驱动结果};
+    use hm_agent::{智能体, 五层协作驱动器, 驱动结果};
     use hm_contract::Component;
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应, 消息角色 as 契约角色};
-    use hm_cognition::{ContextManager, 上下文库, 模块, 图谱, 三态存储, 维度, 心智地图, 消息角色, 检索源};
+    use hm_cognition::{ContextManager, 上下文库, 模块, 图谱, 三态存储, 维度, 心智地图, 消息角色, 检索源, 认知注入};
     use hm_error::{Error, Result};
     use hm_execute_contract::执行器;
     use tc_task::{AgentRole, Task, TaskBoard, TaskStatus};

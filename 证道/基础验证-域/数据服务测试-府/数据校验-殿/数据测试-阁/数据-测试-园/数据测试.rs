@@ -5,12 +5,16 @@ mod tests {
     use std::time::Duration;
     use axum::{extract::{Path, State}, http::StatusCode, Json};
     use hm_http::{
-        数据服务状态, 任务列表, 查询任务, 创建任务, 创建任务请求, 图谱查询, 格位查询, 日志列表, 记日志, 记日志请求,
-        看板列表, 看板查询, 看板发布, 看板承接, 看板提交, 看板清理, 发布任务请求, 承接任务请求, 提交任务请求,
-        开发执行台, 受理开发任务, 受理失败, 事件记录,
+        数据服务状态, 图谱查询, 格位查询, 日志列表, 记日志, 记日志请求,
         模型状态接口, 模型列表接口, 模型选择接口, LLM选择请求,
         模型模板接口, 模型探测接口, 模型接入接口, LLM探测请求, LLM接入请求,
     };
+    use hm_agent::{
+        开发服务状态, 看板列表, 看板查询, 看板发布, 看板承接, 看板提交, 看板清理,
+        看板筛选参数, 发布任务请求, 承接任务请求, 提交任务请求,
+        开发执行台, 受理依赖, 受理开发任务, 受理失败, 事件记录,
+    };
+    use tc_task::{任务列表, 查询任务, 创建任务, 创建任务请求};
     use hm_content::LLM池;
     use hm_config::{LlmConfig, LlmProvider};
     use hm_contract::Component;
@@ -27,23 +31,33 @@ mod tests {
 
     static 看板序号: AtomicU64 = AtomicU64::new(0);
 
-    fn 构造状态() -> 数据服务状态 {
-        let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
-        let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = Arc::new(Mutex::new(IterationLog::new()));
-        let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = Arc::new(Mutex::new(MemoryStore::new()));
-        let 规则库: Arc<Mutex<dyn 规则库契约<Rule>>> = Arc::new(Mutex::new(RuleSet::new()));
-        let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = Arc::new(Mutex::new(EventBus::new()));
+    /// 构造数据服务状态（hm-http）：认知三态 + 日志记录器 + LLM 池 + 鉴权令牌
+    fn 构造数据状态() -> 数据服务状态 {
         let 图谱 = Arc::new(Mutex::new(图谱::新()));
         let 心智地图 = Arc::new(Mutex::new(心智地图::新()));
         let 语境 = Arc::new(Mutex::new(过程上下文::新()));
         let 日志记录器 = Arc::new(Mutex::new(运行日志记录器::new()));
+        数据服务状态::新(图谱, 心智地图, 语境, 日志记录器, None, None)
+    }
+
+    /// 构造开发服务状态（hm-agent）：任务看板 + 开发执行台 + 看板驱动台 + 记忆库
+    fn 构造开发状态() -> 开发服务状态<Memory> {
+        let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = Arc::new(Mutex::new(MemoryStore::new()));
         let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
         let 任务看板 = Arc::new(Mutex::new(tc_task::TaskBoard::新建(
             std::env::temp_dir().join(format!("洪荒测试看板_{序号}.jsonl")).to_string_lossy().to_string(),
         )));
-        let 开发执行台 = Arc::new(开发执行台::新());
-        let 看板驱动台 = Arc::new(hm_http::看板驱动台::新());
-        数据服务状态::新(任务仓库, 迭代日志, 记忆库, 规则库, 事件总线, 图谱, 心智地图, 语境, 任务看板, 日志记录器, 开发执行台, 看板驱动台, None, None)
+        开发服务状态::新(
+            任务看板,
+            Arc::new(开发执行台::新()),
+            Arc::new(hm_agent::看板驱动台::新()),
+            记忆库,
+        )
+    }
+
+    /// 构造五引擎任务仓库（/api/tasks 只读与创建接口测试用）
+    fn 构造任务仓库() -> Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> {
+        Arc::new(Mutex::new(TaskStore::new()))
     }
 
     /// 模拟开发执行器：按步进轮询中断标志，模拟智能体的同步阻塞执行
@@ -111,11 +125,11 @@ mod tests {
 
     #[tokio::test]
     async fn 数据服务_任务列表返回任务实体() {
-        let 状态 = 构造状态();
-        状态.任务仓库.lock().expect("锁").创建("标题甲".into(), "描述甲".into()).expect("创建成功");
-        状态.任务仓库.lock().expect("锁").创建("标题乙".into(), "描述乙".into()).expect("创建成功");
+        let 仓库 = 构造任务仓库();
+        仓库.lock().expect("锁").创建("标题甲".into(), "描述甲".into()).expect("创建成功");
+        仓库.lock().expect("锁").创建("标题乙".into(), "描述乙".into()).expect("创建成功");
 
-        let Json(任务) = 任务列表(State(状态)).await;
+        let Json(任务) = 任务列表(State(仓库)).await;
         assert_eq!(任务.len(), 2);
         assert_eq!(任务[0].title, "标题甲");
         assert_eq!(任务[1].title, "标题乙");
@@ -123,26 +137,26 @@ mod tests {
 
     #[tokio::test]
     async fn 数据服务_任务查询存在id返回标题() {
-        let 状态 = 构造状态();
-        let id = 状态.任务仓库.lock().expect("锁").创建("查询我".into(), "描述".into()).expect("创建成功");
+        let 仓库 = 构造任务仓库();
+        let id = 仓库.lock().expect("锁").创建("查询我".into(), "描述".into()).expect("创建成功");
 
-        let 结果 = 查询任务(State(状态), Path(id)).await;
+        let 结果 = 查询任务(State(仓库), Path(id)).await;
         assert!(结果.is_ok());
         assert_eq!(结果.expect("应查询成功").0.title, "查询我");
     }
 
     #[tokio::test]
     async fn 数据服务_任务查询不存在id返回404() {
-        let 状态 = 构造状态();
+        let 仓库 = 构造任务仓库();
 
-        let 结果 = 查询任务(State(状态), Path(999)).await;
+        let 结果 = 查询任务(State(仓库), Path(999)).await;
         assert_eq!(结果.expect_err("应返回错误"), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
     async fn 数据服务_创建任务返回新id并入库() {
-        let 状态 = 构造状态();
-        let 结果 = 创建任务(State(状态.clone()), Json(创建任务请求 {
+        let 仓库 = 构造任务仓库();
+        let 结果 = 创建任务(State(仓库.clone()), Json(创建任务请求 {
             标题: "新任务".into(),
             描述: "详情".into(),
         }))
@@ -150,14 +164,14 @@ mod tests {
         let Json(id) = 结果.expect("创建应成功");
         assert!(id > 0);
 
-        let 守卫 = 状态.任务仓库.lock().expect("锁");
+        let 守卫 = 仓库.lock().expect("锁");
         assert_eq!(守卫.全部().len(), 1);
         assert_eq!(守卫.查询(id).expect("应存在").title, "新任务");
     }
 
     #[tokio::test]
     async fn 数据服务_认知图谱返回空结构() {
-        let 状态 = 构造状态();
+        let 状态 = 构造数据状态();
 
         let Json(图) = 图谱查询(State(状态)).await;
         assert!(图.模块集.is_empty());
@@ -167,7 +181,7 @@ mod tests {
 
     #[tokio::test]
     async fn 数据服务_认知格位返回提炼摘要() {
-        let 状态 = 构造状态();
+        let 状态 = 构造数据状态();
         // 模拟建图后提炼：把摘要写入外在·结构格位（验证接口透传非空，而非空结构）
         状态.心智地图
             .lock()
@@ -183,7 +197,7 @@ mod tests {
 
     #[tokio::test]
     async fn 数据服务_日志列表返回记录() {
-        let 状态 = 构造状态();
+        let 状态 = 构造数据状态();
         let _ = 记日志(State(状态.clone()), Json(记日志请求 {
             标签: "【就绪】".into(),
             样式: "ok".into(),
@@ -218,21 +232,33 @@ mod tests {
 
     #[test]
     fn 受理_未装配返回未上线() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
 
-        let 结果 = 受理开发任务(&状态, "任何任务".into());
+        let 依赖 = 受理依赖 {
+            看板驱动台: &状态.看板驱动台,
+            任务看板: &状态.任务看板,
+            道祖接待: 状态.道祖接待.as_ref(),
+            记忆库: &状态.记忆库,
+        };
+        let 结果 = 受理开发任务(依赖, "任何任务".into());
         assert!(matches!(结果.expect_err("应拒绝受理"), 受理失败::未上线));
     }
 
     #[test]
     fn 受理_空任务返回任务为空() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         状态.开发执行台.装配(
             Arc::new(模拟开发执行器 { 执行毫秒: 0, 中断标志: Arc::new(AtomicBool::new(false)) }),
             &std::env::temp_dir().to_string_lossy(),
         );
 
-        let 结果 = 受理开发任务(&状态, "   ".into());
+        let 依赖 = 受理依赖 {
+            看板驱动台: &状态.看板驱动台,
+            任务看板: &状态.任务看板,
+            道祖接待: 状态.道祖接待.as_ref(),
+            记忆库: &状态.记忆库,
+        };
+        let 结果 = 受理开发任务(依赖, "   ".into());
         assert!(matches!(结果.expect_err("应拒绝空任务"), 受理失败::任务为空));
     }
 
@@ -323,7 +349,7 @@ mod tests {
 
     #[tokio::test]
     async fn 看板_发布任务后列表包含该任务() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "看板测试任务".into(),
             description: "验证发布".into(),
@@ -341,14 +367,14 @@ mod tests {
 
     #[tokio::test]
     async fn 看板_查询不存在id返回404() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let 结果 = 看板查询(State(状态), Path(999)).await;
         assert_eq!(结果.expect_err("应返回404"), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
     async fn 看板_查询存在id返回任务详情() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "详情测试".into(),
             description: "验证查询".into(),
@@ -366,7 +392,7 @@ mod tests {
 
     #[tokio::test]
     async fn 看板_圣人承接待圣人设计任务() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "承接测试".into(),
             description: "验证承接".into(),
@@ -388,7 +414,7 @@ mod tests {
 
     #[tokio::test]
     async fn 看板_角色不符承接返回错误() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "角色不符".into(),
             description: "验证拒绝".into(),
@@ -405,7 +431,7 @@ mod tests {
 
     #[tokio::test]
     async fn 看板_圣人提交任务流转到待大罗金仙实现() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let Json(id) = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "提交测试".into(),
             description: "验证提交".into(),
@@ -431,7 +457,7 @@ mod tests {
 
     #[tokio::test]
     async fn 看板_筛选按状态返回对应任务() {
-        let 状态 = 构造状态();
+        let 状态 = 构造开发状态();
         let _ = 看板发布(State(状态.clone()), Json(发布任务请求 {
             title: "任务一".into(),
             description: "".into(),
@@ -467,7 +493,6 @@ mod tests {
     }
 
     use axum::extract::Query;
-    use hm_http::看板筛选参数;
 
     #[path = "看板推进.rs"]
     mod 看板推进;

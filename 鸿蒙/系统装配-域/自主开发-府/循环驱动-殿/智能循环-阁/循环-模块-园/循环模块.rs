@@ -4,9 +4,10 @@ use hm_contract::Component;
 use hm_content_contract::{工具对话器, 对话消息, 工具调用};
 use hm_error::{Error, Result};
 use hm_execute_contract::{开发事件, 开发事件类型, 开发执行契约, 执行器};
-use super::super::任务_清单_园::{任务项, 格式化清单, 解析任务清单, 清单项键_内容, 清单项键_状态, 状态_待办, 状态_进行中, 状态_已完成};
-use super::super::认知_注入_园::认知注入;
+use super::super::任务_清单_园::{任务项, 格式化清单, 解析任务清单};
+use hm_cognition::认知注入;
 use hm_cognition::消息角色 as 认知消息角色;
+use super::退化检测器模块::退化检测器;
 
 /// 事件内容截断上限（读文件/命令输出可能很长，事件流只保留摘要）
 const 事件内容上限: usize = 200;
@@ -15,76 +16,16 @@ const 事件内容上限: usize = 200;
 /// 真正的结论（JSON 正文）连一个字符都进不了事件流（2026-09-11 真机实测）。
 const 答复内容上限: usize = 4000;
 
-/// 退化循环告警阈值：连续以完全相同签名（工具名+规范化参数）调用同一工具且持续失败达此次数，
-/// 说明模型已卡死，向消息流注入强纠正提示，禁止再用相同参数重试。
-/// 取 2：2026-09-11 真机实测 LLM 失败 1-2 次即放弃重试，阈值 3 在真机不可达。
-const 同调失败告警阈值: usize = 2;
-/// 退化循环熔断阈值：告警后仍以相同签名失败达此次数，直接终止本轮自主开发，
-/// 避免一路空转到最大轮数（2026-09-11 实测：空参「读文件」曾连败 60 轮耗尽轮数）。
-/// 取 3：紧接告警阈值之后一次即掐断，避免真机上「够不着」而形同虚设。
-const 同调失败熔断阈值: usize = 3;
-
-/// 退化循环检测器：连续以完全相同签名（工具名 + 规范化参数）失败的计数状态。
-///
-/// 用 `Arc<Mutex>` 包裹使状态可跨轮、跨层共享——驱动器每轮都会新建智能体实例，
-/// 若计数随实例创建而重置，同一工具在五层流转中反复失败也无法累积到阈值，
-/// 熔断将永不触发（2026-09-11 真机验证：6 次工具失败分散在 5 个实例，零熔断）。
-#[derive(Clone, Default)]
-pub struct 退化检测器 {
-    内: Arc<Mutex<退化计数>>,
-}
-
-#[derive(Default)]
-struct 退化计数 {
-    /// 上一次失败的签名（规范化后）
-    上次失败签名: Option<String>,
-    /// 连续同签名失败次数（换签名或成功即归零）
-    同签名失败次数: usize,
-}
-
-impl 退化检测器 {
-    /// 新建独立检测器（智能体默认持有；驱动器注入同一实例以跨轮共享）
-    pub fn 新() -> Self {
-        Self::default()
-    }
-
-    /// 重置计数：任务切换时调用，避免上一任务的失败账记到新任务
-    pub fn 重置(&self) {
-        let mut 内 = self.内.lock().expect("退化检测锁中毒");
-        内.上次失败签名 = None;
-        内.同签名失败次数 = 0;
-    }
-
-    /// 记录一次工具调用结果，返回（是否达告警阈值, 是否达熔断阈值, 当前连续同签名失败次数）。
-    /// 成功调用或换签名即归零，故「连续」严格成立。
-    pub fn 记录(&self, 签名: &str, 失败: bool) -> (bool, bool, usize) {
-        let mut 内 = self.内.lock().expect("退化检测锁中毒");
-        if 失败 {
-            if 内.上次失败签名.as_deref() == Some(签名) {
-                内.同签名失败次数 += 1;
-            } else {
-                内.同签名失败次数 = 1;
-                内.上次失败签名 = Some(签名.to_string());
-            }
-        } else {
-            内.同签名失败次数 = 0;
-            内.上次失败签名 = None;
-        }
-        let 次数 = 内.同签名失败次数;
-        (失败 && 次数 == 同调失败告警阈值, 失败 && 次数 >= 同调失败熔断阈值, 次数)
-    }
-}
-
 /// 工具名常量（function calling 的 function.name）
-const 读文件: &str = "读文件";
-const 写文件: &str = "写文件";
-const 运行命令: &str = "运行命令";
-const 列目录: &str = "列目录";
-const 按名找文件: &str = "按名找文件";
-const 搜索内容: &str = "搜索内容";
-const 精确编辑: &str = "精确编辑";
-const 删除文件: &str = "删除文件";
-const 任务清单: &str = "任务清单";
+pub(crate) const 读文件: &str = "读文件";
+pub(crate) const 写文件: &str = "写文件";
+pub(crate) const 运行命令: &str = "运行命令";
+pub(crate) const 列目录: &str = "列目录";
+pub(crate) const 按名找文件: &str = "按名找文件";
+pub(crate) const 搜索内容: &str = "搜索内容";
+pub(crate) const 精确编辑: &str = "精确编辑";
+pub(crate) const 删除文件: &str = "删除文件";
+pub(crate) const 任务清单: &str = "任务清单";
 
 /// 工具对外名（function calling 里 `function.name` 实际发给网关的值）。
 ///
@@ -92,7 +33,7 @@ const 任务清单: &str = "任务清单";
 /// 字符逐字替换成下划线（2026-09-11 真机实测 a6api：发「读文件」回来的是「___」），
 /// 模型据此调用时本地一个都匹配不上，整轮全部以「未知工具」失败并触发熔断。
 /// 故对外统一改用 ASCII 别名，收到调用后还原成中文规范名——内部命名与执行逻辑不变。
-fn 对外工具名(规范名: &str) -> &'static str {
+pub(crate) fn 对外工具名(规范名: &str) -> &'static str {
     match 规范名 {
         读文件 => "read_file",
         写文件 => "write_file",
@@ -125,14 +66,14 @@ fn 还原工具名(模型给的名: &str) -> &str {
 }
 
 /// 工具参数载荷键常量（与函数定义 schema 的 property 名一致，中文为规范键）
-const 参数键_路径: &str = "路径";
-const 参数键_内容: &str = "内容";
-const 参数键_命令: &str = "命令";
-const 参数键_模式: &str = "模式";
-const 参数键_关键词: &str = "关键词";
-const 参数键_旧: &str = "旧";
-const 参数键_新: &str = "新";
-const 参数键_清单: &str = "清单";
+pub(crate) const 参数键_路径: &str = "路径";
+pub(crate) const 参数键_内容: &str = "内容";
+pub(crate) const 参数键_命令: &str = "命令";
+pub(crate) const 参数键_模式: &str = "模式";
+pub(crate) const 参数键_关键词: &str = "关键词";
+pub(crate) const 参数键_旧: &str = "旧";
+pub(crate) const 参数键_新: &str = "新";
+pub(crate) const 参数键_清单: &str = "清单";
 
 /// 兼容性别名：部分模型会用英文键，回退识别以提升鲁棒性（规范键仍为中文，不在 schema 中暴露）
 const 参数键_路径_英: &str = "path";
@@ -286,7 +227,7 @@ impl 智能体 {
             drop(任务);
             已存消息
         };
-        let 工具 = 工具定义();
+        let 工具 = super::工具定义::工具定义();
 
         for 轮次 in 0..self.最大轮数 {
             if self.中断标志.load(Ordering::SeqCst) {
@@ -511,126 +452,4 @@ impl 开发执行契约 for 智能体 {
     fn 中断句柄(&self) -> Arc<AtomicBool> {
         智能体::中断句柄(self)
     }
-}
-
-/// 三个工具的函数定义（OpenAI function calling 的 tools 数组元素）
-fn 工具定义() -> Vec<serde_json::Value> {
-    vec![
-        单参函数(对外工具名(读文件), "读取工作区内文件的完整文本", 参数键_路径, "相对工作区的文件路径"),
-        双参函数(对外工具名(写文件), "把内容写入工作区文件（覆盖）", 参数键_路径, "相对工作区的文件路径", 参数键_内容, "要写入的完整文本"),
-        单参函数(对外工具名(运行命令), "在工作区目录下运行命令，返回标准输出", 参数键_命令, "要执行的命令"),
-        单参函数_可选(对外工具名(列目录), "列出工作区内目录下条目（一层，区分目录/文件）；路径可缺省，缺省列工作区根目录", 参数键_路径, "相对工作区的目录路径，缺省为根目录"),
-        单参函数(对外工具名(按名找文件), "按 glob 模式（*、**、?）递归匹配工作区内文件", 参数键_模式, "glob 模式，如 **/*.rs"),
-        单参函数(对外工具名(搜索内容), "递归搜索工作区内文本文件内容，返回匹配行", 参数键_关键词, "要搜索的关键词"),
-        三参函数(对外工具名(精确编辑), "把文件中唯一匹配的旧串替换为新串（多处匹配会报错）", 参数键_路径, "相对工作区的文件路径", 参数键_旧, "要被替换的旧文本（须唯一）", 参数键_新, "替换后的新文本"),
-        单参函数(对外工具名(删除文件), "删除工作区内的单个文件（清理临时/备份产物，如 .bak）", 参数键_路径, "相对工作区的文件路径"),
-        任务清单函数(),
-    ]
-}
-
-/// 构造单字符串参数的函数定义
-fn 单参函数(名: &str, 描述: &str, 键: &str, 键说明: &str) -> serde_json::Value {
-    let mut 属性 = serde_json::Map::new();
-    属性.insert(键.to_string(), serde_json::json!({"type": "string", "description": 键说明}));
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": 名,
-            "description": 描述,
-            "parameters": {
-                "type": "object",
-                "properties": 属性,
-                "required": [键]
-            }
-        }
-    })
-}
-
-/// 构造可选单字符串参数的函数定义（参数可缺省，调用侧给默认值，如「列目录」缺省列工作区根）
-fn 单参函数_可选(名: &str, 描述: &str, 键: &str, 键说明: &str) -> serde_json::Value {
-    let mut 属性 = serde_json::Map::new();
-    属性.insert(键.to_string(), serde_json::json!({"type": "string", "description": 键说明}));
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": 名,
-            "description": 描述,
-            "parameters": {
-                "type": "object",
-                "properties": 属性,
-                "required": []
-            }
-        }
-    })
-}
-
-/// 构造双字符串参数的函数定义
-fn 双参函数(名: &str, 描述: &str, 键一: &str, 键一说明: &str, 键二: &str, 键二说明: &str) -> serde_json::Value {
-    let mut 属性 = serde_json::Map::new();
-    属性.insert(键一.to_string(), serde_json::json!({"type": "string", "description": 键一说明}));
-    属性.insert(键二.to_string(), serde_json::json!({"type": "string", "description": 键二说明}));
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": 名,
-            "description": 描述,
-            "parameters": {
-                "type": "object",
-                "properties": 属性,
-                "required": [键一, 键二]
-            }
-        }
-    })
-}
-
-/// 构造三字符串参数的函数定义
-fn 三参函数(名: &str, 描述: &str, 键一: &str, 键一说明: &str, 键二: &str, 键二说明: &str, 键三: &str, 键三说明: &str) -> serde_json::Value {
-    let mut 属性 = serde_json::Map::new();
-    属性.insert(键一.to_string(), serde_json::json!({"type": "string", "description": 键一说明}));
-    属性.insert(键二.to_string(), serde_json::json!({"type": "string", "description": 键二说明}));
-    属性.insert(键三.to_string(), serde_json::json!({"type": "string", "description": 键三说明}));
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": 名,
-            "description": 描述,
-            "parameters": {
-                "type": "object",
-                "properties": 属性,
-                "required": [键一, 键二, 键三]
-            }
-        }
-    })
-}
-
-/// 构造任务清单工具的函数定义（参数为「清单」数组，每项含「内容」「状态」）
-fn 任务清单函数() -> serde_json::Value {
-    let mut 清单属性 = serde_json::Map::new();
-    清单属性.insert(
-        参数键_清单.to_string(),
-        serde_json::json!({
-            "type": "array",
-            "description": "任务条目数组",
-            "items": {
-                "type": "object",
-                "properties": {
-                    (清单项键_内容): {"type": "string", "description": "任务内容"},
-                    (清单项键_状态): {"type": "string", "enum": [状态_待办, 状态_进行中, 状态_已完成]}
-                },
-                "required": [清单项键_内容]
-            }
-        }),
-    );
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": 任务清单,
-            "description": "覆盖式更新多步任务清单（待办/进行中/已完成）",
-            "parameters": {
-                "type": "object",
-                "properties": 清单属性,
-                "required": [参数键_清单]
-            }
-        }
-    })
 }

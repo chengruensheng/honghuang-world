@@ -4,12 +4,12 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use axum::{Json, extract::{Path, State}, http::StatusCode};
-    use hm_http::{
-        数据服务状态, 看板驱动台, 会话恢复接口, 会话分叉接口, 会话清单接口,
-        会话定向请求, 会话分叉请求, 分叉响应, 会话清单响应, 受理错误响应,
+    use hm_agent::{
+        开发服务状态, 五层协作驱动器, 看板驱动台, 会话清单响应,
+        会话恢复接口, 会话分叉接口, 会话清单接口,
+        会话定向请求, 会话分叉请求, 分叉响应, 受理错误响应,
         发布任务请求, 看板发布,
     };
-    use hm_agent::五层协作驱动器;
     use hm_cognition::{ContextManager, 图谱, 心智地图, 过程上下文};
     use hm_contract::Component;
     use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
@@ -64,29 +64,24 @@ mod tests {
         fn 精确编辑(&self, _路径: &str, _旧: &str, _新: &str) -> Result<String> { Ok("替换成功（1 处）".to_string()) }
     }
 
-    /// 构造 数据服务状态 + 共享任务看板引用（未装配驱动台）
-    fn 驱动状态() -> (数据服务状态, Arc<Mutex<TaskBoard>>) {
-        let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
-        let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = Arc::new(Mutex::new(IterationLog::new()));
+    /// 构造开发服务状态（hm-agent）：任务看板 + 开发执行台 + 看板驱动台 + 记忆库
+    fn 驱动状态() -> (开发服务状态<Memory>, Arc<Mutex<TaskBoard>>) {
         let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = Arc::new(Mutex::new(MemoryStore::new()));
-        let 规则库: Arc<Mutex<dyn 规则库契约<Rule>>> = Arc::new(Mutex::new(RuleSet::new()));
-        let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = Arc::new(Mutex::new(EventBus::new()));
-        let 图谱 = Arc::new(Mutex::new(图谱::新()));
-        let 心智地图 = Arc::new(Mutex::new(心智地图::新()));
-        let 语境 = Arc::new(Mutex::new(过程上下文::新()));
-        let 日志记录器 = Arc::new(Mutex::new(运行日志记录器::new()));
         let 序号 = 会话序号.fetch_add(1, Ordering::SeqCst);
         let 任务看板 = Arc::new(Mutex::new(TaskBoard::新建(
             std::env::temp_dir().join(format!("洪荒会话恢复测试看板_{序号}.jsonl")).to_string_lossy().to_string(),
         )));
-        let 开发执行台 = Arc::new(hm_http::开发执行台::新());
-        let 看板驱动台 = Arc::new(看板驱动台::新());
-        let 状态 = 数据服务状态::新(任务仓库, 迭代日志, 记忆库, 规则库, 事件总线, 图谱, 心智地图, 语境, 任务看板.clone(), 日志记录器, 开发执行台, 看板驱动台, None, None);
+        let 状态 = 开发服务状态::新(
+            任务看板.clone(),
+            Arc::new(hm_agent::开发执行台::新()),
+            Arc::new(看板驱动台::新()),
+            记忆库,
+        );
         (状态, 任务看板)
     }
 
     /// 装配驱动台到状态（注入 mock 对话器/执行器 + 独立 ContextManager）
-    fn 装配驱动器(状态: &数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) {
+    fn 装配驱动器(状态: &开发服务状态<Memory>, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) {
         let 序号 = 会话序号.fetch_add(1, Ordering::SeqCst);
         let 上下文 = Arc::new(Mutex::new(ContextManager::新(
             std::env::temp_dir().join(format!("洪荒会话恢复测试上下文_{序号}.jsonl")).to_string_lossy().to_string(),
@@ -98,7 +93,7 @@ mod tests {
     }
 
     /// 装配驱动台 + 检查点回调（每轮末落盘运行断点到会话存储，供 Resume/Fork 恢复）
-    fn 装配驱动器带检查点(状态: &数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) {
+    fn 装配驱动器带检查点(状态: &开发服务状态<Memory>, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) {
         let 序号 = 会话序号.fetch_add(1, Ordering::SeqCst);
         let 上下文 = Arc::new(Mutex::new(ContextManager::新(
             std::env::temp_dir().join(format!("洪荒会话恢复测试上下文_检查点_{序号}.jsonl")).to_string_lossy().to_string(),
@@ -112,7 +107,7 @@ mod tests {
     }
 
     /// 通过 HTTP handler 发布任务（状态=待圣人设计、发起人=道祖）
-    async fn 发布任务(状态: &数据服务状态, 标题: &str) {
+    async fn 发布任务(状态: &开发服务状态<Memory>, 标题: &str) {
         let 请求 = Json(发布任务请求 {
             title: 标题.into(),
             description: "会话恢复测试描述".into(),

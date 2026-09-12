@@ -3,7 +3,13 @@ use axum::{Json, extract::{Query, State}, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use hm_cognition::{图谱, 心智地图, 过程上下文, 检索决策记录};
 use hm_content_contract::工具对话器;
-use crate::{数据服务状态, 受理错误响应};
+use crate::数据服务状态;
+
+/// 接口错误响应体：认知等接口的统一错误载荷（不含敏感细节）
+#[derive(Debug, Serialize)]
+pub struct 受理错误响应 {
+    pub 错误: String,
+}
 
 /// GET /api/cognition/graph：项目图谱（模块/符号/依赖，运行时真实数据）
 pub async fn 图谱查询(状态: State<数据服务状态>) -> Json<图谱> {

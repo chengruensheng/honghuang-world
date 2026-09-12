@@ -2,7 +2,7 @@ use super::*;
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use http_body_util::BodyExt;
-use hm_http::{看板驱动阶段流_agui接口, 看板驱动过程流_agui接口, 事件游标, 驱动阶段事件, 驱动过程事件};
+use hm_agent::{看板驱动阶段流_agui接口, 看板驱动过程流_agui接口, 事件游标, 驱动阶段事件, 驱动过程事件};
 use std::time::Duration;
 
 /// 从 SSE 响应 body 读下一数据帧的文本（超时即 panic，避免无限流悬挂）
@@ -19,7 +19,7 @@ async fn 取帧(body: &mut axum::body::Body) -> String {
 /// 阶段事件端点：注入「空闲」→ 输出 RUN_FINISHED + threadId/runId
 #[tokio::test]
 async fn agui端点_阶段事件输出run_finished() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     状态.看板驱动台.记录驱动事件(&驱动阶段事件 {
         序号: 1,
         类型: "空闲".into(),
@@ -42,7 +42,7 @@ async fn agui端点_阶段事件输出run_finished() {
 /// 过程事件端点：注入「思考」→ 先开棒（RUN_STARTED）再推理三段式
 #[tokio::test]
 async fn agui端点_过程事件输出推理三段式() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     状态.看板驱动台.记录过程事件(&驱动过程事件 {
         序号: 1,
         任务id: Some(5),
@@ -71,7 +71,7 @@ async fn agui端点_过程事件输出推理三段式() {
 /// 过程事件端点：思考动画标记（「__思考开始__」等）不应作为推理内容下发
 #[tokio::test]
 async fn agui端点_思考标记不产出推理内容() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     状态.看板驱动台.记录过程事件(&驱动过程事件 {
         序号: 1,
         任务id: Some(5),
@@ -105,7 +105,7 @@ async fn agui端点_思考标记不产出推理内容() {
 /// 过程事件端点：注入「工具调用 + 工具结果」→ 输出 TOOL_CALL_* + TOOL_CALL_RESULT（复用工具调用 id）
 #[tokio::test]
 async fn agui端点_工具调用与结果复用toolcallid() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     状态.看板驱动台.记录过程事件(&驱动过程事件 {
         序号: 3,
         任务id: Some(5),
@@ -151,7 +151,7 @@ async fn agui端点_工具调用与结果复用toolcallid() {
 /// 而过程流与阶段流是两条独立通道、回放到达顺序不保证——末棒就会配上别人的终态。
 #[tokio::test]
 async fn agui端点_阶段事件带角色署名() {
-    let 状态 = 构造状态();
+    let 状态 = 构造开发状态();
     状态.看板驱动台.记录驱动事件(&驱动阶段事件 {
         序号: 1,
         类型: "阶段完成".into(),

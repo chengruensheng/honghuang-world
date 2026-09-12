@@ -6,12 +6,12 @@ use hm_error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::认知注入;
+use hm_cognition::认知注入;
 
 /// 道祖意图工具名（function calling 的 function.name）
-const 工具_闲聊: &str = "闲聊";
-const 工具_追问澄清: &str = "追问澄清";
-const 工具_对齐总结: &str = "对齐总结";
+pub(crate) const 工具_闲聊: &str = "闲聊";
+pub(crate) const 工具_追问澄清: &str = "追问澄清";
+pub(crate) const 工具_对齐总结: &str = "对齐总结";
 
 /// 工具对外名（function calling 里 `function.name` 实际发给网关的值）。
 ///
@@ -38,21 +38,21 @@ fn 还原工具名(模型给的名: &str) -> &str {
 }
 
 /// 工具参数载荷键常量（与函数定义 schema 的 property 名一致）
-const 键_回复: &str = "回复";
-const 键_问题: &str = "问题";
-const 键_标题: &str = "标题";
-const 键_描述: &str = "描述";
-const 键_场景: &str = "场景";
-const 键_优先级: &str = "优先级";
+pub(crate) const 键_回复: &str = "回复";
+pub(crate) const 键_问题: &str = "问题";
+pub(crate) const 键_标题: &str = "标题";
+pub(crate) const 键_描述: &str = "描述";
+pub(crate) const 键_场景: &str = "场景";
+pub(crate) const 键_优先级: &str = "优先级";
 
 /// 历史消息角色常量
 const 角色_用户: &str = "用户";
-const 角色_道祖: &str = "道祖";
+pub(crate) const 角色_道祖: &str = "道祖";
 
 /// 会话历史总量硬上限（条数）：每轮 用户+道祖 两条，保留最近 6 轮澄清。
 /// 有界环形避免长会话下历史无限膨胀撑大上下文——MiniMax-M3 长上下文下 tool_call 决策不稳定，
 /// 缩上下文后（跳过认知 + 历史截取 + tool_choice:auto）稳定触发「对齐总结」。数值可按真机实测调整。
-const 会话历史上限: usize = 12;
+pub(crate) const 会话历史上限: usize = 12;
 
 /// 道祖系统提示：主控角色，接待 / 识别任务 / 澄清细节，不亲自执行
 const 系统提示: &str = "你是洪荒世界的道祖，是主控角色。你负责接待来访者、识别他们下达的任务、澄清任务细节。你只做接待、澄清、终审，不亲自执行任何设计/实现/验收/清理工作——那些交由圣人（设计）、大罗金仙（实现）、准圣（验收）、太乙金仙（清理）完成。来访者提出任务时：若需求已清晰（目标、范围、验收标准明确），调用「对齐总结」给出结构化需求摘要（系统会自动发布到开发流水线，不需要来访者手动确认）；若需求不够清晰，调用「追问澄清」提出关键问题；若来访者只是闲聊或非任务，调用「闲聊」自然回应。";
@@ -86,9 +86,9 @@ pub struct 接待响应 {
 
 /// 会话消息：澄清会话历史的一条（可序列化持久化）
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct 会话消息 {
-    角色: String,
-    内容: String,
+pub(crate) struct 会话消息 {
+    pub(crate) 角色: String,
+    pub(crate) 内容: String,
 }
 
 /// 会话快照：持久化用（历史 + 阶段 + 待确认需求）
@@ -100,8 +100,8 @@ struct 会话快照 {
 }
 
 /// 会话状态：内存态
-struct 会话状态 {
-    历史: Vec<会话消息>,
+pub(crate) struct 会话状态 {
+    pub(crate) 历史: Vec<会话消息>,
     阶段: 会话阶段,
     待确认需求: Option<需求摘要>,
 }
@@ -112,7 +112,7 @@ pub struct 道祖接待 {
     对话器: Arc<dyn 工具对话器>,
     /// 流式对话器（可选）：装配后 接待流式 走增量推送；缺失时回退同步 对话 一次性回调
     流式: Option<Arc<dyn 流式对话器>>,
-    会话: Mutex<会话状态>,
+    pub(crate) 会话: Mutex<会话状态>,
     存储路径: Option<PathBuf>,
     /// 项目认知注入（可选）：装配后接待时把推/拉认知记忆拼入系统提示，对齐看板驱动通道
     认知: Option<认知注入>,
@@ -308,7 +308,7 @@ impl 道祖接待 {
     }
 
     /// 解析道祖意图并落定会话（更新历史/阶段/待确认需求），持久化后返回接待响应
-    fn 更新会话(&self, 文案: &str, 响应: &模型响应) -> Result<接待响应> {
+    pub(crate) fn 更新会话(&self, 文案: &str, 响应: &模型响应) -> Result<接待响应> {
         let (回复, 需求) = 解析意图(响应)?;
         let 阶段 = if 需求.is_some() {
             会话阶段::待确认
@@ -330,7 +330,7 @@ impl 道祖接待 {
 
 /// 有界环形：保留历史最近 `会话历史上限` 条，丢弃最旧（超上限才截断）。
 /// 长会话下避免历史无限膨胀撑大上下文，保证 MiniMax-M3 长上下文下 tool_call 决策稳定。
-fn 保留最近(历史: &mut Vec<会话消息>) {
+pub(crate) fn 保留最近(历史: &mut Vec<会话消息>) {
     let 上限 = 会话历史上限;
     if 历史.len() > 上限 {
         let 溢出 = 历史.len() - 上限;
@@ -353,7 +353,7 @@ fn 按角色转消息(条: &会话消息) -> 对话消息 {
 }
 
 /// 解析道祖意图：返回（回复文本，对齐摘要）
-fn 解析意图(响应: &模型响应) -> Result<(String, Option<需求摘要>)> {
+pub(crate) fn 解析意图(响应: &模型响应) -> Result<(String, Option<需求摘要>)> {
     let Some(调用) = 响应.工具调用.first() else {
         return Ok((响应.内容.clone().unwrap_or_default(), None));
     };
@@ -385,7 +385,7 @@ fn 解析对齐总结(参数: &serde_json::Value) -> Result<(String, Option<需�
 
 /// 判断来访者需求是否已明确：检测到任务特征词（目标/范围/验收标准/技术栈/暴露接口等）
 /// → 引导道祖以「对齐总结」工具落结构化摘要；否则维持原文（不干扰澄清/闲聊路径）。
-fn 需求已明确(文案: &str) -> bool {
+pub(crate) fn 需求已明确(文案: &str) -> bool {
     let 特征词 = [
         "请实现", "请在", "新建", "创建", "暴露", "pub fn", "函数", "模块", "crate", "crates",
         "技术栈", "验收", "测试", "场景", "优先级", "Rust", "rust", "实现一个",
@@ -444,119 +444,4 @@ fn 工具定义() -> Vec<serde_json::Value> {
             }
         }),
     ]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use hm_contract::Component;
-    use hm_content_contract::工具调用;
-
-    /// mock 对话器：仅返回纯文本响应（无工具调用），供 道祖接待 集成测试构造
-    struct Mock对话器;
-    impl Component for Mock对话器 {
-        fn name(&self) -> &'static str {
-            "mock"
-        }
-    }
-    impl 工具对话器 for Mock对话器 {
-        fn 对话(&self, _: Vec<对话消息>, _: Vec<serde_json::Value>) -> Result<模型响应> {
-            Ok(模型响应 { 内容: Some("好的".into()), 工具调用: vec![], 思考: None })
-        }
-    }
-
-    fn 构造工具调用(名称: &str, 参数: serde_json::Value) -> 工具调用 {
-        工具调用 { id: "t1".into(), 名称: 名称.into(), 参数: 参数.to_string() }
-    }
-
-    /// 对齐总结 tool_call → 需求摘要 + 阶段=待确认
-    #[test]
-    fn 对齐总结工具调用_产出需求摘要() {
-        let 响应 = 模型响应 {
-            内容: None,
-            工具调用: vec![构造工具调用(
-                工具_对齐总结,
-                json!({ 键_标题: "新建 jia-shang crate", 键_描述: "在 crates 目录新建纯函数 crate，暴露两数相加", 键_场景: "设计", 键_优先级: "P1" }),
-            )],
-            思考: None,
-        };
-        let (回复, 需求) = 解析意图(&响应).unwrap();
-        assert!(需求.is_some(), "对齐总结应产出需求摘要");
-        let 摘要 = 需求.unwrap();
-        assert_eq!(摘要.标题, "新建 jia-shang crate");
-        assert_eq!(摘要.描述, "在 crates 目录新建纯函数 crate，暴露两数相加");
-        assert_eq!(摘要.场景.as_deref(), Some("设计"));
-        assert_eq!(摘要.优先级.as_deref(), Some("P1"));
-        assert!(回复.contains("新建 jia-shang crate"));
-    }
-
-    /// 闲聊 工具 → 回复文本，无需求（阶段=接待中）
-    #[test]
-    fn 闲聊工具调用_无需求() {
-        let 响应 = 模型响应 {
-            内容: None,
-            工具调用: vec![构造工具调用(工具_闲聊, json!({ 键_回复: "善。" }))],
-            思考: None,
-        };
-        let (回复, 需求) = 解析意图(&响应).unwrap();
-        assert_eq!(回复, "善。");
-        assert!(需求.is_none());
-    }
-
-    /// 无工具调用（纯文本答复）→ 无需求
-    #[test]
-    fn 无工具调用_纯文本_无需求() {
-        let 响应 = 模型响应 { 内容: Some("好的".into()), 工具调用: vec![], 思考: None };
-        let (回复, 需求) = 解析意图(&响应).unwrap();
-        assert_eq!(回复, "好的");
-        assert!(需求.is_none());
-    }
-
-    /// 对齐总结缺标题/描述 → 报错（防脏数据入库）
-    #[test]
-    fn 对齐总结缺字段_报错() {
-        let 响应 = 模型响应 {
-            内容: None,
-            工具调用: vec![构造工具调用(工具_对齐总结, json!({ 键_标题: "", 键_描述: "" }))],
-            思考: None,
-        };
-        assert!(解析意图(&响应).is_err());
-    }
-
-    /// 含任务特征词 → 需求已明确（触发对齐总结引导）
-    #[test]
-    fn 明确任务判为已明确() {
-        assert!(需求已明确("请在 crates 目录新建 jia-shang crate，暴露 pub fn 两数相加"));
-        assert!(需求已明确("请实现一个两数相加的函数，Rust，优先级 P1，场景设计"));
-    }
-
-    /// 纯闲聊/问候 → 不判定为明确（不干扰澄清/闲聊）
-    #[test]
-    fn 闲聊不判为明确() {
-        assert!(!需求已明确("你好"));
-        assert!(!需求已明确("随便聊聊今天天气"));
-    }
-
-    /// 长会话下 更新会话 把历史截断到上限（有界环形，最旧被丢弃）
-    #[test]
-    fn 更新会话_历史保持有界() {
-        let 接待 = 道祖接待::新(Arc::new(Mock对话器));
-        for i in 0..(会话历史上限 + 6) {
-            接待
-                .更新会话(&format!("消息{i}"), &模型响应 { 内容: Some(format!("回复{i}")), 工具调用: vec![], 思考: None })
-                .unwrap();
-        }
-        let 会话 = 接待.会话.lock().expect("道祖接待锁中毒");
-        assert!(会话.历史.len() <= 会话历史上限, "历史应被截断到上限，实际 {}", 会话.历史.len());
-        assert_eq!(会话.历史.last().unwrap().角色, 角色_道祖);
-        assert!(会话.历史.iter().all(|m| !m.内容.contains("消息0")), "最旧消息应被丢弃");
-    }
-
-    /// 历史未超上限 → 不截断（避免误丢早期澄清）
-    #[test]
-    fn 保留最近_未超上限_不截断() {
-        let mut 历史 = vec![会话消息 { 角色: "用户".into(), 内容: "你好".into() }];
-        保留最近(&mut 历史);
-        assert_eq!(历史.len(), 1);
-    }
 }

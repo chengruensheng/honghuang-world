@@ -5,25 +5,21 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use axum::{Json, extract::{Query, State}, http::StatusCode};
-    use hm_http::{
-        数据服务状态, 看板驱动台, 看板驱动接口, 看板驱动到空闲接口, 驱动到空闲请求,
+    use hm_agent::{
+        开发服务状态,
+        看板驱动接口, 看板驱动到空闲接口, 驱动到空闲请求,
         看板驱动状态接口, 看板驱动事件接口, 驱动事件响应, 事件游标,
-        受理错误响应, 发布任务请求, 看板发布, 受理开发任务, 受理失败,
-        驱动会话存储, 运行检查点, 检查点消息上限,
+        受理错误响应, 发布任务请求, 看板发布,
+        五层协作驱动器, 看板驱动台, 受理依赖, 受理开发任务, 受理失败,
     };
-    use hm_agent::{五层协作驱动器, 认知注入, 任务项, 任务状态};
-    use hm_cognition::{ContextManager, 上下文库, 三态存储, 图谱, 心智地图, 过程上下文, 消息角色};
+    use hm_cognition::{ContextManager, 上下文库, 三态存储, 图谱, 心智地图, 认知注入, 消息角色};
     use hm_contract::Component;
-    use hm_content_contract::{工具对话器, 对话消息, 工具调用, 模型响应};
-    use hm_domain_contract::{任务仓库契约, 迭代日志契约, 记忆库契约, 规则库契约, 事件总线契约};
+    use hm_content_contract::{工具对话器, 对话消息, 模型响应};
+    use hm_domain_contract::记忆库契约;
     use hm_error::{Error, Result};
     use hm_execute_contract::执行器;
-    use hm_log::运行日志记录器;
-    use tc_task::{Task, TaskStatus, TaskStore, TaskBoard, AgentRole};
-    use lj_iteration::{Iteration, Version, IterationLog};
+    use tc_task::{TaskStatus, TaskBoard, AgentRole};
     use qk_memory::{Memory, MemoryStore};
-    use dy_rule::{Rule, RuleSet};
-    use hd_event::{Event, EventBus};
 
     static 看板序号: AtomicU64 = AtomicU64::new(0);
 
@@ -74,29 +70,24 @@ mod tests {
         fn 精确编辑(&self, _路径: &str, _旧: &str, _新: &str) -> Result<String> { Ok("替换成功（1 处）".to_string()) }
     }
 
-    /// 构造 数据服务状态 + 共享任务看板引用（未装配驱动台）
-    fn 驱动状态() -> (数据服务状态, Arc<Mutex<TaskBoard>>) {
-        let 任务仓库: Arc<Mutex<dyn 任务仓库契约<Task, TaskStatus>>> = Arc::new(Mutex::new(TaskStore::new()));
-        let 迭代日志: Arc<Mutex<dyn 迭代日志契约<Iteration, Version>>> = Arc::new(Mutex::new(IterationLog::new()));
+    /// 构造开发服务状态（hm-agent）：任务看板 + 开发执行台 + 看板驱动台 + 记忆库
+    fn 驱动状态() -> (开发服务状态<Memory>, Arc<Mutex<TaskBoard>>) {
         let 记忆库: Arc<Mutex<dyn 记忆库契约<Memory>>> = Arc::new(Mutex::new(MemoryStore::new()));
-        let 规则库: Arc<Mutex<dyn 规则库契约<Rule>>> = Arc::new(Mutex::new(RuleSet::new()));
-        let 事件总线: Arc<Mutex<dyn 事件总线契约<Event>>> = Arc::new(Mutex::new(EventBus::new()));
-        let 图谱 = Arc::new(Mutex::new(图谱::新()));
-        let 心智地图 = Arc::new(Mutex::new(心智地图::新()));
-        let 语境 = Arc::new(Mutex::new(过程上下文::新()));
-        let 日志记录器 = Arc::new(Mutex::new(运行日志记录器::new()));
         let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
         let 任务看板 = Arc::new(Mutex::new(TaskBoard::新建(
             std::env::temp_dir().join(format!("洪荒驱动测试看板_{序号}.jsonl")).to_string_lossy().to_string(),
         )));
-        let 开发执行台 = Arc::new(hm_http::开发执行台::新());
-        let 看板驱动台 = Arc::new(看板驱动台::新());
-        let 状态 = 数据服务状态::新(任务仓库, 迭代日志, 记忆库, 规则库, 事件总线, 图谱, 心智地图, 语境, 任务看板.clone(), 日志记录器, 开发执行台, 看板驱动台, None, None);
+        let 状态 = 开发服务状态::新(
+            任务看板.clone(),
+            Arc::new(hm_agent::开发执行台::新()),
+            Arc::new(看板驱动台::新()),
+            记忆库,
+        );
         (状态, 任务看板)
     }
 
     /// 装配驱动台到状态（注入 mock 对话器/执行器 + 独立 ContextManager）
-    fn 装配驱动器(状态: &数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) {
+    fn 装配驱动器(状态: &开发服务状态<Memory>, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) {
         let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
         let 上下文 = Arc::new(Mutex::new(ContextManager::新(
             std::env::temp_dir().join(format!("洪荒驱动测试上下文_{序号}.jsonl")).to_string_lossy().to_string(),
@@ -108,13 +99,17 @@ mod tests {
     }
 
     /// 带三态认知注入装配驱动器（返回 上下文库 句柄供断言临时态记录）
-    fn 装配驱动器带认知(状态: &数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) -> Arc<Mutex<上下文库>> {
+    fn 装配驱动器带认知(状态: &开发服务状态<Memory>, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) -> Arc<Mutex<上下文库>> {
         let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
         let 上下文 = Arc::new(Mutex::new(ContextManager::新(
             std::env::temp_dir().join(format!("洪荒驱动测试上下文_认知_{序号}.jsonl")).to_string_lossy().to_string(),
         )));
         let 库 = Arc::new(Mutex::new(上下文库::新_带上限(1000)));
-        let 注入 = 认知注入::新(状态.图谱.clone(), 状态.心智地图.clone(), 库.clone());
+        let 注入 = 认知注入::新(
+            Arc::new(Mutex::new(图谱::新())),
+            Arc::new(Mutex::new(心智地图::新())),
+            库.clone(),
+        );
         let 驱动器 = Arc::new(
             五层协作驱动器::新(看板.clone(), 上下文, 对话器, Arc::new(模拟执行器), 10)
                 .装配认知(注入),
@@ -124,16 +119,20 @@ mod tests {
     }
 
     /// 带三态认知注入 + 持久化存储装配驱动器（返回 存储 句柄供断言落盘）
-    fn 装配驱动器带存储(状态: &数据服务状态, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) -> Arc<三态存储> {
+    fn 装配驱动器带存储(状态: &开发服务状态<Memory>, 看板: &Arc<Mutex<TaskBoard>>, 对话器: Arc<模拟对话器>) -> Arc<三态存储> {
         let 序号 = 看板序号.fetch_add(1, Ordering::SeqCst);
         let 上下文 = Arc::new(Mutex::new(ContextManager::新(
             std::env::temp_dir().join(format!("洪荒驱动测试上下文_存储_{序号}.jsonl")).to_string_lossy().to_string(),
         )));
         let 存储 = Arc::new(三态存储::新(
-            std::env::temp_dir().join(format!("洪荒驱动测试三态_{序号}")),
+            std::env::temp_dir().join(format!("洪荒驱动测试存储_{序号}")),
         ).expect("创建三态存储"));
-        let 注入 = 认知注入::新(状态.图谱.clone(), 状态.心智地图.clone(), Arc::new(Mutex::new(上下文库::新_带上限(1000))))
-            .装配存储(存储.clone());
+        let 注入 = 认知注入::新(
+            Arc::new(Mutex::new(图谱::新())),
+            Arc::new(Mutex::new(心智地图::新())),
+            Arc::new(Mutex::new(上下文库::新_带上限(1000))),
+        )
+        .装配存储(存储.clone());
         let 驱动器 = Arc::new(
             五层协作驱动器::新(看板.clone(), 上下文, 对话器, Arc::new(模拟执行器), 10)
                 .装配认知(注入),
@@ -143,7 +142,7 @@ mod tests {
     }
 
     /// 通过 HTTP handler 发布任务（与真实链路一致：状态=待圣人设计、发起人=道祖）
-    async fn 发布任务(状态: &数据服务状态, 标题: &str) {
+    async fn 发布任务(状态: &开发服务状态<Memory>, 标题: &str) {
         let 请求 = Json(发布任务请求 {
             title: 标题.into(),
             description: "驱动测试描述".into(),
@@ -338,7 +337,13 @@ mod tests {
         ]));
         装配驱动器(&状态, &看板, 对话器);
 
-        let id = 受理开发任务(&状态, "修复登录超时".into()).expect("受理应成功");
+        let 依赖 = 受理依赖 {
+            看板驱动台: &状态.看板驱动台,
+            任务看板: &状态.任务看板,
+            道祖接待: 状态.道祖接待.as_ref(),
+            记忆库: &状态.记忆库,
+        };
+        let id = 受理开发任务(依赖, "修复登录超时".into()).expect("受理应成功");
         assert!(id > 0);
         assert!(状态.看板驱动台.等待完成(5000), "受理后自动驱动应在超时内完成");
 
@@ -365,7 +370,13 @@ mod tests {
 
         let 看板守卫 = 看板.lock().expect("看板锁");
         状态.看板驱动台.启动执行一轮("手动驱动");
-        let 重复 = 受理开发任务(&状态, "第二个任务".into());
+        let 依赖 = 受理依赖 {
+            看板驱动台: &状态.看板驱动台,
+            任务看板: &状态.任务看板,
+            道祖接待: 状态.道祖接待.as_ref(),
+            记忆库: &状态.记忆库,
+        };
+        let 重复 = 受理开发任务(依赖, "第二个任务".into());
         assert!(matches!(重复.expect_err("应拒绝重复受理"), 受理失败::运行中));
         assert_eq!(看板守卫.全部().len(), 0, "受理失败不应发布看板任务");
         drop(看板守卫);
