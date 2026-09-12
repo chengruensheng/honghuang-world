@@ -1,0 +1,3 @@
+[workspace]
+members = ["栈-府"]
+resolver = "2"

@@ -1,0 +1,15 @@
+[1m[92m   Compiling[0m eval-fixture v0.1.0 (C:\Users\17628\AppData\Local\Temp\洪荒评测夹具-自测\fib)
+[1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`test` profile [unoptimized + debuginfo]]8;;\ target(s) in 0.34s
+[1m[92m     Running[0m unittests src\lib.rs (target\debug\deps\eval_fixture-111dda6c3d0fd2f5.exe)
+
+running 1 test
+test tests::fib_10_is_55 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[92m   Doc-tests[0m eval_fixture
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

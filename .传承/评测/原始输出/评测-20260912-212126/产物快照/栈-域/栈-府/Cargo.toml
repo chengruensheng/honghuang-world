@@ -1,0 +1,11 @@
+[package]
+name = "zhan_fu"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "栈-计算/入口.rs"
+
+[[test]]
+name = "zhan_ceshi"
+path = "栈-测试/栈-测试.rs"

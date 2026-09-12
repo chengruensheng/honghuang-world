@@ -1,0 +1,27 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests 数列-计算\入口.rs (target\debug\deps\feibonaqi_fu-b7d9302d620ea9da.exe)
+
+running 5 tests
+test 测试::测试::测试第一项为一 ... ok
+test 测试::测试::测试第零项为零 ... ok
+test 测试::测试::测试第十项为五十五 ... ok
+test 测试::测试::测试第二项为一 ... ok
+test 测试::测试::测试溢出饱和为最大值 ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running 数列-测试\数列-测试.rs (target\debug\deps\shulie_ceshi-30664ca1cc26fa61.exe)
+
+running 3 tests
+test 集成测试第一项为一 ... ok
+test 集成测试第二十项为六千七百六十五 ... ok
+test 集成测试第零项为零 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests feibonaqi_fu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

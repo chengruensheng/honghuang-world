@@ -1,0 +1,28 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests 栈-计算\入口.rs (target\debug\deps\zhan_fu-793289f741330dcf.exe)
+
+running 6 tests
+test 测试::测试::入栈出栈交替仍保持后进先出 ... ok
+test 测试::测试::后进先出顺序正确 ... ok
+test 测试::测试::支持负数与零 ... ok
+test 测试::测试::查看栈顶不移除元素 ... ok
+test 测试::测试::空栈出栈返回空 ... ok
+test 测试::测试::空栈查看栈顶返回空 ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running 栈-测试\栈-测试.rs (target\debug\deps\zhan_ceshi-e990bef969c0654a.exe)
+
+running 3 tests
+test 集成测试后进先出 ... ok
+test 集成测试空栈返回空 ... ok
+test 集成测试负数与交替操作 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests zhan_fu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

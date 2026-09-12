@@ -1,0 +1,159 @@
+**********************
+PowerShell 记录开始
+开始时间: 20260912193012
+用户名: 此生愿\17628
+RunAs 用户: 此生愿\17628
+配置名称: 
+计算机: 此生愿 (Microsoft Windows NT 10.0.26200.0)
+主机应用程序: C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.dll -NoProfile -ExecutionPolicy Bypass -File .\.传承\评测\运行评测.ps1 -真实 -工作区 F:\临时工作区\评测沙箱-20260912
+进程 ID: 30444
+PSVersion: 7.6.6
+PSEdition: Core
+GitCommitId: 7.6.6
+OS: Microsoft Windows 10.0.26200
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.4
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+========== 外部标尺 · 标准任务库评测 ==========
+任务库：3 个任务（fib、sort、stack）
+模式：真实全链 · 后端：http://localhost:8321
+工作区：F:\临时工作区\评测沙箱-20260912
+
+驱动台就绪：是
+看板洁净：是（无未终态遗留任务）
+[fib] 斐波那契模块（难度 低）
+  任务 #1 已发布，自主驱动中…
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+    [轮 1] 任务状态：待大罗金仙实现
+    [轮 2] 任务状态：待道祖澄清
+    [轮 3] 任务状态：待道祖澄清
+    [轮 4] 任务状态：待道祖澄清
+    [轮 5] 任务状态：待道祖澄清
+  连续 3 轮状态无推进（待道祖澄清），停止驱动以免空转
+  系统自述终态：待道祖澄清（自述通过=False）
+  外部判据：不通过
+
+[sort] 冒泡排序模块（难度 低）
+  任务 #2 已发布，自主驱动中…
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+    [轮 1] 任务状态：待大罗金仙实现
+  单轮驱动轮询超时（1200 秒）
+    [轮 2] 任务状态：待修复
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+    [轮 3] 任务状态：清理完成
+  系统自述终态：清理完成（自述通过=True）
+  外部判据：不通过
+
+[stack] 后进先出栈（难度 中）
+  任务 #3 已发布，自主驱动中…
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+PS>TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+>> TerminatingError(Invoke-WebRequest): "
+{
+  "\u9519\u8BEF": "\u5DF2\u6709\u9A71\u52A8\u6267\u884C\u4E2D\uFF0C\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u518D\u9A71\u52A8"
+}"
+    [轮 1] 任务状态：待大罗金仙实现
+    [轮 2] 任务状态：清理完成
+  系统自述终态：清理完成（自述通过=True）
+  外部判据：不通过
+
+========== 评测汇总 ==========
+外部判据通过率 = 0%（0/3）
+系统自述通过率 = 66.7%（2/3）
+自证失效数 = 2（系统自称通过、外部判据却不通过——自证闭环的实证）
+
+结构化结果已落盘：评测-20260912-193012/评测结果.json（最新指针：.传承/评测/评测结果.json）
+**********************
+PowerShell 记录结束
+结束时间: 20260912202135
+**********************

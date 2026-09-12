@@ -1,0 +1,28 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests 演算-计算\入口.rs (target\debug\deps\feibonaqi_fu-2c263a9af73d8c3f.exe)
+
+running 6 tests
+test 测试::测试更大项溢出返回空 ... ok
+test 测试::测试第零项 ... ok
+test 测试::测试第九十三项 ... ok
+test 测试::测试第十项 ... ok
+test 测试::测试第九十四项溢出返回空 ... ok
+test 测试::测试第一项 ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running 演算-测试\演算-测试.rs (target\debug\deps\yansuan_ceshi-ff9df9e1fc0d2493.exe)
+
+running 3 tests
+test 集成测试正常边界 ... ok
+test 集成测试溢出边界 ... ok
+test 集成测试第二十项 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests feibonaqi_fu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

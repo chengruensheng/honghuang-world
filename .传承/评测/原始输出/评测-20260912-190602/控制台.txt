@@ -1,0 +1,41 @@
+**********************
+PowerShell 记录开始
+开始时间: 20260912190602
+用户名: 此生愿\17628
+RunAs 用户: 此生愿\17628
+配置名称: 
+计算机: 此生愿 (Microsoft Windows NT 10.0.26200.0)
+主机应用程序: C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.dll -NoProfile -ExecutionPolicy Bypass -File .\.传承\评测\运行评测.ps1 -工作区 C:\Users\17628\AppData\Local\Temp\洪荒评测夹具-自测
+进程 ID: 63752
+PSVersion: 7.6.6
+PSEdition: Core
+GitCommitId: 7.6.6
+OS: Microsoft Windows 10.0.26200
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.4
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+========== 外部标尺 · 标准任务库评测 ==========
+任务库：3 个任务（fib、sort、stack）
+模式：离线判据 · 后端：http://localhost:8321
+工作区：C:\Users\17628\AppData\Local\Temp\洪荒评测夹具-自测
+
+[fib] 斐波那契模块（难度 低）
+  外部判据：通过
+
+[sort] 冒泡排序模块（难度 低）
+  外部判据：不通过
+
+[stack] 后进先出栈（难度 中）
+  外部判据：不通过
+
+========== 评测汇总 ==========
+外部判据通过率 = 33.3%（1/3）
+
+结构化结果已落盘：评测-20260912-190602/评测结果.json（最新指针：.传承/评测/评测结果.json）
+**********************
+PowerShell 记录结束
+结束时间: 20260912190603
+**********************
