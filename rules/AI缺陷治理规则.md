@@ -95,7 +95,7 @@
 
 ## 十一、自动化检测门禁（提交前必须全部通过）
 
-> 以下 13 条检测命令，AI 在每次产出代码/测试/文档后，必须逐条运行。**任何一条不通过即视为未完成，不得交付。** 检测命令可直接复制到 PowerShell 运行，工作目录为项目根目录。
+> 以下 14 条检测命令，AI 在每次产出代码/测试/文档后，必须逐条运行。**任何一条不通过即视为未完成，不得交付。** 检测命令可直接复制到 PowerShell 运行，工作目录为项目根目录。
 
 ### 检测 1：空条件规则（土生金不得生成空条件规则）
 
@@ -174,6 +174,8 @@ if ($hits) { Write-Host "FAIL: 桥接代码中发现硬编码字符串，请定�
 
 **通过标准**：输出 `PASS`。桥接代码中的默认标签/描述必须定义为 `const`（如 `迭代产出标签`），不得裸写。
 
+**门禁实现**（`.传承/门禁/校验/校验硬编码.ps1`）全仓扫 `*.rs`，命中两类：①载荷键字面量（`标签|标题|描述|版本|状态|类型|来源|时间|内容|名称`）；②文件路径后缀字面量（`[盘符]:\` 绝对路径、`.json"`、`.toml"`、`.md"`）。`const`/`static`/`include_str` 与测试上下文为天然豁免——即**明文文件名字面量收敛为常量即合规**。2026-09-12 复核：19 处候选全为数据契约文件名与 JSON 契约键名（`Cargo.toml`、`符号索引.json`、`解析定义.json`、`坐标索引.json`、`index.md`、`校验报告.md`、`{}.md`、插件临时交换产出），已逐处提为常量，未放宽判据。
+
 ---
 
 ### 检测 7：命名一致性（不得使用旧命名 按id/历史）
@@ -196,21 +198,29 @@ if ($hits) { Write-Host "FAIL: 发现静默忽略业务错误，请改用 tracin
 
 **通过标准**：输出 `PASS`。`let _ =` 仅允许用于 `fs::remove_file`（测试清理）、`dotenvy::dotenv()`（.env不存在时忽略）、通道 recv/send 操作。业务错误必须 `tracing::warn!` 或 `?` 传播。
 
+**门禁实现**（`.传承/门禁/校验/校验静默错误.ps1`）在 `let _ =` / `if let Ok(_)` 之外另扫 `.unwrap_or(`；该判据**只限 Result 上下文**（同行含 `Err|error|Result|失败|错误` 标记）才列为候选。`strip_prefix/rsplit/split/rsplit_once` 之后的 Option 默认值（缺后缀回退原串、缺字段默认空、驳回层级默认「土」）属业务合理默认，不构成静默吞错。2026-09-12 复核：13 处候选全为此类，0 处需改源码。
+
 ---
 
 ### 检测 9：自动持久化（引擎必须支持自动保存，不得仅手动保存）
 
 ```powershell
-$engines = @("太初","量劫","乾坤","道韵","混沌")
+# 硬性底线：五引擎实现文件必须含 `自动保存` 落盘调用
+$engines = @{
+    '任务引擎' = '任务仓库-殿'; '迭代引擎' = '迭代日志-阁'; '记忆引擎' = '记忆库-阁'
+    '规则引擎' = '规则库-阁'; '事件引擎' = '事件总线-阁'
+}
 $missing = @()
-foreach ($e in $engines) {
-    $hasAuto = Get-ChildItem -Recurse -Filter "*.rs" -Path $e | Select-String "设置自动保存|自动落盘|自动保存"
-    if (-not $hasAuto) { $missing += $e }
+foreach ($名 in $engines.Keys) {
+    $hasAuto = Get-ChildItem -Recurse -Filter "*.rs" | Where-Object { $_.FullName -like "*$($engines[$名])*" } | Select-String "自动保存"
+    if (-not $hasAuto) { $missing += $名 }
 }
 if ($missing.Count -gt 0) { Write-Host "FAIL: 以下引擎缺少自动持久化: $($missing -join ', ')" } else { Write-Host "PASS: 所有引擎支持自动持久化" }
 ```
 
-**通过标准**：输出 `PASS`。五个引擎必须有 `设置自动保存(path)` 方法，关键状态变更后自动落盘。当前阶段如未实现，必须在产出说明中明确标注"自动持久化待实现"，不得声称持久化完成。
+**通过标准**：输出 `PASS`。五个引擎（任务/迭代/记忆/规则/事件）关键状态变更后必须自动落盘（`自动保存`），加载持久化数据后必须重注信号总线，禁止仅提供手动 `保存(path)` 而无调用点。当前阶段如未实现，必须在产出说明中明确标注"自动持久化待实现"，不得声称持久化完成。
+
+**门禁实现**（`.传承/门禁/校验/校验自动持久化.ps1`）在上述硬性底线之外另做全仓启发式扫描：函数体出现「状态变更调用」（`.动词(` 形态）却无任何持久化调用即列为候选。候选须逐条人工复核，确认为「无持久化语义」或「持久化委托下游」者登记于同目录 `自动持久化-豁免.txt`（格式 `路径片段|函数名|类别`）；不得以放宽判据代替逐条复核。
 
 ---
 
@@ -272,14 +282,38 @@ if ($violations.Count -gt 0) { Write-Host "FAIL: 发现 $($violations.Count) 处
 
 ---
 
+### 检测 14：前端测试覆盖（呈现层 JS 模块必须有 node:test 用例且全绿）
+
+```powershell
+$乾坤 = "乾坤"
+$测试文件 = Get-ChildItem -Path $乾坤 -Recurse -File -Include "*.test.mjs", "*.spec.mjs" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch "\\target\\|\\node_modules\\" }
+if ($测试文件.Count -eq 0) {
+    Write-Host "FAIL: 未发现前端测试文件（乾坤/**/*.test.mjs）"
+} else {
+    $注册 = Join-Path $乾坤 "观星呈现-域\呈现验证-府\映射装配-殿\钩子注册-阁\映射-模块-园\映射注册.mjs"
+    $注册URL = "file:///" + ((Resolve-Path $注册).Path -replace '\\','/')
+    Push-Location $乾坤
+    $输出 = & node --test-isolation=process --import $注册URL --test 2>&1 | Out-String
+    Pop-Location
+    $输出 | Select-String "tests \d+|pass \d+|fail \d+"
+}
+```
+
+**通过标准**：输出 `tests N / pass N / fail 0` 且 `tests > 0`。呈现层（`乾坤/观星呈现-域`）各 JS 模块必须有 node:test 用例：纯逻辑模块（词表/语料/摘要）直接断言，DOM 依赖模块（渲染/编排/看板/对话/变更/筛选）经 happy-dom 台面桩装载后断言。**不得「文件在、跑不起来」**——呈现域源码一律以 `/xxx` 绝对路径 import（HTTP 托管根 = 域根，见 `对外契约.toml` 的 static_dir），node 下不存在这个托管根，必须经映射注册（resolve 钩子）把 `/xxx` 折回域根，否则被测模块的依赖链整链解析失败，「覆盖」只是空话。
+
+**门禁实现**（`.传承/门禁/校验/校验前端测试覆盖.ps1`）：搜索根 `乾坤` + `artifacts/agent-workspace`；无测试文件或本机无 node 时输出 `passed:null`（人工核对项，不冒充通过）；有文件则带 `--test-isolation=process --import <映射注册>` 运行 `node --test`（cwd = 乾坤）——node 24 默认 `--test-isolation=none`，多测试文件同进程会共享模块实例与全局 document（一个文件的台面装配顶掉另一个的 DOM，happy-dom 选择器也随之串台），把真结论误报成断言失败，逐文件独立进程才可信。解析 `tests/pass/fail` 三数，仅当 `tests>0 且 fail=0` 判 `passed:true`。`乾坤/package.json`（私有、仅测试用，`node_modules` 不入静态托管）声明 happy-dom 与 `npm test`。2026-09-12 补齐：16 个用例文件、132 例全绿（29 纯逻辑 + 103 渲染/编排）——呈现域 16 个 JS 模块全数有用例。
+
+---
+
 ## 十二、检测执行规范
 
-1. **每次产出后必须运行全部 13 条检测**，不得只跑部分。
+1. **每次产出后必须运行全部 14 条检测**，不得只跑部分。
 2. 检测结果为 `FAIL` 的，必须修复后重新运行，直到全部 `PASS`。
 3. 检测结果为 `WARNING` 的，必须在产出说明中明确标注风险及缓解措施。
 4. 检测 9（自动持久化）和检测 10（容器注册）如当前阶段未实现，必须在产出说明中明确标注"待实现"，不得声称已完成。
 5. 检测命令本身也是规则的一部分，修改检测命令必须同步更新本规则文件。
-6. **检测 FAIL 后必须查阅修复指南**：本项目 skill 的 eferences/修复指南.md 中，针对13条检测的每种 FAIL 结果都给出了具体修复步骤。AI 拿到 FAIL 后必须按对应条目修复，不得自行猜测修复方向。修复后必须重新运行对应检测直到 PASS。
+6. **检测 FAIL 后必须查阅修复指南**：本项目 skill 的 eferences/修复指南.md 中，针对各条检测的每种 FAIL 结果都给出了具体修复步骤。AI 拿到 FAIL 后必须按对应条目修复，不得自行猜测修复方向。修复后必须重新运行对应检测直到 PASS。
 7. **检测结果必须粘贴到核对表**：任务核对表的"自动化检测门禁结果"部分，必须粘贴 detect_all.ps1 的完整输出（含每一项的 PASS/FAIL 和证据），不得只写"全部通过"。无检测输出的核对表视为未完成。
 
 ---

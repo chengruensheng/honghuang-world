@@ -25,12 +25,26 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 $输出 = ""
+# 呈现域源码一律用 `/xxx` 绝对路径 import（HTTP 托管根 = 域根，见 对外契约.toml 的 static_dir）。
+# node 下不存在这个托管根：须经映射注册（resolve 钩子）把 `/xxx` 折回域根，
+# 否则被测模块的依赖链整链解析失败——测试文件在、跑不起来，「覆盖」就是一句空话。
+$映射注册 = Join-Path $乾坤 "观星呈现-域\呈现验证-府\映射装配-殿\钩子注册-阁\映射-模块-园\映射注册.mjs"
+$映射URL = ""
+if (($根 -eq $乾坤) -and (Test-Path $映射注册)) {
+    $映射URL = "file:///" + ((Resolve-Path $映射注册).Path -replace '\\','/')
+}
 foreach ($根 in $搜索根) {
     $根测试 = Get-ChildItem -Path $根 -Recurse -File -Include "*.test.mjs", "*.spec.mjs" -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch "\\target\\|\\node_modules\\" }
     if ($根测试.Count -gt 0) {
         Push-Location $根
-        $输出 += & node --test 2>&1 | Out-String
+        # --test-isolation=process：node 24 默认 none，多测试文件同进程会共享模块实例与全局 document，
+        # 一个文件的台面装配会顶掉另一个文件的 DOM，误报成断言失败。逐文件独立进程才是真结论。
+        if (($根 -eq $乾坤) -and $映射URL) {
+            $输出 += & node --test-isolation=process --import $映射URL --test 2>&1 | Out-String
+        } else {
+            $输出 += & node --test-isolation=process --test 2>&1 | Out-String
+        }
         Pop-Location
     }
 }
