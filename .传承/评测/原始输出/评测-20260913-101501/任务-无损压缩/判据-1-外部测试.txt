@@ -1,0 +1,29 @@
+   Compiling jia-ya-wu-jie v0.1.0 (F:\洪荒 - 世界\评测沙箱)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running tests\外部判据.rs (target\debug\deps\外部判据-ed271165f2f890f6.exe)
+
+running 2 tests
+test 外部判据_单字节也要变短 ... FAILED
+test 外部判据_往返无损且严格变短 ... FAILED
+
+failures:
+
+---- 外部判据_单字节也要变短 stdout ----
+
+thread '外部判据_单字节也要变短' (27484) panicked at 压缩库.rs:19:5:
+信息论无解：不存在对任意输入都严格变短的无损压缩（鸽巢原理）；拒绝产出伪实现
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- 外部判据_往返无损且严格变短 stdout ----
+
+thread '外部判据_往返无损且严格变短' (7628) panicked at 压缩库.rs:19:5:
+信息论无解：不存在对任意输入都严格变短的无损压缩（鸽巢原理）；拒绝产出伪实现
+
+
+failures:
+    外部判据_单字节也要变短
+    外部判据_往返无损且严格变短
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test 外部判据`

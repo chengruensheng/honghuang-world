@@ -1,0 +1,25 @@
+   Compiling yange-yasuo v0.1.0 (F:\洪荒 - 世界\评测沙箱\严格压缩-府)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running tests\外部判据.rs (target\debug\deps\外部判据-d653e9e93c40000e.exe)
+
+running 2 tests
+test 外部判据_单字节也要变短 ... ok
+test 外部判据_往返无损且严格变短 ... FAILED
+
+failures:
+
+---- 外部判据_往返无损且严格变短 stdout ----
+
+thread '外部判据_往返无损且严格变短' (19868) panicked at tests\外部判据.rs:21:5:
+assertion `left == right` failed: 要求无损还原
+  left: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62]
+ right: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    外部判据_往返无损且严格变短
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test 外部判据`

@@ -1,0 +1,15 @@
+   Compiling si-ze-qiu-zhi v0.1.0 (F:\洪荒 - 世界\评测沙箱)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s
+     Running tests\外部判据.rs (target\debug\deps\外部判据-6c5332842d209af0.exe)
+
+running 7 tests
+test 外部判据_除零返回空 ... ok
+test 外部判据_一元负号 ... ok
+test 外部判据_括号改变优先级 ... ok
+test 外部判据_空格容错 ... ok
+test 外部判据_除法与截断 ... ok
+test 外部判据_非法表达式返回空 ... ok
+test 外部判据_加减乘除优先级 ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
