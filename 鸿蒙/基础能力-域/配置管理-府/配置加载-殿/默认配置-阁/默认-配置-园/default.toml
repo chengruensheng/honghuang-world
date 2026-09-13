@@ -32,15 +32,15 @@ dir = "道果/持久化"
 # 快捷接入：客户端对话页「＋ 接入供应商」可选内置模板（DeepSeek/智谱GLM/通义Qwen/Kimi/
 # MiniMax/火山方舟/OpenAI/OpenRouter/Ollama）或自定义供应商——填官网+密钥 → 获取可用模型
 # → 接入并选择；api_key 写 env:变量名 会记入 llm-接入.json，重启自动恢复；明文仅会话内有效。
-selected_provider = "a6api"
-selected_model = "deepseek-v4-pro-0813"
+selected_provider = "minimax"
+selected_model = "MiniMax-M3"
 state_file = "llm-选择.json"
 
 # MiniMax（OpenAI 兼容，endpoint 为 {base_url} 即 /v1/chat/completions）。
-# ⚠️ 当前额度已耗尽（持续 429），已禁用（enabled = false）。配置保留，充值后改回 true 即可。
-# 禁用理由：池模块的故障转移「全失败才转移下一供应商」，若把必然 429 的它留在链上，
-# a6api 的任何瞬时抖动（如 502）都会被放大成「整轮驱动失败」，且最终错误摘要显示的是
-# minimax 429，反而掩盖了 a6api 的真因——与缺陷 12-3 同一教训（已确认失效的备选是负收益）。
+# 主供应商（2026-09-13 复测 /v1/models 返回 200，额度已恢复，重新启用）。
+# 故障转移语义：池按配置顺序尝试，「全失败才转移下一供应商」——主供应商必须启用，
+# 否则 a6api 单点故障（502/DNS 瞬断）无兜底（2026-09-13 无损压缩评测因 a6api
+# DNS 故障整轮停滞即是实证）。
 # 密钥走项目根 .env 的 LLM_API_KEY（后端启动时 dotenvy 自动加载）。
 # ⚠️ base_url/model 只接受字面量（不支持 env: 前缀），请与真实网关核对后再改。
 [[llm.providers]]
@@ -55,12 +55,12 @@ model = "MiniMax-M3"
 # 原 60 秒会「重试 2 次全部超时」（实测失败耗时 182s≈3×60）致整轮驱动失败。
 timeout_secs = 300
 retry = 2
-enabled = false
+enabled = true
 json_mode = false
 
-# 主网关：a6api 聚合网关（OpenAI 兼容；当前唯一启用供应商）。
+# 备用网关：a6api 聚合网关（OpenAI 兼容）——主供应商 minimax 失败时兜底。
 # 密钥走项目根 .env 的 LLM_FALLBACK_API_KEY（缺陷清单 12-3 已换新密钥，实测 /v1/models 返回 200）。
-# 瞬时失败（502/超时）由本供应商自身的 retry = 2 消化，不再依赖备选。
+# 瞬时失败（502/超时）由本供应商自身的 retry = 2 消化。
 [[llm.providers]]
 name = "a6api"
 kind = "openai"
