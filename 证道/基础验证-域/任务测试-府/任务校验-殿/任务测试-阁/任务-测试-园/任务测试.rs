@@ -285,6 +285,7 @@ mod tests {
             修改文件: vec!["模块.rs".into()],
             新建文件: vec!["看板数据.rs".into()],
             依赖: vec![],
+            无解声明: None,
             created_at: 200,
         };
         board.更新设计文档(id, doc).expect("更新设计文档应成功");

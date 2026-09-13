@@ -10,6 +10,8 @@ mod tests {
         assert_eq!(状态层级标签(待圣人设计), 五行层级::火);
         assert_eq!(状态层级标签(圣人设计中), 五行层级::火);
         assert_eq!(状态层级标签(待重新设计), 五行层级::火);
+        // 已确认无解由设计层（圣人）判定并上报，五行归属取判定发生地：火
+        assert_eq!(状态层级标签(已确认无解), 五行层级::火);
         // 土=实现层
         assert_eq!(状态层级标签(待大罗金仙实现), 五行层级::土);
         assert_eq!(状态层级标签(大罗金仙实现中), 五行层级::土);
@@ -88,10 +90,32 @@ mod tests {
         assert_eq!(状态归属角色(已完成), None);
         assert_eq!(状态归属角色(已取消), None);
         assert_eq!(状态归属角色(清理完成), None);
+        assert_eq!(状态归属角色(已确认无解), None);
         assert_eq!(状态归属角色(待重新设计), None);
         assert_eq!(状态归属角色(待重新实现), None);
         assert_eq!(状态归属角色(待重新验收), None);
         assert_eq!(状态归属角色(待重新清理), None);
+    }
+
+    /// 测试6：终态判定与状态机流转——已确认无解 是终态，且仅由设计层可达
+    #[test]
+    fn 已确认无解_是终态且设计层可达() {
+        // 是终态：自动驱动不再承接、需清临时规则
+        assert!(TaskStatus::已确认无解.是终态());
+        assert!(TaskStatus::清理完成.是终态());
+        assert!(TaskStatus::已取消.是终态());
+        assert!(!TaskStatus::待圣人设计.是终态());
+        assert!(!TaskStatus::待大罗金仙实现.是终态());
+        assert!(!TaskStatus::待修复.是终态());
+        // 状态机：设计层判定无解可达终态（正常设计后、澄清后均可）
+        assert!(TaskStatus::圣人设计中.可流转到(&TaskStatus::已确认无解));
+        assert!(TaskStatus::道祖澄清中.可流转到(&TaskStatus::已确认无解));
+        // 实现层不可宣称无解（避免把「实现不了」伪装成「需求无解」）
+        assert!(!TaskStatus::大罗金仙实现中.可流转到(&TaskStatus::已确认无解));
+        assert!(!TaskStatus::待修复.可流转到(&TaskStatus::已确认无解));
+        // 终态不可再流转出去
+        assert!(!TaskStatus::已确认无解.可流转到(&TaskStatus::待圣人设计));
+        assert!(!TaskStatus::已确认无解.可流转到(&TaskStatus::待大罗金仙实现));
     }
 
     /// 测试5：层级标签与角色归属的一致性契约——同层内不同操作状态可映射到同一层级

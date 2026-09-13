@@ -3,7 +3,7 @@ use hm_contract::当前时间戳;
 use hm_error::{Error, Result};
 use tc_task::{
     TaskBoard, TaskStatus, DesignDoc, ImplementationDoc, VerificationDoc, VerificationRound,
-    FinalAcceptanceDoc, 五行层级, 审核记录, 审核来源, 驳回原因,
+    FinalAcceptanceDoc, 五行层级, 无解声明, 审核记录, 审核来源, 驳回原因,
 };
 use crate::循环驱动_殿::智能体;
 use crate::协作驱动_殿::五层驱动_阁::错误追溯_阁::追溯器;
@@ -17,11 +17,55 @@ pub(crate) struct 阶段产出 {
     pub(crate) 核验: Option<核验结论>,
 }
 
+/// 自由文本强无解特征词。
+///
+/// 经全量历史设计文档（30+ 任务）扫描标定：命中者 100% 为加压（无解）任务，
+/// 5 个正例任务（fib/sort/stack/cli/表达式求值）零命中——实测精确率 1.0。
+/// 这些词描述「契约本身不可满足」，正常可解需求的设计文档不会出现。
+const 无解强特征: &[&str] = &[
+    "不可满足",
+    "无法同时满足",
+    "不可能被同时满足",
+    "不可能满足",
+    "硬无解",
+    "无解命题",
+];
+
+/// 自由文本无解迹象识别：设计层把无解判定写在「边界定义/契约描述」自然语言里、
+/// 却漏填结构化 `无解声明` 字段时兜底识别（补填声明并留痕，不静默改状态）。
+fn 从文本识别无解(doc: &DesignDoc) -> Option<无解声明> {
+    let mut 全集 = String::new();
+    for v in doc.边界定义.values() {
+        全集.push_str(v);
+        全集.push('\n');
+    }
+    for c in &doc.契约 {
+        全集.push_str(&c.描述);
+        全集.push('\n');
+        for m in &c.方法 {
+            全集.push_str(&m.描述);
+            全集.push('\n');
+        }
+    }
+    let 命中 = 无解强特征.iter().find(|k| 全集.contains(**k))?;
+    Some(无解声明 {
+        契约名: doc
+            .契约
+            .first()
+            .map(|c| c.契约名.clone())
+            .unwrap_or_else(|| "（未指明）".into()),
+        判定依据: format!(
+            "系统兜底识别：设计文档自由文本出现强无解特征「{命中}」（设计层已作无解判定但未填结构化「无解声明」字段）"
+        ),
+        类型: "系统兜底识别".into(),
+    })
+}
+
 /// 解析阶段产出：提取 JSON → 注入 created_at → 反序列化为目标文档 → 返回 阶段产出。
 ///
 /// `核验器` 是机器核验门的惰性求值入口：**仅当模型宣告「验收通过 / 审核通过」时才调用**，
 /// 由系统真实执行编译与测试判定；判定不通过则推翻模型结论，改写文档并把任务打回实现层。
-fn 解析并构造(
+pub(crate) fn 解析并构造(
     角色: &AgentRole,
     状态: TaskStatus,
     答复: &str,
@@ -43,11 +87,28 @@ fn 解析并构造(
     }
     match 角色 {
         AgentRole::圣人 => {
-            let doc: DesignDoc = serde_json::from_value(值)
+            let mut doc: DesignDoc = serde_json::from_value(值)
                 .map_err(|e| Error::反序列化(format!("设计文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
+            // 兜底：结构化「无解声明」为空时，扫描自由文本的强无解特征——
+            // 设计层常把无解判定写在「边界定义」自然语言里（如鸽巢原理证明），却漏填结构化字段，
+            // 导致下游读不到而继续实现（实测：无损压缩任务圣人写下完整信息论无解证明却填 null，
+            // 终审又以「诚实标注 + 最优近似」为由判通过 → 造假）。此处按规则兜底，不依赖模型遵守格式。
+            if doc.无解声明.is_none() {
+                if let Some(声明) = 从文本识别无解(&doc) {
+                    tracing::warn!("设计层未填「无解声明」字段但自由文本含强无解特征，系统兜底认定为无解：{}", 声明.判定依据);
+                    doc.无解声明 = Some(声明);
+                }
+            }
+            // 设计层判定契约不可满足（数学/信息论无解）时，据实上报 → 直接进「已确认无解」终态，
+            // 不再把契约降级后进入实现（否则下游要么「降级实现后自报通过」造假，要么「拒绝实现后被验收反复打回」卡死）。
+            let 下一状态 = if doc.无解声明.is_some() {
+                TaskStatus::已确认无解
+            } else {
+                TaskStatus::待大罗金仙实现
+            };
             Ok(阶段产出 {
                 写文档: Box::new(move |看板, id| 看板.更新设计文档(id, doc)),
-                下一状态: TaskStatus::待大罗金仙实现,
+                下一状态,
                 核验: None,
             })
         }

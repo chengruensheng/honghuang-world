@@ -9,12 +9,15 @@ use crate::任务模型_殿::{TaskStatus, 五行层级};
 /// - 金=验收层（准圣）：待准圣验收 / 准圣验收中 / 待道祖终审 / 道祖终审中 / 待人工验收 / 人工验收中 / 待重新验收 / 已完成
 /// - 水=清理层（太乙金仙）：待清理 / 清理中 / 待重新清理 / 清理完成
 /// - 木=需求层（道祖）：待受理 / 进行中 / 已取消 / 待道祖澄清 / 道祖澄清中
+///
+/// 已确认无解 归火层：它由设计层（圣人）判定并上报，是设计结论的终态；五行归属取「判定发生地」。
 #[allow(clippy::match_like_matches_macro)]
 pub fn 状态层级标签(状态: TaskStatus) -> 五行层级 {
     match 状态 {
         TaskStatus::待圣人设计
         | TaskStatus::圣人设计中
-        | TaskStatus::待重新设计 => 五行层级::火,
+        | TaskStatus::待重新设计
+        | TaskStatus::已确认无解 => 五行层级::火,
         TaskStatus::待大罗金仙实现
         | TaskStatus::大罗金仙实现中
         | TaskStatus::待修复

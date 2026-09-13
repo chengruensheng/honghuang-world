@@ -223,5 +223,6 @@ pub(crate) fn 状态名(状态: &TaskStatus) -> &'static str {
         TaskStatus::待重新实现 => "待重新实现",
         TaskStatus::待重新验收 => "待重新验收",
         TaskStatus::待重新清理 => "待重新清理",
+        TaskStatus::已确认无解 => "已确认无解",
     }
 }

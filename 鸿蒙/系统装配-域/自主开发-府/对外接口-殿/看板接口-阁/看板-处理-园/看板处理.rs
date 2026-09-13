@@ -66,6 +66,7 @@ fn 解析状态(s: &str) -> Option<TaskStatus> {
         "待清理" => Some(TaskStatus::待清理),
         "清理中" => Some(TaskStatus::清理中),
         "清理完成" => Some(TaskStatus::清理完成),
+        "已确认无解" => Some(TaskStatus::已确认无解),
         _ => None,
     }
 }
