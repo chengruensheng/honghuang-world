@@ -1,6 +1,8 @@
 use std::io::Read;
 use std::path::{Component as 路径组件, Path, PathBuf};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
+// Windows 专属：raw_arg 让 cmd /C 收到未经 std 转义的原样命令串（见 运行命令_超时 内注释）
+use std::os::windows::process::CommandExt;
 use std::time::{Duration, Instant};
 use hm_contract::Component;
 use hm_error::{Error, Result};
@@ -310,7 +312,11 @@ impl 本地执行器 {
             return Err(Error::危险命令(format!("命令不在白名单: {命令}")));
         }
         let mut 子进程 = Command::new("cmd")
-            .args(["/C", 命令])
+            // raw_arg 原样传命令串：`args(["/C", 命令])` 会对含引号命令做 std 转义（内部 `"` → `\"`，
+            // 整体加引号），cmd /C 遇多引号剥首尾后，cargo 经 CommandLineToArgvW 把 `\"` 解析成
+            // 字面引号字符 → `--manifest-path "参数解析-府/Cargo.toml"` 变成带引号的路径 → 文件必不存在
+            // （2026-09-13 实证：机器核验 100% 假失败）。raw_arg 让 cmd 收到的命令串与手敲一致。
+            .raw_arg(format!("/C {命令}"))
             .current_dir(&self.工作区)
             // 从源头关闭子进程彩色/光标输出（cargo 认 CARGO_TERM_COLOR，通用 CLI 认 NO_COLOR/CLICOLOR），
             // 避免 ANSI 转义序列进入天机流形成乱码；输出边界另有 剥终端转义 兜底（见 读流）。

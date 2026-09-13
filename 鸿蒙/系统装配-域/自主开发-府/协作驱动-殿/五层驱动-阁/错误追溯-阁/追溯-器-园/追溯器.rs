@@ -72,23 +72,28 @@ impl 追溯器 {
             );
         }
 
-        // 规则3：需求关键词未进入设计边界/文件清单 → 需求偏差
+        // 规则3：需求关键词未进入设计边界/文件清单 → 需求偏差。
+        // 仅当错误现象本身指向需求偏差（需求/澄清/范围字样）时才做词面覆盖检查：
+        // 编译/测试失败等机器核验现象必须落到规则5带真实证据回退，禁止用词面启发式抢判
+        // （2026-09-13 实证：核验命令失败被乱码伪要点误判为需求偏差，定向回退木层后卡死澄清）。
         if let Some(设计) = 设计 {
-            let 设计文本 = 设计.边界定义.values().cloned().collect::<Vec<_>>().join(" ");
-            let 需求关键词 = 提取需求关键词(需求描述);
-            let 缺失: Vec<String> = 需求关键词
-                .iter()
-                .filter(|词| !设计文本.contains(*词) && !设计.新建文件.iter().any(|f| f.contains(*词)))
-                .map(|s| s.to_string())
-                .collect();
-            if !缺失.is_empty() && !设计.边界定义.is_empty() {
-                return 错误信息包::新(
-                    出错任务id,
-                    五行层级::木,
-                    错误类型::需求偏差,
-                    format!("设计未覆盖需求要点：{}", 缺失.join("、")),
-                    Vec::new(),
-                );
+            if 含需求字样(错误现象) {
+                let 设计文本 = 设计.边界定义.values().cloned().collect::<Vec<_>>().join(" ");
+                let 需求关键词 = 提取需求关键词(需求描述);
+                let 缺失: Vec<String> = 需求关键词
+                    .iter()
+                    .filter(|词| !设计文本.contains(*词) && !设计.新建文件.iter().any(|f| f.contains(*词)))
+                    .map(|s| s.to_string())
+                    .collect();
+                if !缺失.is_empty() && !设计.边界定义.is_empty() {
+                    return 错误信息包::新(
+                        出错任务id,
+                        五行层级::木,
+                        错误类型::需求偏差,
+                        format!("设计未覆盖需求要点：{}", 缺失.join("、")),
+                        Vec::new(),
+                    );
+                }
             }
         }
 
@@ -184,19 +189,63 @@ fn 检测循环依赖(设计: &DesignDoc) -> Option<Vec<String>> {
     None
 }
 
-/// 从需求描述提取关键词（中文 2 字滑动窗，供设计覆盖检查）
+/// 从需求描述提取关键词：连续拉丁段保留整词（≥2 字符），连续汉字段段内做 2 字滑窗。
+/// 语种分段是为了不再跨中英边界切出「用R/Ru/t新」类碎片（2026-09-13 实证缺陷）；
+/// 标点、空白与符号只作分段边界，不产出词条。
 fn 提取需求关键词(需求: &str) -> Vec<String> {
-    let 字符: Vec<char> = 需求.chars().filter(|c| !c.is_whitespace()).collect();
-    let mut 词 = Vec::new();
-    for w in 字符.windows(2) {
-        let 片段: String = w.iter().collect();
-        // 跳过标点/纯符号二元组
-        if 片段.chars().all(|c| c.is_alphanumeric() || c.is_alphabetic()) {
-            词.push(片段);
+    let mut 词: Vec<String> = Vec::new();
+    let mut 拉丁 = String::new();
+    let mut 汉字: Vec<char> = Vec::new();
+    for 字 in 需求.chars() {
+        if 字.is_ascii_alphanumeric() {
+            if !汉字.is_empty() {
+                收汉字窗(&汉字, &mut 词);
+                汉字.clear();
+            }
+            拉丁.push(字);
+        } else if 字.is_alphabetic() {
+            // 汉字等非 ASCII 字母：进入汉字段
+            if !拉丁.is_empty() {
+                收拉丁词(&mut 拉丁, &mut 词);
+            }
+            汉字.push(字);
+        } else {
+            // 空白/标点/符号：分段边界
+            if !拉丁.is_empty() {
+                收拉丁词(&mut 拉丁, &mut 词);
+            }
+            if !汉字.is_empty() {
+                收汉字窗(&汉字, &mut 词);
+                汉字.clear();
+            }
         }
+    }
+    if !拉丁.is_empty() {
+        收拉丁词(&mut 拉丁, &mut 词);
+    }
+    if !汉字.is_empty() {
+        收汉字窗(&汉字, &mut 词);
     }
     词.dedup();
     词.into_iter().take(8).collect()
+}
+
+/// 拉丁段冲刷：整词保留（≥2 字符），单字符丢弃
+fn 收拉丁词(拉丁: &mut String, 词: &mut Vec<String>) {
+    if 拉丁.chars().count() >= 2 {
+        词.push(std::mem::take(拉丁));
+    } else {
+        拉丁.clear();
+    }
+}
+
+/// 汉字段冲刷：段内 2 字滑窗
+fn 收汉字窗(汉字: &[char], 词: &mut Vec<String>) {
+    if 汉字.len() >= 2 {
+        for w in 汉字.windows(2) {
+            词.push(w.iter().collect());
+        }
+    }
 }
 
 /// 错误现象是否指向需求偏差（需求/澄清/范围/不是想要等字样）
