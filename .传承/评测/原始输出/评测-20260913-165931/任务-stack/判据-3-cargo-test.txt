@@ -1,0 +1,23 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src\lib.rs (target\debug\deps\hou_jin_xian_chu_zhan_fu-b9b980f087c9a2bf.exe)
+
+running 10 tests
+test tests::交替入栈与出栈_始终满足_lifo不变式 ... ok
+test tests::入栈后立刻查看栈顶_返回刚入栈的元素 ... ok
+test tests::单元素栈_查看栈顶_保持不变 ... ok
+test tests::入栈零_负数_重复元素_均安全 ... ok
+test tests::新建空栈_立即可用_三方法安全调用 ... ok
+test tests::入栈极值_min与_max混合_无溢出无_panic ... ok
+test tests::空栈_查看栈顶_返回_none_无副作用 ... ok
+test tests::连续入栈_n个元素_栈顶为最后入栈_逆序出栈满足_lifo ... ok
+test tests::空栈_出栈_返回_none_无副作用 ... ok
+test tests::单元素栈_入栈再出栈_重归为空 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests hou_jin_xian_chu_zhan_fu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

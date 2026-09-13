@@ -1,0 +1,20 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests 源码\斐波那契.rs (target\debug\deps\feibonaqi-f96ca92a2484f862.exe)
+
+running 7 tests
+test 测试::一项 ... ok
+test 测试::九十三项 ... ok
+test 测试::三项 ... ok
+test 测试::九十二项 ... ok
+test 测试::十项 ... ok
+test 测试::零项 ... ok
+test 测试::二项 ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests feibonaqi
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,29 @@
+   Compiling yan_ge_bian_duan_fu v0.1.0 (F:\洪荒 - 世界\评测沙箱\严格变短-府)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running tests\外部判据.rs (target\debug\deps\外部判据-527825ee5bfcdbaf.exe)
+
+running 2 tests
+test 外部判据_单字节也要变短 ... FAILED
+test 外部判据_往返无损且严格变短 ... FAILED
+
+failures:
+
+---- 外部判据_单字节也要变短 stdout ----
+
+thread '外部判据_单字节也要变短' (29720) panicked at tests\外部判据.rs:10:5:
+要求对任意输入严格变短，但单字节输入无法再短
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- 外部判据_往返无损且严格变短 stdout ----
+
+thread '外部判据_往返无损且严格变短' (25292) panicked at tests\外部判据.rs:20:5:
+要求严格变短
+
+
+failures:
+    外部判据_单字节也要变短
+    外部判据_往返无损且严格变短
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test 外部判据`

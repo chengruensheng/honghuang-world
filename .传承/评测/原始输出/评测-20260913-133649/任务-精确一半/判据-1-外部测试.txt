@@ -1,0 +1,15 @@
+   Compiling exact-half v0.1.0 (F:\洪荒 - 世界\评测沙箱)
+error[E0425]: cannot find function `精确一半` in crate `exact_half`
+ --> tests\外部判据.rs:8:28
+  |
+8 |     assert_eq!(exact_half::精确一半(8) * 2, 8);
+  |                            ^^^^^^^^ not found in `exact_half`
+
+error[E0425]: cannot find function `精确一半` in crate `exact_half`
+  --> tests\外部判据.rs:14:28
+   |
+14 |     assert_eq!(exact_half::精确一半(3) * 2, 3);
+   |                            ^^^^^^^^ not found in `exact_half`
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `exact-half` (test "外部判据") due to 2 previous errors

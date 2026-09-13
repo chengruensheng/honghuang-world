@@ -1,0 +1,12 @@
+   Compiling canshujiexi v0.1.0 (F:\洪荒 - 世界\评测沙箱\参数解析-府)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running tests\外部判据.rs (target\debug\deps\外部判据-29f593179e77e1e1.exe)
+
+running 4 tests
+test 外部判据_非法输入返回空 ... ok
+test 外部判据_解析空格形式 ... ok
+test 外部判据_负数值 ... ok
+test 外部判据_解析等于号形式 ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

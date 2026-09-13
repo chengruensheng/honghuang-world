@@ -1,0 +1,21 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests 源码\后进先出栈.rs (target\debug\deps\houjinxianchu-c8947357c84ff724.exe)
+
+running 8 tests
+test 测试::严格遵循后进先出 ... ok
+test 测试::出栈移除栈顶 ... ok
+test 测试::入栈后该元素成为栈顶 ... ok
+test 测试::支持重复值 ... ok
+test 测试::查看栈顶不移除元素 ... ok
+test 测试::支持负数零正数 ... ok
+test 测试::新建栈为空 ... ok
+test 测试::空栈出栈返回无 ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests houjinxianchu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

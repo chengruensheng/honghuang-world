@@ -1,0 +1,23 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src\lib.rs (target\debug\deps\maopao_paixu_fu-1a6d367dfd1a5737.exe)
+
+running 10 tests
+test tests::全相等切片_保持原序 ... ok
+test tests::含负数_含重复_升序 ... ok
+test tests::单元素切片_直接返回_无修改 ... ok
+test tests::双元素切片_相等_保持 ... ok
+test tests::双元素切片_逆序_升序 ... ok
+test tests::双元素切片_乱序_升序 ... ok
+test tests::含极值切片_极值混合_升序 ... ok
+test tests::已升序切片_幂等 ... ok
+test tests::完全逆序切片_升序 ... ok
+test tests::空切片_直接返回_无修改 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests maopao_paixu_fu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

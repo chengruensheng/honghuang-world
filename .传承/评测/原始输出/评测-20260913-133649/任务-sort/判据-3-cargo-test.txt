@@ -1,0 +1,21 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests 源码\冒泡排序.rs (target\debug\deps\maopaopaixu-8d8e5b131e20f455.exe)
+
+running 8 tests
+test 测试::全相等切片 ... ok
+test 测试::单元素切片 ... ok
+test 测试::含重复值 ... ok
+test 测试::已升序切片 ... ok
+test 测试::含负数零正数 ... ok
+test 测试::稳定性验证 ... ok
+test 测试::空切片 ... ok
+test 测试::逆序切片 ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests maopaopaixu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

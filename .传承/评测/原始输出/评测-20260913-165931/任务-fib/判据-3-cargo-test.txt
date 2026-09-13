@@ -1,0 +1,25 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src\lib.rs (target\debug\deps\fibonacci-2f7017f753faf92d.exe)
+
+running 12 tests
+test tests::常规_第三项等于二 ... ok
+test tests::常规_第四十五项等于亿级 ... ok
+test tests::常规_第十项等于五十五 ... ok
+test tests::常规_第二十项等于六千七百六十五 ... ok
+test tests::边界_第九十三项等于u64上限 ... ok
+test tests::边界_相邻项满足递推关系 ... ok
+test tests::边界_第九十二项 ... ok
+test tests::边界_第零项等于零 ... ok
+test tests::边界_第九十四项应触发panic - should panic ... ok
+test tests::边界_远超上限仍触发panic - should panic ... ok
+test tests::边界_第一项等于一 ... ok
+test tests::边界_第二项等于一 ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests fibonacci
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

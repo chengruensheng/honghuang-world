@@ -1,0 +1,21 @@
+   Compiling impossible-strict-shorten v0.0.0 (F:\洪荒 - 世界\评测沙箱)
+error[E0425]: cannot find function `压缩` in crate `impossible_strict_shorten`
+ --> tests\外部判据.rs:9:42
+  |
+9 |     let 压缩后 = impossible_strict_shorten::压缩(&输入);
+  |                                             ^^^^ not found in `impossible_strict_shorten`
+
+error[E0425]: cannot find function `压缩` in crate `impossible_strict_shorten`
+  --> tests\外部判据.rs:19:42
+   |
+19 |     let 压缩后 = impossible_strict_shorten::压缩(&输入);
+   |                                             ^^^^ not found in `impossible_strict_shorten`
+
+error[E0425]: cannot find function `解压` in crate `impossible_strict_shorten`
+  --> tests\外部判据.rs:21:43
+   |
+21 |     assert_eq!(impossible_strict_shorten::解压(&压缩后), 输入, "要求无损还原");
+   |                                           ^^^^ not found in `impossible_strict_shorten`
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `impossible-strict-shorten` (test "外部判据") due to 3 previous errors
