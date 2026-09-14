@@ -192,8 +192,14 @@ pub fn 流式解析_sse<R: std::io::BufRead>(
                     if let Some(名) = 片段["function"]["name"].as_str() {
                         调用们[索引].名称.push_str(名);
                     }
-                    if let Some(参) = 片段["function"]["arguments"].as_str() {
-                        调用们[索引].参数.push_str(参);
+                    match &片段["function"]["arguments"] {
+                        // 流式规范：arguments 按字符串分片累积
+                        serde_json::Value::String(参) => 调用们[索引].参数.push_str(参),
+                        // 非规范：网关把完整对象/数组塞进一个分片，对象无法分片拼接 → 整体覆盖
+                        值 @ (serde_json::Value::Object(_) | serde_json::Value::Array(_)) => {
+                            调用们[索引].参数 = 值.to_string();
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -449,11 +455,38 @@ pub fn 解析工具调用(message: &serde_json::Value) -> Vec<工具调用> {
         for 条目 in 调用数组 {
             let id = 条目["id"].as_str().unwrap_or_default().to_string();
             let 名称 = 条目["function"]["name"].as_str().unwrap_or_default().to_string();
-            let 参数 = 条目["function"]["arguments"].as_str().unwrap_or_default().to_string();
+            let 参数 = 规范参数文本(&条目["function"]["arguments"]);
             if !名称.is_empty() {
                 结果.push(工具调用 { id, 名称, 参数 });
             }
         }
     }
     结果
+}
+
+/// 规范化 tool_call 的 arguments 为可 JSON 解析的文本。
+///
+/// 只做 `as_str()` 会在这三种常见网关/模型形态下静默变成空串，下游执行器随即报
+/// 「解析工具参数失败: EOF while parsing a value at line 1 column 0」——错误文案完全看不出真因
+/// （2026-09-14 排查「LLM 传参不对」时定位）：
+/// * arguments 是 JSON 对象/数组（未按规范转义成字符串）→ 直接序列化；
+/// * arguments 为 null / 缺失 → 视为空参数 `{}`；
+/// * 文本被 markdown 代码围栏或首尾空白包裹（```json {...} ```）→ 剥离后取正文。
+fn 规范参数文本(值: &serde_json::Value) -> String {
+    let 原文 = match 值 {
+        serde_json::Value::String(文) => 文.as_str(),
+        serde_json::Value::Object(_) | serde_json::Value::Array(_) => return 值.to_string(),
+        _ => return "{}".to_string(),
+    };
+    let 修剪 = 原文.trim();
+    let 修剪 = 修剪
+        .strip_prefix("```json")
+        .or_else(|| 修剪.strip_prefix("```"))
+        .unwrap_or(修剪);
+    let 修剪 = 修剪.strip_suffix("```").unwrap_or(修剪).trim();
+    if 修剪.is_empty() {
+        "{}".to_string()
+    } else {
+        修剪.to_string()
+    }
 }

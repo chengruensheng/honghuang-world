@@ -116,7 +116,7 @@ fn 任务清单函数() -> serde_json::Value {
     serde_json::json!({
         "type": "function",
         "function": {
-            "name": 任务清单,
+            "name": 对外工具名(任务清单),
             "description": "覆盖式更新多步任务清单（待办/进行中/已完成）",
             "parameters": {
                 "type": "object",

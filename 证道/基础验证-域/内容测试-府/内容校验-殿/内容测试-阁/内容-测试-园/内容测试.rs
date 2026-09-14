@@ -127,4 +127,47 @@ mod tests {
         let 结果 = 生成器.生成("你好".into()).unwrap();
         assert_eq!(结果, "主答复");
     }
+
+    /// 回归：网关把 arguments 回成 JSON 对象（规范要求是字符串）时，
+    /// 旧实现 `as_str()` 会静默取空串，下游只报「解析工具参数失败: EOF」，看不出真因。
+    #[test]
+    fn 解析工具调用_arguments为对象时序列化为可解析参数文本() {
+        let 消息 = serde_json::json!({
+            "tool_calls": [{
+                "id": "c1",
+                "function": { "name": "run_command", "arguments": { "命令": "dir" } }
+            }]
+        });
+        let 调用 = hm_content::解析工具调用(&消息);
+        assert_eq!(调用.len(), 1);
+        let 参数: serde_json::Value = serde_json::from_str(&调用[0].参数).expect("参数必须可解析");
+        assert_eq!(参数["命令"], "dir", "对象形态 arguments 应序列化为可解析文本，实际: {}", 调用[0].参数);
+    }
+
+    /// 回归：arguments 被 markdown 代码围栏包裹时须剥离围栏取正文，否则下游解析必失败
+    #[test]
+    fn 解析工具调用_参数被代码围栏包裹时剥离取正文() {
+        let 消息 = serde_json::json!({
+            "tool_calls": [{
+                "id": "c2",
+                "function": { "name": "list_dir", "arguments": "```json\n{\"路径\":\".\"}\n```" }
+            }]
+        });
+        let 调用 = hm_content::解析工具调用(&消息);
+        let 参数: serde_json::Value = serde_json::from_str(&调用[0].参数).expect("剥离围栏后必须可解析");
+        assert_eq!(参数["路径"], ".", "应剥离围栏保留正文，实际: {}", 调用[0].参数);
+    }
+
+    /// 回归：arguments 为 null 时回退成空对象 `{}`（而非空串），使「列目录」等可缺省工具仍能正常执行
+    #[test]
+    fn 解析工具调用_arguments为空时回退空对象() {
+        let 消息 = serde_json::json!({
+            "tool_calls": [{
+                "id": "c3",
+                "function": { "name": "list_dir", "arguments": serde_json::Value::Null }
+            }]
+        });
+        let 调用 = hm_content::解析工具调用(&消息);
+        assert_eq!(调用[0].参数, "{}", "null 参数应回退为可解析的空对象");
+    }
 }

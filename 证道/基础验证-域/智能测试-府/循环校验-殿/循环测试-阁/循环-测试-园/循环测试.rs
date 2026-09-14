@@ -485,4 +485,37 @@ mod tests {
         let 记录 = 执行器.列目录记录.lock().expect("列目录记录锁中毒");
         assert_eq!(记录.as_slice(), &[".".to_string()], "空参数应缺省为列工作区根（.），实际: {记录:?}");
     }
+
+    #[test]
+    fn 智能体_参数缺失错误回喂含可接受键与实收键() {
+        // 回归：只报「缺少参数: 命令」时模型无从得知该改什么，会反复以同一份空参数重试直到熔断
+        // （2026-09-14 实证：#51 准圣连续 3 次以 `{}` 调用「运行命令」）。错误文案必须给出可接受键与实收键。
+        let 对话器 = Arc::new(模拟对话器::新(vec![
+            模型响应 { 思考: None, 内容: None, 工具调用: vec![工具调用("运行命令", r#"{}"#)] },
+            模型响应 { 思考: None, 内容: Some("已修正".into()), 工具调用: vec![] },
+        ]));
+        let 执行器 = Arc::new(模拟执行器::新());
+        let 执行器_记录 = 执行器.clone();
+        let 事件 = Arc::new(Mutex::new(Vec::<开发事件>::new()));
+        let 事件_克隆 = 事件.clone();
+        let 智能体 = 智能体::new(对话器, 执行器, 10)
+            .设置事件回调(Arc::new(move |e| 事件_克隆.lock().expect("事件锁中毒").push(e.clone())));
+
+        let 答复 = 智能体.运行("执行命令".into()).expect("参数缺失不应终止循环");
+        assert_eq!(答复, "已修正");
+        assert!(执行器_记录.命令记录.lock().expect("锁").is_empty(), "参数缺失时不得把空命令下发给执行器");
+        let 回喂: Vec<String> = 事件
+            .lock()
+            .expect("事件锁中毒")
+            .iter()
+            .filter(|e| matches!(e.类型, 开发事件类型::工具结果))
+            .map(|e| e.内容.clone())
+            .collect();
+        assert!(
+            回喂
+                .iter()
+                .any(|文| 文.contains("可接受键") && 文.contains("命令 / command") && 文.contains("无")),
+            "错误回喂须含可接受键与实收键，否则模型会以空参数重试至熔断：{回喂:?}"
+        );
+    }
 }
