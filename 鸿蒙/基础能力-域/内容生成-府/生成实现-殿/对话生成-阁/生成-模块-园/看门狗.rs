@@ -104,7 +104,7 @@ mod tests {
     fn 限时执行_按时完成放行() {
         let 开始 = Instant::now();
         let 结果 = 限时执行(快时限, || Ok::<_, Error>(42));
-        assert_eq!(结果.unwrap(), 42);
+        assert_eq!(结果.expect("按时完成应返回结果"), 42);
         assert!(开始.elapsed() < 慢耗时, "不应等待慢时限");
     }
 
@@ -144,13 +144,13 @@ mod tests {
             &mut 已发,
             &mut 回调,
         );
-        assert_eq!(结果.unwrap().内容.unwrap(), "一二");
-        assert_eq!(*记录.lock().unwrap(), vec!["一".to_string(), "二".to_string()]);
+        assert_eq!(结果.expect("流式应正常完成").内容.expect("应有正文"), "一二");
+        assert_eq!(*记录.lock().expect("记录锁"), vec!["一".to_string(), "二".to_string()]);
         assert!(已发, "收到过块则已发块须置位");
     }
 
     fn record(记录: &Arc<std::sync::Mutex<Vec<String>>>, 块: String) {
-        记录.lock().unwrap().push(块);
+        记录.lock().expect("记录锁").push(块);
     }
 
     #[test]
