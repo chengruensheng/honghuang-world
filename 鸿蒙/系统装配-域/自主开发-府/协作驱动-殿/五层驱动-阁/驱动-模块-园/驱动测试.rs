@@ -11,12 +11,25 @@ mod tests {
         核验结论 { 通过: true, 摘要: String::new(), 原始输出: String::new() }
     }
 
+    /// 构造实现文档（供验收层事实核验用例提供交付物清单）
+    fn 实现文档(交付物: &[&str]) -> tc_task::ImplementationDoc {
+        let 变更: Vec<String> = 交付物
+            .iter()
+            .map(|路径| format!(r#"{{"文件路径":"{路径}","变更类型":"新建","摘要":"真"}}"#))
+            .collect();
+        let json = format!(
+            r#"{{"代码变更":[{}],"工具调用":[{{"工具名":"write_file","参数":"{{}}","结果摘要":"写入成功","时间戳":1}}],"自检":{{"通过":true,"边界合规":true,"契约合规":true}},"created_at":1}}"#,
+            变更.join(",")
+        );
+        serde_json::from_str(&json).expect("构造实现文档")
+    }
+
     /// 设计层判定契约无解时，必须**如实上报终态**而非进入实现层（缺陷 15-1/15-2 的修复回归）。
     /// 否则下游要么把契约偷偷降级后自报通过（造假），要么拒绝实现后被验收反复打回至卡死。
     #[test]
     fn 圣人_声明无解_进已确认无解终态() {
         let 答复 = r#"{"边界定义":{"输入边界":"任意 u64"},"安全区域":[],"契约":[],"修改文件":[],"新建文件":[],"依赖":[],"无解声明":{"契约名":"精确取半","判定依据":"奇数无法被 2 整除，x/2*2≠x","类型":"数学无解"}}"#;
-        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None).expect("应解析成功");
+        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None, None).expect("应解析成功");
         assert_eq!(产出.下一状态, TaskStatus::已确认无解, "声明无解应直接进终态，不得进入实现层");
     }
 
@@ -24,7 +37,7 @@ mod tests {
     #[test]
     fn 圣人_未声明无解_正常进实现层() {
         let 答复 = r#"{"边界定义":{"输入边界":"u64"},"安全区域":[],"契约":[],"修改文件":[],"新建文件":[],"依赖":[],"无解声明":null}"#;
-        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None).expect("应解析成功");
+        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None, None).expect("应解析成功");
         assert_eq!(产出.下一状态, TaskStatus::待大罗金仙实现, "契约可满足应正常进入实现层");
     }
 
@@ -32,7 +45,7 @@ mod tests {
     #[test]
     fn 圣人_无解声明缺省_按可满足处理() {
         let 答复 = r#"{"边界定义":{},"安全区域":[],"契约":[],"修改文件":[],"新建文件":[],"依赖":[]}"#;
-        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None).expect("应解析成功");
+        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None, None).expect("应解析成功");
         assert_eq!(产出.下一状态, TaskStatus::待大罗金仙实现, "缺省无解声明应向后兼容为可满足");
     }
 
@@ -52,7 +65,7 @@ mod tests {
     #[test]
     fn 圣人_文本声明无解但字段为空_兜底进终态() {
         let 答复 = r#"{"边界定义":{"输出边界":"此契约在信息论上不可能被同时满足：鸽巢原理严格证明长度 n 的输入空间 2^(8n) 严格大于长度小于 n 的输出空间，必存在不可单射的输入"},"安全区域":[],"契约":[],"修改文件":[],"新建文件":[],"依赖":[],"无解声明":null}"#;
-        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None).expect("应解析成功");
+        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None, None).expect("应解析成功");
         assert_eq!(产出.下一状态, TaskStatus::已确认无解, "自由文本含强无解特征应兜底进终态");
     }
 
@@ -61,7 +74,7 @@ mod tests {
     #[test]
     fn 圣人_文本无无解特征_不误判() {
         let 答复 = r#"{"边界定义":{"输入边界":"非负整数 n","输出边界":"返回第 n 个斐波那契数；对 n=0 返回 0，n=1 返回 1，n>=2 递推"},"安全区域":[],"契约":[{"契约名":"dp_fib","方法":[{"名称":"dp_fib","签名":"fn dp_fib(n: u64) -> u64","描述":"返回第 n 个斐波那契数"}],"描述":"标准动态规划实现"}],"修改文件":[],"新建文件":["src/lib.rs"],"依赖":[],"无解声明":null}"#;
-        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None).expect("应解析成功");
+        let 产出 = 解析并构造(&AgentRole::圣人, TaskStatus::圣人设计中, 答复, &空核验, None, None).expect("应解析成功");
         assert_eq!(产出.下一状态, TaskStatus::待大罗金仙实现, "正常可解需求不得被兜底误判为无解");
     }
 
@@ -72,7 +85,7 @@ mod tests {
         let 临时 = std::env::temp_dir().join("hm_落盘核验_缺失");
         std::fs::create_dir_all(&临时).expect("建临时工作区");
         let 答复 = r#"{"代码变更":[{"文件路径":"编造.rs","变更类型":"新建","摘要":"无"}],"工具调用":[{"工具名":"write_file","参数":"{}","结果摘要":"写入成功","时间戳":1}],"自检":{"通过":true,"边界合规":true,"契约合规":true},"created_at":1}"#;
-        let 错误 = match 解析并构造(&AgentRole::大罗金仙, TaskStatus::待大罗金仙实现, 答复, &空核验, 临时.to_str()) {
+        let 错误 = match 解析并构造(&AgentRole::大罗金仙, TaskStatus::待大罗金仙实现, 答复, &空核验, 临时.to_str(), None) {
             Ok(_) => panic!("宣称新建的文件不存在应判非法"),
             Err(e) => e,
         };
@@ -89,7 +102,7 @@ mod tests {
         std::fs::create_dir_all(临时.join("子目录")).expect("建临时工作区");
         std::fs::write(临时.join("子目录").join("真实.rs"), "// 真").expect("写文件");
         let 答复 = r#"{"代码变更":[{"文件路径":"子目录/真实.rs","变更类型":"新建","摘要":"真"}],"工具调用":[{"工具名":"write_file","参数":"{}","结果摘要":"写入成功","时间戳":1}],"自检":{"通过":true,"边界合规":true,"契约合规":true},"created_at":1}"#;
-        let 产出 = 解析并构造(&AgentRole::大罗金仙, TaskStatus::待大罗金仙实现, 答复, &空核验, 临时.to_str())
+        let 产出 = 解析并构造(&AgentRole::大罗金仙, TaskStatus::待大罗金仙实现, 答复, &空核验, 临时.to_str(), None)
             .expect("文件已存在应放行");
         assert_eq!(产出.下一状态, TaskStatus::待准圣验收);
     }
@@ -100,7 +113,7 @@ mod tests {
         let 临时 = std::env::temp_dir().join("hm_落盘核验_零调用");
         std::fs::create_dir_all(&临时).expect("建临时工作区");
         let 答复 = r#"{"代码变更":[{"文件路径":"x.rs","变更类型":"新建","摘要":"无"}],"工具调用":[],"自检":{"通过":true,"边界合规":true,"契约合规":true},"created_at":1}"#;
-        let 错误 = match 解析并构造(&AgentRole::大罗金仙, TaskStatus::待大罗金仙实现, 答复, &空核验, 临时.to_str()) {
+        let 错误 = match 解析并构造(&AgentRole::大罗金仙, TaskStatus::待大罗金仙实现, 答复, &空核验, 临时.to_str(), None) {
             Ok(_) => panic!("零工具调用应判非法"),
             Err(e) => e,
         };
@@ -108,6 +121,60 @@ mod tests {
             错误.to_string().contains("「工具调用」数组为空"),
             "错误须点明无任何工具调用，实际: {错误}"
         );
+    }
+
+    /// 验收事实核验门：准圣把盘上真实存在的交付物判为「缺失」时，必须用系统查盘结论推翻该臆断。
+    /// 依据（2026-09-14 实证）：#51 准圣把真实存在的 `执行-测试-新增.rs`（4720 B）判为缺失，
+    /// 直接导致第 8 次定向回退熔断。
+    #[test]
+    fn 准圣_臆断交付物缺失_判非法() {
+        let 临时 = std::env::temp_dir().join("hm_验收事实_臆断缺失");
+        let _ = std::fs::remove_dir_all(&临时);
+        std::fs::create_dir_all(&临时).expect("建临时工作区");
+        std::fs::write(临时.join("真实.rs"), "// 真").expect("写交付物");
+        let 文档 = 实现文档(&["真实.rs"]);
+        let 答复 = r#"{"轮次":[{"轮次":1,"通过":false,"边界检查":true,"契约检查":true,"安全检查":true,"事实检查":false,"完整性检查":true,"问题":["交付物 真实.rs 缺失"]}],"最终结果":false,"created_at":1}"#;
+        let 错误 = match 解析并构造(&AgentRole::准圣, TaskStatus::待准圣验收, 答复, &空核验, 临时.to_str(), Some(&文档)) {
+            Ok(_) => panic!("臆断交付物缺失应判非法"),
+            Err(e) => e,
+        };
+        assert!(
+            错误.to_string().contains("验收事实核验未通过") && 错误.to_string().contains("全部真实存在"),
+            "错误须点明系统查盘结论与模型臆断不符，实际: {错误}"
+        );
+    }
+
+    /// 验收事实核验门：准圣声称「安全检查通过」但工作区确有 .bak 残留时，漏报必须判非法（安全红线）。
+    #[test]
+    fn 准圣_漏报残留备份_判非法() {
+        let 临时 = std::env::temp_dir().join("hm_验收事实_漏报残留");
+        let _ = std::fs::remove_dir_all(&临时);
+        std::fs::create_dir_all(&临时).expect("建临时工作区");
+        std::fs::write(临时.join("遗留.rs.bak"), "// 残留").expect("写残留文件");
+        let 文档 = 实现文档(&[]);
+        let 答复 = r#"{"轮次":[{"轮次":1,"通过":false,"边界检查":true,"契约检查":true,"安全检查":true,"事实检查":true,"完整性检查":true,"问题":["实现与设计不符"]}],"最终结果":false,"created_at":1}"#;
+        let 错误 = match 解析并构造(&AgentRole::准圣, TaskStatus::待准圣验收, 答复, &空核验, 临时.to_str(), Some(&文档)) {
+            Ok(_) => panic!("漏报真实残留应判非法"),
+            Err(e) => e,
+        };
+        assert!(
+            错误.to_string().contains("遗留.rs.bak"),
+            "错误须列出系统实扫到的真实残留文件，实际: {错误}"
+        );
+    }
+
+    /// 验收事实核验门的正例：检查结论与真实盘面一致时必须放行（不得误伤正常的验收通过）。
+    #[test]
+    fn 准圣_检查与盘面一致_放行() {
+        let 临时 = std::env::temp_dir().join("hm_验收事实_一致");
+        let _ = std::fs::remove_dir_all(&临时);
+        std::fs::create_dir_all(&临时).expect("建临时工作区");
+        std::fs::write(临时.join("真实.rs"), "// 真").expect("写交付物");
+        let 文档 = 实现文档(&["真实.rs"]);
+        let 答复 = r#"{"轮次":[{"轮次":1,"通过":true,"边界检查":true,"契约检查":true,"安全检查":true,"事实检查":true,"完整性检查":true,"问题":[]}],"最终结果":true,"created_at":1}"#;
+        let 产出 = 解析并构造(&AgentRole::准圣, TaskStatus::待准圣验收, 答复, &空核验, 临时.to_str(), Some(&文档))
+            .expect("检查与盘面一致应放行");
+        assert_eq!(产出.下一状态, TaskStatus::待道祖终审, "事实与盘面一致且宣告通过应进入终审");
     }
 
     #[test]

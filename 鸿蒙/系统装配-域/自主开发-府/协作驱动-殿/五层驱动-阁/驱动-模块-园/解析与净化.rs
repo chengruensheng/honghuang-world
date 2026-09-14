@@ -82,12 +82,9 @@ fn 核验实现落盘(工作区根: Option<&str>, doc: &ImplementationDoc) -> Op
             doc.代码变更.len()
         ));
     }
-    let 缺失: Vec<String> = doc
-        .代码变更
-        .iter()
-        .filter(|变更| !变更.变更类型.contains("删除"))
-        .map(|变更| 变更.文件路径.trim().to_string())
-        .filter(|路径| 路径.is_empty() || !解析工作区路径(根, 路径).exists())
+    let 缺失: Vec<String> = 交付物清单(doc)
+        .into_iter()
+        .filter(|路径| !解析工作区路径(根, 路径).exists())
         .collect();
     if 缺失.is_empty() {
         return None;
@@ -115,18 +112,126 @@ fn 解析工作区路径(工作区根: &str, 路径: &str) -> std::path::PathBuf
     }
 }
 
+/// 实现文档声明的交付物路径清单（跳过「删除」条目：清理由太乙金仙的残留核验门负责）。
+fn 交付物清单(doc: &ImplementationDoc) -> Vec<String> {
+    doc.代码变更
+        .iter()
+        .filter(|变更| !变更.变更类型.contains("删除"))
+        .map(|变更| 变更.文件路径.trim().to_string())
+        .filter(|路径| !路径.is_empty())
+        .collect()
+}
+
+/// 验收事实取证结论：全部由系统直接查盘 / 扫描得出，不接受模型声明。
+struct 验收事实 {
+    /// 实现文档是否给出交付物清单（清单为空时「事实检查」无可比对基准，不做纠偏）
+    交付物清单非空: bool,
+    /// 清单中在盘上真实缺失的（空 = 齐全）
+    交付物缺失: Vec<String>,
+    /// 工作区里真实的 .bak / .tmp 残留
+    残留文件: Vec<String>,
+}
+
+/// 采集验收事实：交付物逐个查盘 + 递归实扫 .bak/.tmp 残留。
+/// 未配置工作区（如单元测试）时返回 None，跳过核验。
+fn 核验验收事实(工作区根: Option<&str>, 实现文档: Option<&ImplementationDoc>) -> Option<验收事实> {
+    let 根 = 工作区根?;
+    let 清单 = 实现文档.map(交付物清单).unwrap_or_default();
+    Some(验收事实 {
+        交付物清单非空: !清单.is_empty(),
+        交付物缺失: 清单
+            .into_iter()
+            .filter(|路径| !解析工作区路径(根, 路径).exists())
+            .collect(),
+        残留文件: 扫描临时残留(根),
+    })
+}
+
+/// 验收事实核验门：模型的「事实检查 / 安全检查」必须与系统取证一致，臆断或漏报都返回分歧说明。
+///
+/// 背景（2026-09-14 实证）：#51 准圣把真实存在的 `执行-测试-新增.rs`（4720 B）判为「缺失」，
+/// 又声称「扫描 *.bak/*.tmp 无匹配」，而工作区确有 `路径处理.rs.bak`——两处臆断直接触发回退熔断。
+/// 此门以真实盘面为准双向纠偏：返回 `Some` 时驱动器回喂重判（任务保持待承接，不计回退次数）。
+fn 核对验收事实(doc: &VerificationDoc, 事实: &验收事实) -> Option<String> {
+    let 本轮 = doc.轮次.last()?;
+    let mut 分歧: Vec<String> = Vec::new();
+    if 事实.交付物清单非空 {
+        if 本轮.事实检查 && !事实.交付物缺失.is_empty() {
+            分歧.push(format!(
+                "你判定「事实检查」通过，但系统按实现文档逐个查盘发现以下交付物并不存在：{}",
+                事实.交付物缺失.join("、")
+            ));
+        }
+        if !本轮.事实检查 && 事实.交付物缺失.is_empty() {
+            分歧.push("你判定「事实检查」不通过，但系统按实现文档逐个查盘，所列交付物全部真实存在".to_string());
+        }
+    }
+    if 本轮.安全检查 && !事实.残留文件.is_empty() {
+        分歧.push(format!(
+            "你判定「安全检查」通过，但系统实扫工作区发现以下 .bak/.tmp 残留：{}",
+            事实.残留文件.join("、")
+        ));
+    }
+    if !本轮.安全检查 && 事实.残留文件.is_empty() {
+        分歧.push("你判定「安全检查」不通过，但系统实扫工作区（**/*.bak、**/*.tmp）无任何残留".to_string());
+    }
+    if 分歧.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "你的检查结论与系统取证不符——{}。系统结论由直接查盘 / 扫描得出，优先级高于模型判断：\
+         请据此重新判定「事实检查」「安全检查」后重新输出验收文档；若确有其他真实问题，\
+         请把问题写入「问题」并让对应检查项为 false，不得把臆断当作证据。",
+        分歧.join("；")
+    ))
+}
+
+/// 递归扫描工作区里的 .bak / .tmp 残留：跳过 target 与 .git（构建产物、版本库目录不算交付残留）。
+fn 扫描临时残留(工作区根: &str) -> Vec<String> {
+    let 根 = std::path::Path::new(工作区根);
+    let mut 命中 = Vec::new();
+    let mut 待访 = vec![根.to_path_buf()];
+    while let Some(目录) = 待访.pop() {
+        let Ok(条目集) = std::fs::read_dir(&目录) else {
+            continue;
+        };
+        for 条目 in 条目集.flatten() {
+            let 名 = 条目.file_name().to_string_lossy().to_string();
+            let 是目录 = 条目.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if 是目录 {
+                if 名 != "target" && 名 != ".git" {
+                    待访.push(条目.path());
+                }
+                continue;
+            }
+            if 名.ends_with(".bak") || 名.ends_with(".tmp") {
+                let 路径 = 条目.path();
+                let 相对 = match 路径.strip_prefix(根) {
+                    Ok(p) => p.to_path_buf(),
+                    Err(_) => 路径.clone(),
+                };
+                命中.push(相对.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    命中.sort();
+    命中
+}
+
 /// 解析阶段产出：提取 JSON → 注入 created_at → 反序列化为目标文档 → 返回 阶段产出。
 ///
 /// `核验器` 是机器核验门的惰性求值入口：**仅当模型宣告「验收通过 / 审核通过」时才调用**，
 /// 由系统真实执行编译与测试判定；判定不通过则推翻模型结论，改写文档并把任务打回实现层。
 ///
 /// `工作区根` 供实现层落盘核验用（见 `核验实现落盘`）；未配置工作区（如单元测试）时跳过核验。
+/// `实现文档` 供验收层事实核验用（见 `核对验收事实`）：准圣的「事实检查 / 安全检查」须与真实盘面一致。
 pub(crate) fn 解析并构造(
     角色: &AgentRole,
     状态: TaskStatus,
     答复: &str,
     核验器: &dyn Fn() -> 核验结论,
     工作区根: Option<&str>,
+    实现文档: Option<&ImplementationDoc>,
 ) -> Result<阶段产出> {
     // LLM 常在 JSON 前包裹 <think>...</think> 思考标签或 ```json 代码块，
     // 提取json 会从第一个 { 开始匹配，可能抓到 think 内部的碎片 JSON 而非真正的阶段产出。
@@ -185,6 +290,11 @@ pub(crate) fn 解析并构造(
         AgentRole::准圣 => {
             let mut doc: VerificationDoc = serde_json::from_value(值)
                 .map_err(|e| Error::反序列化(format!("验收文档解析失败: {e}；原始 JSON 前 200 字：{}", 截断(&json, 200))))?;
+            // 验收事实核验门：以系统直接查盘 / 实扫的结论对齐模型的「事实检查 / 安全检查」，
+            // 臆断（宣称缺失而盘上存在）与漏报（宣称干净而实际有残留）都打回重判，不靠模型自觉取证。
+            if let Some(原因) = 核验验收事实(工作区根, 实现文档).and_then(|事实| 核对验收事实(&doc, &事实)) {
+                return Err(Error::反序列化(format!("验收事实核验未通过：{原因}")));
+            }
             let 模型宣告通过 = doc.最终结果;
             // 机器核验门：模型宣告验收通过时，系统实跑编译与测试独立复核；
             // 不通过则推翻模型结论（改写文档 + 打回实现层），杜绝「自报通过」。
@@ -290,7 +400,8 @@ pub(crate) fn 解析并构造(
 /// 解析阶段产出（带失败重试）：首次校验失败时，把失败原因原文回喂 LLM 修正重试，上限 2 次；
 /// 重试仍失败才返回 Err（任务保持待承接可重试，不死等）。
 ///
-/// 「失败」包含两类：JSON 无法解析，以及实现层落盘核验未通过（文档格式合法但事实不成立）。
+/// 「失败」包含三类：JSON 无法解析、实现层落盘核验未通过、验收层事实核验未通过
+/// （后两类文档格式合法但事实不成立）。
 pub(crate) fn 解析并构造带重试(
     角色: &AgentRole,
     状态: TaskStatus,
@@ -299,11 +410,12 @@ pub(crate) fn 解析并构造带重试(
     智能体: &智能体,
     核验器: &dyn Fn() -> 核验结论,
     工作区根: Option<&str>,
+    实现文档: Option<&ImplementationDoc>,
 ) -> Result<阶段产出> {
     let mut 当前答复 = 答复.to_string();
     let mut 重试 = 0;
     loop {
-        match 解析并构造(角色, 状态, &当前答复, 核验器, 工作区根) {
+        match 解析并构造(角色, 状态, &当前答复, 核验器, 工作区根, 实现文档) {
             Ok(结果) => return Ok(结果),
             Err(错误) => {
                 if 重试 >= 2 {
