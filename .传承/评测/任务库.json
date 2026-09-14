@@ -102,6 +102,17 @@
       "判据": [
         { "类型": "外部测试", "夹具": "状态镜像.rs" }
       ]
+    },
+    {
+      "id": "看板统计",
+      "标题": "读数据+健壮解析：看板统计 crate（JSONL 夹具判据）",
+      "难度": "中",
+      "类别": "夹具",
+      "期望": "通过",
+      "描述": "用 Rust 新建一个**库 crate**（lib 类型，含 Cargo.toml，package 名英文小写），Cargo.toml 的 [dependencies] 声明 `serde = { version = \"1\", features = [\"derive\"] }` 与 `serde_json = \"1\"`。导出签名完全一致的函数 `pub fn 统计状态(路径: &str) -> Result<std::collections::BTreeMap<String, usize>, String>`：以 UTF-8 逐行读取该 JSONL 文件，每行反序列化后按其 status 字段计数；某行没有 status 字段时计入键 \"未知\"；文件不存在、无法以 UTF-8 读取、或存在无法按行解析为 JSON 对象的行时返回 Err。再导出 `pub fn 总任务数(路径: &str) -> Result<usize, String>`：返回成功解析的行数（Err 语义一致）。请附带单元测试（自建临时 JSONL 覆盖正常/空文件/缺字段/坏行/缺文件）。",
+      "判据": [
+        { "类型": "外部测试", "夹具": "看板统计.rs" }
+      ]
     }
   ]
 }
