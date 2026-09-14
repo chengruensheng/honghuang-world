@@ -25,7 +25,19 @@ mod tests {
     }
 
     impl 工具对话器 for 模拟对话器 {
-        fn 对话(&self, _消息: Vec<对话消息>, _工具: Vec<serde_json::Value>) -> Result<模型响应> {
+        fn 对话(&self, 消息: Vec<对话消息>, _工具: Vec<serde_json::Value>) -> Result<模型响应> {
+            // 命令安全审计是旁路独立会话（system 提示含「命令安全审查员」）：
+            // 固定回一条安全结论，不消耗主序列——审计只做观察，不得改变主循环的对话节奏。
+            let 是审计请求 = 消息
+                .iter()
+                .any(|条| 条.内容.as_deref().map_or(false, |文| 文.contains("命令安全审查员")));
+            if 是审计请求 {
+                return Ok(模型响应 {
+                    思考: None,
+                    内容: Some(r#"{"安全": true, "风险": "安全", "理由": "模拟放行"}"#.into()),
+                    工具调用: vec![],
+                });
+            }
             let mut 序列 = self.响应序列.lock().expect("模拟对话器 锁中毒");
             序列.pop_front().ok_or_else(|| Error::Other("对话序列已耗尽".into()))
         }
