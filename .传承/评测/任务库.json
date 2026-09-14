@@ -91,6 +91,17 @@
       "判据": [
         { "类型": "外部测试", "夹具": "无损压缩.rs" }
       ]
+    },
+    {
+      "id": "状态镜像",
+      "标题": "带依赖的状态镜像（serde 夹具判据）",
+      "难度": "中",
+      "类别": "夹具",
+      "期望": "通过",
+      "描述": "用 Rust 新建一个**库 crate**（lib 类型，含 Cargo.toml），Cargo.toml 的 [dependencies] 声明 `serde = { version = \"1\", features = [\"derive\"] }` 与 `serde_json = \"1\"`。源码导出枚举 `状态镜像`，派生 `Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize`，包含以下 5 个变体：待圣人设计、待大罗金仙实现、待准圣验收、待道祖终审、清理完成。请附带单元测试。",
+      "判据": [
+        { "类型": "外部测试", "夹具": "状态镜像.rs" }
+      ]
     }
   ]
 }
