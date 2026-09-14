@@ -9,7 +9,8 @@ use hm_contract::Component;
 use hm_error::{Error, Result};
 use serde_json::json;
 
-use super::super::{消息转json, 解析工具调用};
+use super::super::消息转json;
+use super::解析防线::{提取对话响应, 提取生成文本};
 use super::供应商::{池内供应商, 解析密钥};
 use super::类型::池选择;
 
@@ -230,13 +231,8 @@ impl LLM池 {
             }
             body
         };
-        let 解析 = |值: &serde_json::Value| {
-            值["choices"][0]["message"]["content"]
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| Error::模型("模型响应缺少 choices[0].message.content".into()))
-        };
-        self.生成经池(起, &造体, &解析)
+        // 空内容/缺 content 在 解析防线 就地判败 → 故障转移下一家（见 解析防线.rs）
+        self.生成经池(起, &造体, &|值: &serde_json::Value| 提取生成文本(值))
     }
 
     /// 工具对话（指定起始选择）：池与绑定视图共用。
@@ -252,21 +248,9 @@ impl LLM池 {
             "messages": &消息json,
             "tools": &工具,
         });
-        let 解析 = |值: &serde_json::Value| {
-            // 打印LLM返回的完整响应，调试思考内容字段
-            println!("[调试] LLM响应message: {}", &值["choices"][0]["message"]);
-            let message = &值["choices"][0]["message"];
-            // 提取思考内容（reasoning_content / reasoning）
-            let 思考 = message["reasoning_content"].as_str()
-                .or_else(|| message["reasoning"].as_str())
-                .map(|s| s.to_string());
-            Ok(模型响应 {
-                内容: message["content"].as_str().map(|s| s.to_string()),
-                工具调用: 解析工具调用(message),
-                思考,
-            })
-        };
-        self.生成经池(起, &造体, &解析)
+        // 纯空包裹（内容/工具/思考全空）在 解析防线 就地判败 → 故障转移下一家；
+        // 工具调用或思考非空的「空内容」是合法轮次，放行（见 解析防线.rs）
+        self.生成经池(起, &造体, &|值: &serde_json::Value| 提取对话响应(值))
     }
 
     /// 流式对话（指定起始选择）：起始供应商优先故障转移，池与绑定视图共用。
