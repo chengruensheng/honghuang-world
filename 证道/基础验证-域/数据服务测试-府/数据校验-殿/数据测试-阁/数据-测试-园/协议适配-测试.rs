@@ -27,6 +27,7 @@ mod tests {
             序号,
             任务id: Some(5),
             角色: Some(角色.into()),
+            层级: None,
             轮次: 0,
             类型: 类型.into(),
             工具名: 工具名.into(),
