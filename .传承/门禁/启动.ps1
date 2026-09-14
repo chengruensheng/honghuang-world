@@ -18,15 +18,16 @@ cargo build -p hm-bootstrap
 if ($LASTEXITCODE -ne 0) { Write-Host '编译失败(cargo hm-bootstrap)。' -ForegroundColor Red; exit 1 }
 
 # 2) 端口检测/启动
+#    只认 LISTENING 状态的监听套接字：旧版 `netstat | findstr ":8321"` 会匹配 TIME_WAIT
+#    连接行，导致「刚停止后立即启动」被误判为「已被占用」而跳过启动。
 $端口 = 8321
-$占用 = netstat -ano | findstr ":${端口}"
-if ($占用) {
-    Write-Host "[2/2] 端口 ${端口} 已被占用，跳过启动（后端可能已在运行）。" -ForegroundColor Yellow
+if (Get-NetTCPConnection -LocalPort $端口 -State Listen -ErrorAction SilentlyContinue) {
+    Write-Host "[2/2] 端口 ${端口} 已有后端监听，跳过启动（后端可能已在运行）。" -ForegroundColor Yellow
 } else {
     Write-Host '[2/2] 启动后端服务...'
     Start-Process -FilePath (Join-Path $根 'target\debug\hm-bootstrap.exe')
     for ($i = 0; $i -lt 50; $i++) {
-        if (netstat -ano | findstr ":${端口}") { break }
+        if (Get-NetTCPConnection -LocalPort $端口 -State Listen -ErrorAction SilentlyContinue) { break }
         Start-Sleep -Milliseconds 200
     }
     Write-Host "   数据服务已启动: http://127.0.0.1:${端口}（纯 API）" -ForegroundColor Green
