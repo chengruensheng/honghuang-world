@@ -98,13 +98,14 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
         Some(d) => format!("{d}/任务看板.jsonl"),
         None => std::env::temp_dir().join("洪荒任务看板.jsonl").to_string_lossy().to_string(),
     };
-    let 任务看板 = Arc::new(Mutex::new(match tc_task::TaskBoard::加载(&看板路径) {
-        Ok(看板) => 看板,
-        Err(e) => {
-            tracing::warn!("任务看板加载失败，使用空看板: {e}");
-            tc_task::TaskBoard::新建(&看板路径)
-        }
-    }));
+    let 任务看板 = Arc::new(Mutex::new(tc_task::TaskBoard::加载(&看板路径).map_err(|e| {
+        // 文件存在但解析失败（如被外部写坏/注入非法内容）：严禁静默回退空看板——
+        // 空板一旦被任何一次保存触发会整体覆盖真实看板数据（2026-09-14 实证），故直接拒绝启动，
+        // 交由人工处理（备份/修复损坏文件）后再启动。
+        hm_error::Error::Other(format!(
+            "任务看板 {看板路径} 已存在但加载失败（疑似损坏），拒绝启动以防空板覆盖真实数据；请先备份并修复该文件。原始错误：{e}"
+        ))
+    })?));
     {
         let mut 看板 = 任务看板.lock().expect("看板锁中毒");
         看板.设置信号总线(装配.信号总线.clone());
