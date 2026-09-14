@@ -6,10 +6,6 @@
   [1m[96m|[0m
   [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
 
-[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.exp[0m
-  [1m[96m|[0m
-  [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
-
 [1m[93mwarning[0m[1m[97m: unused import: `工具调用`[0m
   [1m[96m--> [0m鸿蒙\系统装配-域\自主开发-府\循环驱动-殿\智能循环-阁\循环-模块-园\删除审查.rs:94:31
    [1m[96m|[0m
@@ -19,6 +15,10 @@
    [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
 [1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\hm_agent-c10b30a7282df44b.lib 和对象 F:\洪荒 - 世界\target\debug\deps\hm_agent-c10b30a7282df44b.exp[0m
+  [1m[96m|[0m
+  [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
+
+[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.exp[0m
   [1m[96m|[0m
   [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
 
@@ -201,12 +201,12 @@ test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 73 tests
 .........................................................................
-test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
 
 
 running 12 tests
 ............
-test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
 
 running 30 tests
@@ -221,13 +221,13 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 37 tests
 .....................................
-test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
 
 
-running 131 tests
-....................................................................................... 87/131
-............................................
-test result: ok. 131 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
+running 132 tests
+....................................................................................... 87/132
+.............................................
+test result: ok. 132 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
 
 
 running 8 tests
@@ -237,7 +237,7 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 16 tests
 ................
-test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
 
 running 6 tests
@@ -252,7 +252,7 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 9 tests
 .........
-test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
 
 running 57 tests
