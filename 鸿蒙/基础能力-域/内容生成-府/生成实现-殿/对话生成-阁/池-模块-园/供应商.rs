@@ -6,6 +6,7 @@ use serde_json::json;
 
 use super::池模块::LLM池;
 use super::super::流式解析_sse;
+use super::super::{限时执行, 流式限时执行};
 use super::类型::{模型条目, 供应商信息, 模型发现, 池选择, 模板模型};
 
 /// 池内供应商：配置解析后的可调用单元
@@ -23,18 +24,26 @@ pub(super) struct 池内供应商 {
 }
 
 impl 池内供应商 {
-    /// 单次 chat/completions 请求
+    /// 单次 chat/completions 请求。
+    /// 整体交看门狗限时——Windows 下 ureq 读体阶段超时失效（实测挂死 36 分钟），
+    /// 挂死须由看门狗斩断触发故障转移（见 生成-模块-园/看门狗.rs 头注）。
     pub(super) fn 请求(&self, body: &serde_json::Value) -> Result<serde_json::Value> {
-        let resp = ureq::post(&self.端点)
-            .set("Authorization", &format!("Bearer {}", self.密钥))
-            .set("Content-Type", "application/json")
-            .timeout(self.超时)
-            .send_string(&body.to_string())
-            .map_err(|e| Error::模型(format!("请求模型失败: {e}")))?;
-        let text = resp
-            .into_string()
-            .map_err(|e| Error::模型(format!("读取模型响应失败: {e}")))?;
-        serde_json::from_str(&text).map_err(|e| Error::模型(format!("解析模型响应失败: {e}")))
+        let 端点 = self.端点.clone();
+        let 密钥 = self.密钥.clone();
+        let 体 = body.to_string();
+        let 时限 = self.超时;
+        限时执行(时限, move || {
+            let resp = ureq::post(&端点)
+                .set("Authorization", &format!("Bearer {密钥}"))
+                .set("Content-Type", "application/json")
+                .timeout(时限)
+                .send_string(&体)
+                .map_err(|e| Error::模型(format!("请求模型失败: {e}")))?;
+            let text = resp
+                .into_string()
+                .map_err(|e| Error::模型(format!("读取模型响应失败: {e}")))?;
+            serde_json::from_str(&text).map_err(|e| Error::模型(format!("解析模型响应失败: {e}")))
+        })
     }
 
     /// list-models 请求：GET {列表端点} → {"data":[{"id":"..."}]}
@@ -78,25 +87,33 @@ impl 池内供应商 {
         Err(最后错误.unwrap_or_else(|| Error::模型("请求模型失败".into())))
     }
 
-    /// 单次流式请求（流式超时取 配置超时 与 60s 的较大者，长生成等待）
+    /// 单次流式请求（流式超时取 配置超时 与 60s 的较大者，长生成等待）。
+    /// 块间隔看门狗：首块等待与中流停顿超过时限即判败（读流失效须看门狗斩断，见 看门狗.rs）。
     fn 单次流式(
         &self,
         body: &serde_json::Value,
         已发块: &mut bool,
         on_chunk: &mut dyn FnMut(String) -> std::result::Result<(), hm_error::Error>,
     ) -> Result<模型响应> {
-        let 超时 = Duration::from_secs(self.超时.as_secs().max(60));
-        let resp = ureq::post(&self.端点)
-            .set("Authorization", &format!("Bearer {}", self.密钥))
-            .set("Content-Type", "application/json")
-            .timeout(超时)
-            .send_string(&body.to_string())
-            .map_err(|e| Error::模型(format!("请求模型失败: {e}")))?;
-        let 读 = std::io::BufReader::new(resp.into_reader());
-        流式解析_sse(读, &mut |块: String| {
-            *已发块 = true;
-            on_chunk(块)
-        })
+        let 端点 = self.端点.clone();
+        let 密钥 = self.密钥.clone();
+        let 体 = body.to_string();
+        let 时限 = Duration::from_secs(self.超时.as_secs().max(60));
+        流式限时执行(
+            时限,
+            move |转发| {
+                let resp = ureq::post(&端点)
+                    .set("Authorization", &format!("Bearer {密钥}"))
+                    .set("Content-Type", "application/json")
+                    .timeout(时限)
+                    .send_string(&体)
+                    .map_err(|e| Error::模型(format!("请求模型失败: {e}")))?;
+                let 读 = std::io::BufReader::new(resp.into_reader());
+                流式解析_sse(读, 转发)
+            },
+            已发块,
+            on_chunk,
+        )
     }
 }
 
