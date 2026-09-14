@@ -282,6 +282,7 @@ mod tests {
     fn 错误_映射为运行错误() {
         let 适配器 = 协议适配器::新();
         let 结果 = 适配器.阶段事件(&阶段事件("错误", None, Some("LLM 超时")), 42);
-        断言事件!(&结果[0], json!({"type": "RUN_ERROR", "message": "LLM 超时", "code": "DRIVE_ERROR"}));
+        // 时间=123s → UTC+8 为 08:02:03；错误消息带发生时刻前缀，便于区分历史与现行故障
+        断言事件!(&结果[0], json!({"type": "RUN_ERROR", "message": "[08:02:03] LLM 超时", "code": "DRIVE_ERROR"}));
     }
 }
