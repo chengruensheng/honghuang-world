@@ -422,4 +422,145 @@ mod tests {
         assert!(执行器.精确编辑("../a.txt", "旧", "新").is_err());
         let _ = std::fs::remove_dir_all(&根);
     }
+
+    // ===== 读写分离：只读探索（~/ 前缀 = 项目根，写仍锁工作区） =====
+
+    fn 准备项目根(名: &str) -> String {
+        let 根 = std::env::temp_dir().join(format!("zd_execute_proj_{}_{名}", std::process::id()));
+        let 根字符串 = 根.to_string_lossy().into_owned();
+        let _ = std::fs::remove_dir_all(&根);
+        std::fs::create_dir_all(&根).expect("创建项目根目录");
+        根字符串
+    }
+
+    #[test]
+    fn 只读探索_波浪线前缀读项目根() {
+        let 工作区 = 准备工作区("只读探索读");
+        let 项目根 = 准备项目根("只读探索读");
+        std::fs::write(PathBuf::from(&项目根).join("本体.txt"), "本体代码内容").expect("写本体文件");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        let 内容 = 执行器.读文件("~/本体.txt").expect("读项目根文件应成功");
+        assert_eq!(内容, "本体代码内容");
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
+
+    #[test]
+    fn 只读探索_列目录波浪线前缀() {
+        let 工作区 = 准备工作区("只读探索列");
+        let 项目根 = 准备项目根("只读探索列");
+        std::fs::create_dir_all(PathBuf::from(&项目根).join("鸿蒙")).expect("建子目录");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        let 输出 = 执行器.列目录("~/").expect("列项目根应成功");
+        assert!(输出.contains("鸿蒙"), "应列出项目根子目录，实际: {输出}");
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
+
+    #[test]
+    fn 只读探索_未配置只读根时波浪线拒绝() {
+        let 工作区 = 准备工作区("只读未配");
+        let 执行器 = 本地执行器::new(&工作区);
+        assert!(执行器.读文件("~/本体.txt").is_err(), "未配置只读根时 ~/ 应拒绝");
+        let _ = std::fs::remove_dir_all(&工作区);
+    }
+
+    #[test]
+    fn 只读探索_只读根外绝对路径拒绝() {
+        let 工作区 = 准备工作区("只读根外");
+        let 项目根 = 准备项目根("只读根外");
+        let 域外 = 准备项目根("只读根外_域外");
+        std::fs::write(PathBuf::from(&域外).join("机密.txt"), "不该读到").expect("写域外文件");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        let 绝对 = PathBuf::from(&域外).join("机密.txt");
+        let 结果 = 执行器.读文件(&绝对.to_string_lossy());
+        assert!(结果.is_err(), "只读根之外的绝对路径应拒绝");
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+        let _ = std::fs::remove_dir_all(&域外);
+    }
+
+    #[test]
+    fn 只读探索_波浪线父目录逃逸拒绝() {
+        let 工作区 = 准备工作区("只读逃逸");
+        let 项目根 = 准备项目根("只读逃逸");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        assert!(执行器.读文件("~/../机密.txt").is_err(), "~/.. 应规范化出只读根并被拒绝");
+        assert!(
+            执行器.读文件("~/../../../../../../../../../机密.txt").is_err(),
+            "深度 .. 逃逸至盘根外应拒绝"
+        );
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
+
+    #[test]
+    fn 只读探索_读黑名单env拒绝() {
+        let 工作区 = 准备工作区("读黑名单");
+        let 项目根 = 准备项目根("读黑名单");
+        std::fs::write(PathBuf::from(&项目根).join(".env"), "LLM_API_KEY=绝密").expect("写密钥文件");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        let 结果 = 执行器.读文件("~/.env");
+        assert!(结果.is_err(), "读 .env 应被读黑名单拒绝");
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
+
+    #[test]
+    fn 只读探索_搜索内容波浪线不泄密钥() {
+        let 工作区 = 准备工作区("读黑名单搜");
+        let 项目根 = 准备项目根("读黑名单搜");
+        std::fs::write(PathBuf::from(&项目根).join(".env"), "绝密标记词").expect("写密钥文件");
+        std::fs::write(PathBuf::from(&项目根).join("正常.txt"), "绝密标记词也在此").expect("写正常文件");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        let 输出 = 执行器.搜索内容("~/绝密标记词").expect("搜索应成功");
+        assert!(输出.contains("正常.txt"), "正常文件应命中: {输出}");
+        assert!(!输出.contains(".env"), ".env 不得被搜出: {输出}");
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
+
+    #[test]
+    fn 只读探索_写操作仍锁工作区() {
+        let 工作区 = 准备工作区("写仍锁");
+        let 项目根 = 准备项目根("写仍锁");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        assert!(执行器.写文件("~/越界.txt", "x").is_err(), "写 ~/ 应仍被拒绝");
+        assert!(
+            执行器.写文件(&PathBuf::from(&项目根).join("越界.txt").to_string_lossy(), "x").is_err(),
+            "写绝对路径应仍被拒绝"
+        );
+        assert!(执行器.精确编辑("~/越界.txt", "a", "b").is_err(), "精确编辑 ~/ 应仍被拒绝");
+        assert!(执行器.删除文件("~/越界.txt").is_err(), "删除 ~/ 应仍被拒绝");
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
+
+    #[test]
+    fn 只读探索_项目根命令写倾向被拒() {
+        let 工作区 = 准备工作区("命令只读");
+        let 项目根 = 准备项目根("命令只读");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        // cargo build/test/run 会写本体 → 项目根 cwd 下必须拒绝
+        for 危险 in ["~ cargo build", "~ cargo test", "~ cargo run", "~ rustc x.rs", "~ set A=B"] {
+            let 结果 = 执行器.运行命令(危险);
+            assert!(结果.is_err(), "项目根下 {危险} 应被只读白名单拒绝");
+        }
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
+
+    #[test]
+    fn 只读探索_项目根只读命令放行() {
+        let 工作区 = 准备工作区("命令只读放行");
+        let 项目根 = 准备项目根("命令只读放行");
+        let 执行器 = 本地执行器::new(&工作区).设置只读根(vec![PathBuf::from(&项目根)]);
+        let 输出 = 执行器.运行命令("~ dir").expect("项目根下 dir 应放行");
+        assert!(!输出.is_empty(), "dir 应返回条目");
+        // 工作区 cwd 下 cargo test 仍可用（现状不变）——此处仅验证未被只读白名单误伤
+        let 现状 = 执行器.运行命令("echo 工作区照旧");
+        assert!(现状.expect("工作区命令应照旧可用").contains("工作区照旧"));
+        let _ = std::fs::remove_dir_all(&工作区);
+        let _ = std::fs::remove_dir_all(&项目根);
+    }
 }

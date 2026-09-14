@@ -294,11 +294,14 @@ pub fn 启动() -> hm_error::Result<Arc<hm_linkage::组件容器>> {
                 // 三态认知注入注入数据服务状态：认知问答接口据此提供检索决策与 LLM 组装答复（阶段 0C）
                 数据状态.认知注入 = Some(认知注入.clone());
                 // 扫尾执行者装配：太乙金仙清理后的交付证据核验（sweep 接口就绪）
-                let 扫尾执行器 = Arc::new(hm_execute::本地执行器::new_with_limits(
-                    &config.app.dev_workspace,
-                    config.app.executor_timeout_secs,
-                    config.app.executor_max_output_bytes,
-                ));
+                let 扫尾执行器 = Arc::new(
+                    hm_execute::本地执行器::new_with_limits(
+                        &config.app.dev_workspace,
+                        config.app.executor_timeout_secs,
+                        config.app.executor_max_output_bytes,
+                    )
+                    .设置只读根(std::env::current_dir().ok().into_iter().collect()),
+                );
                 开发状态.扫尾执行者 = Some(Arc::new(hm_agent::扫尾执行者::新(
                     扫尾执行器,
                     任务看板.clone(),

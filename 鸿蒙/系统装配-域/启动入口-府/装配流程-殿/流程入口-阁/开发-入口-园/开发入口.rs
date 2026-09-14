@@ -7,6 +7,12 @@ use hm_execute_contract::开发事件;
 use hm_agent::{开发执行台, 看板驱动台, 驱动过程事件};
 use tc_task::TaskBoard;
 
+/// 默认只读根：项目根（进程 cwd）。智能体读操作可越出工作区探索本体，但写仍锁工作区。
+/// 白名单子目录（only_read_roots）当前未接线，仅项目根可读（最保守）。
+fn 默认只读根() -> Vec<std::path::PathBuf> {
+    std::env::current_dir().ok().into_iter().collect()
+}
+
 /// 装配智能体到 HTTP 受理台（仅在配置显式开启 run_dev_agent 时调用）。
 ///
 /// 对话器为按智能体绑定的 LLM 视图（Arc<dyn 工具对话器>，绑定/全局选择动态解析）；
@@ -25,11 +31,14 @@ pub fn 装配开发受理台(
     let 对话器: Arc<dyn 工具对话器> = 对话器.ok_or_else(|| {
         hm_error::Error::Config("LLM 池未装配（未配置供应商且环境密钥缺失）".into())
     })?;
-    let 执行器 = Arc::new(本地执行器::new_with_limits(
-        工作区,
-        executor_timeout_secs,
-        executor_max_output_bytes,
-    ));
+    let 执行器 = Arc::new(
+        本地执行器::new_with_limits(
+            工作区,
+            executor_timeout_secs,
+            executor_max_output_bytes,
+        )
+        .设置只读根(默认只读根()),
+    );
 
     let 转发台 = 受理台.clone();
     let 智能体 = 智能体::new(对话器, 执行器, 最大轮数)
@@ -64,11 +73,14 @@ pub fn 装配看板驱动台(
         std::fs::create_dir_all(父).map_err(hm_error::Error::Io)?;
     }
     let 上下文 = Arc::new(Mutex::new(ContextManager::新(上下文路径)));
-    let 执行器 = Arc::new(本地执行器::new_with_limits(
-        工作区,
-        executor_timeout_secs,
-        executor_max_output_bytes,
-    ));
+    let 执行器 = Arc::new(
+        本地执行器::new_with_limits(
+            工作区,
+            executor_timeout_secs,
+            executor_max_output_bytes,
+        )
+        .设置只读根(默认只读根()),
+    );
     let mut 驱动器 = 五层协作驱动器::新(看板, 上下文, 对话器, 执行器, 最大轮数);
     驱动器 = 驱动器.设置工作区(工作区.to_string());
     if let Some(注入) = 认知 {
