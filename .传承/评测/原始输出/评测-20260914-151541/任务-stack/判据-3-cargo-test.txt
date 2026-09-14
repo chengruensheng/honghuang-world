@@ -1,0 +1,23 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src\lib.rs (target\debug\deps\zd_stack-013778049441f07c.exe)
+
+running 10 tests
+test tests::LIFO经典示例_push_1到5后连续pop得5到1 ... ok
+test tests::default_等价于new ... ok
+test tests::peek不修改栈_多次peek后pop仍正确 ... ok
+test tests::两元素_push后pop顺序为后进先出 ... ok
+test tests::多元素_连续pop严格按逆序返回 ... ok
+test tests::单元素_push后peek得该元素_pop也得该元素后为空 ... ok
+test tests::泛型_Stack字符串亦工作 ... ok
+test tests::空栈_peek得None ... ok
+test tests::空栈_创建后len为0且is_empty为true ... ok
+test tests::空栈_pop得None ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests zd_stack
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

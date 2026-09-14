@@ -1,0 +1,24 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src\lib.rs (target\debug\deps\zd_fib-d1e89ed56a7f9702.exe)
+
+running 11 tests
+test tests::fib_10_得55 ... ok
+test tests::fib_0_得0 ... ok
+test tests::fib_186_得332825110087067562321196029789634457848 ... ok
+test tests::fib_20_得6765 ... ok
+test tests::fib_1_得1 ... ok
+test tests::fib_3_得2 ... ok
+test tests::fib_50_得12586269025 ... ok
+test tests::fib_4_得3 ... ok
+test tests::fib_5_得5 ... ok
+test tests::fib_90_得2880067194370816120 ... ok
+test tests::fib_2_得1 ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests zd_fib
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

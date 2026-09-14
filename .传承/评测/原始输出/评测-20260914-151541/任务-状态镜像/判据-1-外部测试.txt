@@ -1,0 +1,11 @@
+   Compiling zd-mirror v0.1.0 (F:\洪荒 - 世界\评测沙箱\zd-mirror)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running tests\外部判据.rs (target\debug\deps\外部判据-324e09784fe96f4a.exe)
+
+running 3 tests
+test 外部判据_状态镜像_反序列化 ... ok
+test 外部判据_状态镜像_五变体往返一致 ... ok
+test 外部判据_状态镜像_序列化为变体名 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

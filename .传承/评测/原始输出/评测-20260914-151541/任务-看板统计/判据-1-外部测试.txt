@@ -1,0 +1,23 @@
+   Compiling zd-board-stats v0.1.0 (F:\洪荒 - 世界\评测沙箱\zd-board-stats)
+warning: function `外部判据_非UTF8返回错误` should have a snake case name
+  --> tests\外部判据.rs:74:4
+   |
+74 | fn 外部判据_非UTF8返回错误() {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `外部判据_非_utf8返回错误`
+   |
+   = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: `zd-board-stats` (test "外部判据") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.25s
+     Running tests\外部判据.rs (target\debug\deps\外部判据-97dc1e20c11a6162.exe)
+
+running 6 tests
+test 外部判据_文件不存在返回错误 ... ok
+test 外部判据_空文件得空表与零 ... ok
+test 外部判据_非UTF8返回错误 ... ok
+test 外部判据_缺status行计入未知 ... ok
+test 外部判据_正常多行按状态计数 ... ok
+test 外部判据_坏行返回错误 ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
