@@ -19,6 +19,7 @@ use super::*;
             retry: 0,
             enabled: true,
             json_mode: false,
+            max_tokens: 32768,
         }
     }
 

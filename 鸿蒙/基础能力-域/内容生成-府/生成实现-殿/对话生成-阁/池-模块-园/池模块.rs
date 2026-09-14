@@ -56,6 +56,7 @@ impl LLM池 {
                 模型: p.model.clone(),
                 超时: Duration::from_secs(p.timeout_secs.max(1)),
                 重试: p.retry,
+                最大输出tokens: p.max_tokens,
                 启用json模式: p.json_mode,
             });
         }
@@ -133,6 +134,7 @@ impl LLM池 {
                     retry: 2,
                     enabled: true,
                     json_mode: false,
+                    max_tokens: 32768,
                 })
                 .collect(),
             selected_provider: String::new(),
@@ -224,6 +226,8 @@ impl LLM池 {
             let mut body = json!({
                 "model": &供应商.模型,
                 "messages": [{ "role": "user", "content": 提示词.as_str() }],
+                // 显式给足输出预算：推理模型思考链会吃光网关默认上限，致正文为空（见 配置模块 max_tokens 注释）
+                "max_tokens": 供应商.最大输出tokens,
             });
             // JSON 输出模式：追加 response_format（默认关闭；未开启时请求体与旧版逐字节一致）
             if 供应商.启用json模式 {
@@ -247,6 +251,8 @@ impl LLM池 {
             "model": &供应商.模型,
             "messages": &消息json,
             "tools": &工具,
+            // 显式给足输出预算：推理模型思考链会吃光网关默认上限，致正文为空（见 配置模块 max_tokens 注释）
+            "max_tokens": 供应商.最大输出tokens,
         });
         // 纯空包裹（内容/工具/思考全空）在 解析防线 就地判败 → 故障转移下一家；
         // 工具调用或思考非空的「空内容」是合法轮次，放行（见 解析防线.rs）

@@ -57,6 +57,10 @@ timeout_secs = 300
 retry = 2
 enabled = true
 json_mode = false
+# 输出预算 32768：推理模型思考链吃输出大头，网关默认 8192 会被 reasoning 占满，
+# 返回 finish_reason=length 且正文为空（2026-09-14 实证 a6api 8192 全被思考吃掉，
+# 驱动连续两次以「阶段产出无 JSON（答复前 200 字：空）」失败即此因）。切勿调小。
+max_tokens = 32768
 
 # 备用网关：a6api 聚合网关（OpenAI 兼容）——主供应商 minimax 失败时兜底。
 # 密钥走项目根 .env 的 LLM_FALLBACK_API_KEY（缺陷清单 12-3 已换新密钥，实测 /v1/models 返回 200）。
@@ -73,3 +77,5 @@ timeout_secs = 300
 retry = 2
 enabled = true
 json_mode = false
+# 输出预算 32768：本家默认 8192 实证会被思考链占满致正文为空（同主供应商注释）。
+max_tokens = 32768

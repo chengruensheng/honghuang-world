@@ -92,6 +92,7 @@ impl LLM池 {
                     条目["超时秒"].as_u64().unwrap_or(30).max(1),
                 ),
                 重试: 条目[键_重试].as_u64().unwrap_or_else(|| 2) as u32,
+                最大输出tokens: 条目["最大输出tokens"].as_u64().unwrap_or(32768),
                 启用json模式: false, // 接入文件不持久化 json_mode，恢复时默认关闭
             };
             let mut 锁 = self
@@ -138,6 +139,7 @@ impl LLM池 {
             键_模型: 供应商.模型,
             "超时秒": 供应商.超时.as_secs(),
             键_重试: 供应商.重试,
+            "最大输出tokens": 供应商.最大输出tokens,
         }));
         if let Some(父) = 路径.parent() {
             if !父.as_os_str().is_empty() {

@@ -127,12 +127,18 @@ pub struct LlmProvider {
     /// 默认 false（向后兼容：未开启供应商的请求体与旧版逐字节一致）。
     #[serde(default)]
     pub json_mode: bool,
+    /// 单次生成最大输出 tokens（请求体 max_tokens）。
+    /// 必须显式给足：网关默认值（实测 a6api 为 8192）会被推理模型的思考链吃光，
+    /// 导致 finish_reason=length 且正文为空——驱动「阶段产出无 JSON」即此因（2026-09-14 实证）。
+    #[serde(default = "default_llm_max_tokens")]
+    pub max_tokens: u64,
 }
 
 fn default_llm_state_file() -> String { "llm-选择.json".into() } // 运行时选择文件（相对 persistence.dir）
 fn default_llm_kind() -> String { "openai".into() }
 fn default_llm_timeout() -> u64 { 30 }
 fn default_llm_retry() -> u32 { 2 }
+fn default_llm_max_tokens() -> u64 { 32768 }
 fn default_true() -> bool { true }
 
 fn default_name() -> String { "洪荒·世界".into() }

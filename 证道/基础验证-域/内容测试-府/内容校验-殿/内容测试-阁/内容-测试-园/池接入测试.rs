@@ -90,6 +90,7 @@ mod tests {
             retry: 0,
             enabled: 启用,
             json_mode: false,
+            max_tokens: 32768,
         }
     }
 
@@ -245,6 +246,7 @@ mod tests {
                     retry: 0,
                     enabled: true,
                     json_mode: true, // 开启 JSON 输出模式
+                    max_tokens: 32768,
                 },
             ],
             selected_provider: String::new(),

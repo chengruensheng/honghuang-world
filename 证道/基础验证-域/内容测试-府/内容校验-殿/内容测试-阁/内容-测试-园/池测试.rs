@@ -90,6 +90,7 @@ mod tests {
             retry: 0,
             enabled: 启用,
             json_mode: false,
+            max_tokens: 32768,
         }
     }
 
@@ -234,6 +235,7 @@ mod tests {
             retry: 0,
             enabled: true,
             json_mode: false,
+            max_tokens: 32768,
         };
         let 配置 = LlmConfig {
             providers: vec![供应商("甲", &甲.地址, "key-a", "甲模型", true), 乙],

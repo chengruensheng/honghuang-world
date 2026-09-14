@@ -19,6 +19,8 @@ pub(super) struct 池内供应商 {
     pub(super) 模型: String,
     pub(super) 超时: Duration,
     pub(super) 重试: u32,
+    /// 单次生成最大输出 tokens（请求体 max_tokens）——推理模型思考链吃光网关默认值会致正文为空
+    pub(super) 最大输出tokens: u64,
     /// JSON 输出模式（生成请求追加 response_format: json_object；带工具「对话」不生效）
     pub(super) 启用json模式: bool,
 }
@@ -311,6 +313,7 @@ impl LLM池 {
             模型: 模型值.into(),
             超时: Duration::from_secs(30),
             重试: 2,
+            最大输出tokens: 32768, // 接入向导默认给足输出预算（推理模型思考链吃光网关默认值会致正文为空）
             启用json模式: false, // 接入向导默认关闭；需开启请配置 [llm.providers] 设 json_mode = true
         };
         {

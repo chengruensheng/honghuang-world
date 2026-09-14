@@ -15,6 +15,9 @@ const 流式超时秒: u64 = 120;
 const 请求重试次数: u32 = 2;
 /// 重试间隔（秒）
 const 请求重试间隔秒: u64 = 2;
+/// 单次生成最大输出 tokens：必须显式给足，推理模型思考链会吃光网关默认上限（实测 8192）
+/// 致 finish_reason=length 且正文为空（2026-09-14 实证）。
+const 最大输出tokens: u64 = 32768;
 
 /// 主模型环境变量名
 const 主密钥环境变量: &str = "LLM_API_KEY";
@@ -69,6 +72,7 @@ impl 模型提供商 {
             "messages": &消息json,
             "tools": 工具,
             "stream": true,
+            "max_tokens": 最大输出tokens,
         });
         // tool_choice=auto：道祖接待三选一场景，引导模型在需要时稳定触发工具调用
         if !工具.is_empty() {
@@ -347,6 +351,7 @@ impl 内容生成器 for 对话生成器 {
         let 造体 = |提供商: &模型提供商| json!({
             "model": &提供商.model,
             "messages": [{ "role": "user", "content": 提示词.as_str() }],
+            "max_tokens": 最大输出tokens,
         });
         let 解析 = |值: &serde_json::Value| {
             值["choices"][0]["message"]["content"]
@@ -366,6 +371,7 @@ impl 工具对话器 for 对话生成器 {
                 "model": &提供商.model,
                 "messages": &消息json,
                 "tools": &工具,
+                "max_tokens": 最大输出tokens,
             });
             // tool_choice=auto：道祖接待三选一场景，引导模型在需要时稳定触发工具调用
             if !工具.is_empty() {
