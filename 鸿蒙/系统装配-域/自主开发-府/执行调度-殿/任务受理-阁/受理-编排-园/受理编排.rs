@@ -86,12 +86,21 @@ fn 截断(文本: &str, 上限: usize) -> String {
     }
 }
 
-/// 道祖确认发布：取出对齐需求 → 发布看板（含场景/优先级）→ 写记忆 → 自动驱动一轮。
+/// 道祖确认发布：预占驱动通道 → 取出对齐需求 → 发布看板（含场景/优先级）→ 写记忆 → 自动驱动一轮。
+///
+/// 顺序契约：**先预占、后取需求**。反序会在驱动忙时把已对齐需求白白消费掉——
+/// 用户拿到「运行中」再重试，只能得到「无待确认需求」，对齐成果丢失、必须重新澄清。
 pub fn 确认发布对齐需求<M>(依赖: 受理依赖<'_, M>) -> std::result::Result<u64, 受理失败> {
-    let 需求 = 取出待确认需求(&依赖)?;
     if !依赖.看板驱动台.预留() {
         return Err(受理失败::运行中);
     }
+    let 需求 = match 取出待确认需求(&依赖) {
+        Ok(需求) => 需求,
+        Err(e) => {
+            依赖.看板驱动台.释放();
+            return Err(e);
+        }
+    };
     let id = match 发布对齐任务(&依赖, &需求) {
         Ok(id) => id,
         Err(e) => {
@@ -135,4 +144,100 @@ fn 写需求记忆<M>(依赖: &受理依赖<'_, M>, 需求: &需求摘要) -> st
     let 内容 = format!("【需求】{}：{}", 需求.标题, 需求.描述);
     let mut 记忆库 = 依赖.记忆库.lock().expect("记忆库锁中毒");
     记忆库.写入(内容, "道祖对齐".into())
+}
+
+#[cfg(test)]
+mod 测试 {
+    use super::*;
+    use hm_content_contract::{工具对话器, 对话消息, 模型响应};
+    use hm_contract::Component;
+
+    /// 空对话器：确认发布路径不触达 LLM（只在真接待用户消息时才会用到），
+    /// 仅为把 道祖接待 装配起来而存在。
+    struct 空对话器;
+    impl Component for 空对话器 {
+        fn name(&self) -> &'static str {
+            "空对话器"
+        }
+    }
+    impl 工具对话器 for 空对话器 {
+        fn 对话(&self, _消息: Vec<对话消息>, _工具: Vec<serde_json::Value>) -> hm_error::Result<模型响应> {
+            Ok(模型响应 {
+                内容: None,
+                工具调用: Vec::new(),
+                思考: None,
+            })
+        }
+    }
+
+    /// 空记忆库：确认发布的失败路径不写记忆，用最小实现顶住依赖
+    struct 空记忆库;
+    impl Component for 空记忆库 {
+        fn name(&self) -> &'static str {
+            "空记忆库"
+        }
+    }
+    impl 记忆库契约<()> for 空记忆库 {
+        fn 写入(&mut self, _内容: String, _标签: String) -> hm_error::Result<u64> {
+            Ok(0)
+        }
+        fn 查询(&self, _id: u64) -> Option<&()> {
+            None
+        }
+        fn 按标签(&self, _标签: &str) -> Vec<&()> {
+            Vec::new()
+        }
+        fn 全部(&self) -> Vec<&()> {
+            Vec::new()
+        }
+    }
+
+    fn 临时看板路径(名: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("hm_受理编排_{名}.jsonl"))
+    }
+
+    /// 顺序契约：驱动忙时必须**先判忙、后取需求**。
+    /// 反序（旧实现）会把已对齐需求 take 走再返回「运行中」，用户重试只能得到
+    /// 「无待确认需求」：对齐成果丢失、须重新澄清。
+    /// 用「无需求的接待器」区分两种实现：先判忙 → 运行中；先取需求 → 无待确认。
+    #[test]
+    fn 确认发布_驱动忙_判忙先于取需求() {
+        let 台 = Arc::new(看板驱动台::新());
+        assert!(台.预留(), "预置忙态：预留应成功");
+        let 看板 = Arc::new(Mutex::new(TaskBoard::新建(临时看板路径("忙"))));
+        let 接待 = Arc::new(Mutex::new(道祖接待::新(Arc::new(空对话器))));
+        let 记忆: Arc<Mutex<dyn 记忆库契约<()>>> = Arc::new(Mutex::new(空记忆库));
+        let 依赖 = 受理依赖 {
+            看板驱动台: &台,
+            任务看板: &看板,
+            道祖接待: Some(&接待),
+            记忆库: &记忆,
+        };
+        let 结果 = 确认发布对齐需求(依赖);
+        assert!(
+            matches!(结果, Err(受理失败::运行中)),
+            "驱动忙应先判忙返回「运行中」，实际: {结果:?}"
+        );
+    }
+
+    /// 取需求失败必须回滚预占：否则驱动通道被占死，此后一切受理都判「运行中」。
+    #[test]
+    fn 确认发布_无待确认_回滚预占() {
+        let 台 = Arc::new(看板驱动台::新());
+        let 看板 = Arc::new(Mutex::new(TaskBoard::新建(临时看板路径("空"))));
+        let 接待 = Arc::new(Mutex::new(道祖接待::新(Arc::new(空对话器))));
+        let 记忆: Arc<Mutex<dyn 记忆库契约<()>>> = Arc::new(Mutex::new(空记忆库));
+        let 依赖 = 受理依赖 {
+            看板驱动台: &台,
+            任务看板: &看板,
+            道祖接待: Some(&接待),
+            记忆库: &记忆,
+        };
+        let 结果 = 确认发布对齐需求(依赖);
+        assert!(
+            matches!(结果, Err(受理失败::无待确认)),
+            "无对齐需求应判「无待确认」，实际: {结果:?}"
+        );
+        assert!(台.预留(), "取需求失败须回滚预占，否则驱动通道被占死");
+    }
 }

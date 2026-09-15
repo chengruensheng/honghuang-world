@@ -177,6 +177,22 @@ mod tests {
         assert_eq!(产出.下一状态, TaskStatus::待道祖终审, "事实与盘面一致且宣告通过应进入终审");
     }
 
+    /// 回收站内的 .bak / .tmp 属「已删除文件」，与本体的感知扫描同口径不计入残留：
+    /// 若计入，模型按工具口径永远看不到它们，会被系统反复判为漏报 → 验收死循环。
+    #[test]
+    fn 准圣_回收站内残留_不计入() {
+        let 临时 = std::env::temp_dir().join("hm_验收事实_回收站");
+        let _ = std::fs::remove_dir_all(&临时);
+        std::fs::create_dir_all(临时.join(".回收站")).expect("建临时工作区与回收站");
+        std::fs::write(临时.join("真实.rs"), "// 真").expect("写交付物");
+        std::fs::write(临时.join(".回收站").join("遗留.rs.bak"), "// 已删除").expect("写回收站备份");
+        let 文档 = 实现文档(&["真实.rs"]);
+        let 答复 = r#"{"轮次":[{"轮次":1,"通过":true,"边界检查":true,"契约检查":true,"安全检查":true,"事实检查":true,"完整性检查":true,"问题":[]}],"最终结果":true,"created_at":1}"#;
+        let 产出 = 解析并构造(&AgentRole::准圣, TaskStatus::待准圣验收, 答复, &空核验, 临时.to_str(), Some(&文档))
+            .expect("回收站内备份不应被判为工作区残留");
+        assert_eq!(产出.下一状态, TaskStatus::待道祖终审, "回收站内备份不计入残留，判通过应进入终审");
+    }
+
     #[test]
     fn 阶段提示_太乙金仙_含清理纪律() {
         let 任务 = Task::新建(1, "清理纪律任务".to_string(), "描述".to_string(), 0);

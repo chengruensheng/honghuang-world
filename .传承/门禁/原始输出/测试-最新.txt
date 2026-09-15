@@ -2,11 +2,11 @@
   [1m[96m|[0m
   [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
 
-[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_cognition_test-55e948bf738ce9fc.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_cognition_test-55e948bf738ce9fc.exp[0m
+[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.exp[0m
   [1m[96m|[0m
   [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
 
-[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_task_test-6e578c03d9020492.exp[0m
+[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_cognition_test-55e948bf738ce9fc.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_cognition_test-55e948bf738ce9fc.exp[0m
   [1m[96m|[0m
   [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
 
@@ -26,11 +26,11 @@
    [1m[96m|[0m
    [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
-[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\hm_agent-c10b30a7282df44b.lib 和对象 F:\洪荒 - 世界\target\debug\deps\hm_agent-c10b30a7282df44b.exp[0m
+[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_agent_test-7d6888780933cfdc.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_agent_test-7d6888780933cfdc.exp[0m
   [1m[96m|[0m
   [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
 
-[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\zd_agent_test-7d6888780933cfdc.lib 和对象 F:\洪荒 - 世界\target\debug\deps\zd_agent_test-7d6888780933cfdc.exp[0m
+[1m[93mwarning[0m[1m[97m: linker stdout: 正在创建库 F:\洪荒 - 世界\target\debug\deps\hm_agent-c10b30a7282df44b.lib 和对象 F:\洪荒 - 世界\target\debug\deps\hm_agent-c10b30a7282df44b.exp[0m
   [1m[96m|[0m
   [1m[96m= [0m[1m[97mnote[0m: `#[warn(linker_messages)]` on by default
 
@@ -49,9 +49,9 @@ running 0 tests
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 
-running 62 tests
-..............................................................
-test result: ok. 62 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+running 65 tests
+.................................................................
+test result: ok. 65 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
 
 running 0 tests
@@ -86,7 +86,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 15 tests
 ...............
-test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
 
 
 running 0 tests
@@ -201,12 +201,12 @@ test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 73 tests
 .........................................................................
-test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s
 
 
 running 12 tests
 ............
-test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 
 running 33 tests
@@ -221,13 +221,13 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 49 tests
 .................................................
-test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.24s
 
 
 running 132 tests
 ....................................................................................... 87/132
 .............................................
-test result: ok. 132 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.06s
+test result: ok. 132 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
 
 
 running 8 tests
@@ -237,7 +237,7 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 16 tests
 ................
-test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 
 running 6 tests
@@ -247,7 +247,7 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 6 tests
 ......
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 
 running 9 tests

@@ -186,7 +186,12 @@ fn 核对验收事实(doc: &VerificationDoc, 事实: &验收事实) -> Option<St
     ))
 }
 
-/// 递归扫描工作区里的 .bak / .tmp 残留：跳过 target 与 .git（构建产物、版本库目录不算交付残留）。
+/// 残留扫描的跳过目录：与本体感知扫描（执行器 `应跳过目录` / `是回收站条目`）同口径——
+/// 构建产物、版本库、依赖目录不算残留；回收站内是「已删除文件」，同样不属于工作区残留，
+/// 若计入则模型按工具口径永远看不到的残留会被系统反复判为漏报 → 验收死循环。
+const 残留跳过目录: [&str; 4] = ["target", ".git", "node_modules", ".回收站"];
+
+/// 递归扫描工作区里的 .bak / .tmp 残留：按 `残留跳过目录` 排除非交付区域。
 fn 扫描临时残留(工作区根: &str) -> Vec<String> {
     let 根 = std::path::Path::new(工作区根);
     let mut 命中 = Vec::new();
@@ -199,7 +204,7 @@ fn 扫描临时残留(工作区根: &str) -> Vec<String> {
             let 名 = 条目.file_name().to_string_lossy().to_string();
             let 是目录 = 条目.file_type().map(|t| t.is_dir()).unwrap_or(false);
             if 是目录 {
-                if 名 != "target" && 名 != ".git" {
+                if !残留跳过目录.iter().any(|跳过| 名.eq_ignore_ascii_case(跳过)) {
                     待访.push(条目.path());
                 }
                 continue;
